@@ -7,7 +7,7 @@ strategy(title="Squeeze Pro Scanner", shorttitle="SQZPRO_SCANNER", overlay=true,
 //----------- Symbols List ------------------
 
 
-//---Commodities----
+//---Only Commodities----
 
 // symb1 = "USDINR"
 // symb2 = "CL1!"
@@ -27,62 +27,118 @@ strategy(title="Squeeze Pro Scanner", shorttitle="SQZPRO_SCANNER", overlay=true,
 // tfcount = 4
 
 
-
 //----- Top 15 Equities and Top 5 Comm Combined
 
-symb1 = "BANKNIFTY"
-symb2 = "NIFTY"
-symb3 = "RELIANCE"
-symb4 = "INFY"
-symb5 = "TECHM"
-symb6="TATASTEEL"
-symb7 = "GODREJCP"
-symb8 = "ICICIBANK"
-symb9 = "AXISBANK"
-symb10= "SBIN"
-symb11 = "CADILAHC"
-symb12 = "JINDALSTEL"
+// symb1 = "BANKNIFTY"
+// symb2 = "NIFTY"
+// symb3 = "RELIANCE"
+// symb4 = "INFY"
+// symb5 = "TECHM"
+// symb6="TATASTEEL"
+// symb7 = "GODREJCP"
+// symb8 = "ICICIBANK"
+// symb9 = "AXISBANK"
+// symb10= "SBIN"
+// symb11 = "CADILAHC"
+// symb12 = "JINDALSTEL"
+// symb13 = "TATAMOTORS"
+// symb14 = "BPCL"
+// symb15 = "HINDPETRO"
+// symb16 = "CRUDEOIL1!"
+// symb17= "NATURALGAS1!"
+// symb18 = "COPPER1!"
+// symb19 ="ALUMINIUM1!"
+// symb20 = "ZINC1!"
+
+
+// tf1 = "30"
+// tf2 = '60'
+// tf3 = ""
+// tf4 = ""
+// tfcount = 2
+
+
+//----- Top 2 Equities and Top 7 Comm Combined
+
+// symb1 = "USDCAD"
+// symb2 = "CL1!"
+// symb3 = "NG1!"
+// symb4 = "HG1!"
+// symb5 = "CRUDEOIL1!"
+// symb6 = "NATURALGAS1!"
+// symb7 = "COPPER1!"
+// symb8 = "BANKNIFTY"
+// symb9 = "NIFTY"
+
+
+// tf1 = "5"
+// tf2 = '30'
+// tf3 = "60"
+// tf4 = ""
+// tfcount = 3
+
+
+
+//----- Top 10 Eq and 3 Comm, 3 TFs
+
+symb1 = "CRUDEOIL1!"
+symb2= "NATURALGAS1!"
+symb3="COPPER1!"
+symb4 = "BANKNIFTY"
+symb5 = "NIFTY"
+symb6 = "RELIANCE"
+symb7 = "INFY"
+symb8 = "TECHM"
+symb9="TATASTEEL"
+symb10 = "AXISBANK"
+symb11= "SBIN"
+symb12 = "CADILAHC"
 symb13 = "TATAMOTORS"
-symb14 = "BPCL"
-symb15 = "HINDPETRO"
-symb16 = "CRUDEOIL1!"
-symb17= "NATURALGAS1!"
-symb18 = "COPPER1!"
-symb19 ="ALUMINIUM1!"
-symb20 = "ZINC1!"
 
 
-
-tf1 = "30"
-tf2 = '60'
-tf3 = ""
+tf1 = "5"
+tf2 = '15'
+tf3 = "30"
 tf4 = ""
-tfcount = 2
+tfcount = 3
 
 
+
+//---Top 7 Commodities----
+
+// symb1 = "USDCAD"
+// symb2 = "CL1!"
+// symb3 = "NG1!"
+// symb4 = "HG1!"
+// symb5 = "CRUDEOIL1!"
+// symb6 = "NATURALGAS1!"
+// symb7 = "COPPER1!"
+
+
+// tf1 = "5"
+// tf2 = "15"
+// tf3 = "30"
+// tf4 = ""
+// tfcount = 3
 
 //----Constants-------
 
 
 show_fire_alert = true
-show_comb_alert=false
 show_adx_alert = false
 show_erg_alert = false
 show_summ_alert = true
 
 
 show_sqz = true
-show_combined_trending = true // show only with non-neutral trends if true.
 
-show_only_strong_ob_os_trends = false  // Show only OB/OS strong trends if true.
-strict_sect_check = false
 
 
 show_comm = true
 show_eq = true
 
 
-// if na(time(timeframe.period, "0915-1530"))
+// if na(time(timeframe.period, "1000-1505"))
 //     show_eq := false
 
 // OSc Code Consts
@@ -96,25 +152,9 @@ RED=2
 ORANGE=3
 NOSQZ=0
 
-
-OB_SECT = 1
-OBM_SECT = 2
-OSM_SECT = 3
-OS_SECT = 4
-
-
-//---
-OB = 70
-OS = 30
-MAX= 100
-MIN=0
-MID = (OB + OS)/2
-avg_tr = MAX - MIN
 rad2degree=180/3.14159265359
 lookback_period = 1
 smoothing = 3
-stoch_smooth_k = 3
-stoch_smooth_d = 3
 
 
 //Sqz Code variables
@@ -165,12 +205,6 @@ calc_sqz()=>
 
 //------ End of Sqz Code--------
 
-get_section_code(osc_val)=>
-    osc_val >= OB ? OB_SECT : (osc_val < OB and osc_val >= MID) ? OBM_SECT :  (osc_val < MID and osc_val >= OS) ? OSM_SECT : OS_SECT
-
-decodeSectionCode(st) => 
-    st == OB_SECT ? 'OB' : st == OBM_SECT ? 'OBM' : st == OSM_SECT ?  'OSM' : 'OS'
-
 decodeSqzColorCode(st) => 
     col= st == YELLOW ? color.yellow : st == RED ? color.red : st == ORANGE ? color.orange : color.gray
     txt = st == YELLOW ? 'Yellow' : st == RED ? 'Red' : st == ORANGE ? 'Orange' : 'Nosqz'
@@ -189,75 +223,29 @@ get_osc_movement_with_params(osc, osc_ft, osc_cut_off,osc_avg_atr,osc_MAX,osc_MI
     osc_fb = -osc_ft
     osc_slope = linreg(angle(osc,osc_avg_atr), smoothing, 0)
     trend = osc_slope > osc_ft or osc >= (osc_MAX - osc_cut_off) ? UP: osc_slope < osc_fb or osc <= (osc_MIN + osc_cut_off) ? DOWN : NEUTRAL
-    sect = get_section_code(osc)
-    [sect,trend]
-
-get_osc_movement(osc, osc_ft, osc_cut_off) => get_osc_movement_with_params(osc, osc_ft, osc_cut_off,avg_tr,MAX,MIN)
-
-
-calc_cci() =>
-    // CCI Stoch Slope
-    cci_period = 14
-    stoch_period = 14
-    cci_cut_off = 5
-    cci_ft = 2
-
-    cci = cci(source, cci_period)
-    stoch_cci_k = sma(stoch(cci, cci, cci, stoch_period), stoch_smooth_k)
-    stoch_cci_d = sma(stoch_cci_k, stoch_smooth_d)
-    cci_s = stoch_cci_d
-    
-    get_osc_movement(cci_s,cci_ft,cci_cut_off)
-
-
-calc_smi() =>
-    //Momentum Oscillator Stoch
-    mom_length = 13
-    mom_stoch_period = 10
-    mom_cut_off = 5
-    mom_ft = 1.75
-
-    // mom = source - avg(avg(highest(high, mom_length), lowest(low, mom_length)), sma(source, mom_length))
-    // stoch_mom_k = sma(stoch(mom, mom, mom, mom_stoch_period), stoch_smooth_k)
-    // stoch_mom_d = sma(stoch_mom_k, stoch_smooth_d)
-    // mom_s = stoch_mom_d
-    
-    mom_highest = highest(high, mom_length)
-    mom_lowest = lowest(low, mom_length)
-    mom_ma = ema(source, mom_length)
-    mom_range = mom_highest - mom_lowest
-    
-    mom_avgmid = avg(mom_highest,mom_lowest)
-    
-    mom = source - avg(mom_avgmid,mom_ma)
-    
-    smi = avg(200 * mom/mom_range , 100)
-    stoch_mom_d = sma(sma(smi,stoch_smooth_k),stoch_smooth_d)
-    mom_s = stoch_mom_d
-    
-    get_osc_movement(mom_s, mom_ft, mom_cut_off)
+    trend
 
 
 // ADX Code
 
-ADX_NEUTRAL = 0
-ADX_LONG = 1 
-ADX_SHORT = 2  
-ADX_ENTER_LONG =3
-ADX_ENTER_SHORT = 4 
-ADX_EXIT_LONG  =5
-ADX_EXIT_SHORT  = 6
+STRAT_NEUTRAL = 0
+STRAT_LONG = 1 
+STRAT_SHORT = 2  
+STRAT_ENTER_LONG =3
+STRAT_ENTER_SHORT = 4 
+STRAT_EXIT_LONG  =5
+STRAT_EXIT_SHORT  = 6
 
 
-decodeADXCode(adx_code)=>
-    adx_col = adx_code == ADX_EXIT_LONG ? color.new(color.yellow,transp= 0) : adx_code == ADX_EXIT_SHORT ? color.new(color.blue,transp= 0) :  
-       adx_code == ADX_ENTER_LONG ? color.new(color.lime,transp= 0) : adx_code == ADX_ENTER_SHORT ? color.new(color.red,transp=0) :  
-       adx_code == ADX_LONG ? color.new(color.aqua,transp= 60) : adx_code == ADX_SHORT ? color.new(color.orange,transp= 60) : color.new(color.gray,transp= 60)
+decodeStratCode(adx_code)=>
+    adx_col = adx_code == STRAT_EXIT_LONG ? color.new(color.yellow,transp= 0) : adx_code == STRAT_EXIT_SHORT ? color.new(color.blue,transp= 0) :  
+       adx_code == STRAT_ENTER_LONG ? color.new(color.lime,transp= 0) : adx_code == STRAT_ENTER_SHORT ? color.new(color.red,transp=0) :  
+       adx_code == STRAT_LONG ? color.new(color.aqua,transp= 60) : adx_code == STRAT_SHORT ? color.new(color.orange,transp= 60) : color.new(color.gray,transp= 60)
      
     
-    adx_txt = adx_code == ADX_EXIT_LONG ? 'ExUp' : adx_code == ADX_EXIT_SHORT ? 'ExDn' :  
-       adx_code == ADX_ENTER_LONG ? 'EnUp' : adx_code == ADX_ENTER_SHORT ? 'EnDn' :  
-       adx_code == ADX_LONG ? 'Up' : adx_code == ADX_SHORT ? 'Dn' : 'Na'
+    adx_txt = adx_code == STRAT_EXIT_LONG ? 'ExUp' : adx_code == STRAT_EXIT_SHORT ? 'ExDn' :  
+       adx_code == STRAT_ENTER_LONG ? 'EnUp' : adx_code == STRAT_ENTER_SHORT ? 'EnDn' :  
+       adx_code == STRAT_LONG ? 'Up' : adx_code == STRAT_SHORT ? 'Dn' : 'Na'
      
     [adx_txt,adx_col]
 
@@ -285,11 +273,11 @@ calc_ADX() =>
     adx_fb = -adx_filter_range
     
     
-    adxentrylevel = 39
+    adxentrylevel = 49
     adxlowerlevel = 9
     
     
-    [dummy_sect, adx_trend] = get_osc_movement_with_params(adx,adx_ft,adx_cut_off, adx_avg_tr,adx_MAX,adx_MIN)
+    adx_trend = get_osc_movement_with_params(adx,adx_ft,adx_cut_off, adx_avg_tr,adx_MAX,adx_MIN)
     
     diPositive = plus > minus
     diNegative = not diPositive
@@ -336,9 +324,9 @@ calc_ADX() =>
     exitLong = noTradeZone and longpos[1]
     exitShort = noTradeZone and shortpos[1]
     
-    adx_status_code = exitLong ? ADX_EXIT_LONG : exitShort ? ADX_EXIT_SHORT :  
-     enterLong ? ADX_ENTER_LONG : enterShort ? ADX_ENTER_SHORT :  
-     longpos ? ADX_LONG : shortpos ? ADX_SHORT : ADX_NEUTRAL
+    adx_status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT :  
+     enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT :  
+     longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
      
     adx_status_code
 
@@ -367,18 +355,15 @@ calc_SMI_Erg()=>
     erg_avg_tr =  erg_MAX - erg_MIN
     erg_cut_off= 0
     
-    erg_filter_range = 2.75
-    
-    entryrange = 0.45 * erg_avg_tr
-    
+    erg_filter_range = 2
     
     erg_ft = erg_filter_range
     erg_fb = -erg_filter_range
     
-    [d_txt, erg_trend] = get_osc_movement_with_params(erg,erg_ft,erg_cut_off, erg_avg_tr,erg_MAX,erg_MIN)
+    erg_trend = get_osc_movement_with_params(erg,erg_ft,erg_cut_off, erg_avg_tr,erg_MAX,erg_MIN)
 
-    erg_validlong = erg < erg_MID + entryrange and erg_trend == UP
-    erg_validshort = erg > erg_MID - entryrange and erg_trend == DOWN
+    erg_validlong =  erg_trend == UP
+    erg_validshort = erg_trend == DOWN
     
     erg_diPositive = erg > sig
     erg_diNegative = not erg_diPositive
@@ -415,9 +400,9 @@ calc_SMI_Erg()=>
     erg_exitShort = erg_noTradeZone and erg_shortpos[1]
     
     
-    erg_status_code = erg_exitLong ? ADX_EXIT_LONG : erg_exitShort ? ADX_EXIT_SHORT :  
-     erg_enterLong ? ADX_ENTER_LONG : erg_enterShort ? ADX_ENTER_SHORT :  
-     erg_longpos ? ADX_LONG : erg_shortpos ? ADX_SHORT : ADX_NEUTRAL
+    erg_status_code = erg_exitLong ? STRAT_EXIT_LONG : erg_exitShort ? STRAT_EXIT_SHORT :  
+     erg_enterLong ? STRAT_ENTER_LONG : erg_enterShort ? STRAT_ENTER_SHORT :  
+     erg_longpos ? STRAT_LONG : erg_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
      
     
     erg_status_code
@@ -429,7 +414,8 @@ sep = " : "
 screener_sep = "----------------\n"
 
 
-check_if_comm_list(symb) => symb == symb16 or symb == symb17 or symb == symb18 or symb == symb19 or symb == symb20
+check_if_comm_list(symb) => symb == symb1 or symb == symb2 or symb == symb3 
+//or symb == symb4 or symb == symb5 or symb == symb6 or symb == symb7
 
 check_if_eq_list(symb) => not check_if_comm_list(symb)
 
@@ -439,130 +425,48 @@ get_trend_num(trend_code) =>
     trend_code == UP ? 1 : trend_code == DOWN ? -1 : 0
 
 
-get_combined_trend_num(mom_code,cci_code) =>
-    get_trend_num(mom_code) + get_trend_num(cci_code)
-
-
-get_combined_trend(mom_code,cci_code,mom_sect_code, cci_sect_code) =>
-    trend_dir = NEUTRAL
-    ob_os_flag = false
-    
-    if mom_code == cci_code
-        any_nonOS_flag = strict_sect_check? (mom_sect_code != OS_SECT or cci_sect_code != OS_SECT)  : true
-        any_nonOB_flag = strict_sect_check ? (mom_sect_code != OB_SECT or cci_sect_code != OB_SECT) : true
-        
-        any_ob_sect_flag = mom_sect_code == OB_SECT or cci_sect_code == OB_SECT
-        any_os_sect_flag = mom_sect_code == OS_SECT or cci_sect_code == OS_SECT
-        
-        if cci_code == DOWN and any_nonOS_flag
-            trend_dir := DOWN
-            ob_os_flag := any_ob_sect_flag
-            
-        else if cci_code == UP and any_nonOB_flag
-            trend_dir := UP
-            ob_os_flag := any_os_sect_flag
-    
-    
-    combined_trend_num = get_combined_trend_num(mom_code,cci_code)
-
-    diPositive = combined_trend_num >=1
-    diNegative = combined_trend_num <= -1 
-    diNeutral = combined_trend_num == 0
-    
-    
-    buyCond = diPositive
-    sellCond = diNegative
-    
-    
-    validtrend = buyCond or sellCond
-    validentry = abs(combined_trend_num) == 2
-    
-    validlongentry = buyCond and validentry //and current_trend == UP     //and activefire //and current_trend == UP
-    validshortentry = sellCond and validentry //and current_trend == DOWN //and activefire //and current_trend == DOWN
-    
-    
-    
-    active_position = false
-    active_position := active_position[1]
-    
-    enterLong = validlongentry  and not active_position
-    enterShort =  validshortentry and not active_position
-    
-    
-    active_position := (enterLong or enterShort) ? true :  active_position
-    
-    longpos = false
-    shortpos = false
-    
-    longpos := (buyCond or (diNeutral and longpos[1])) and  active_position 
-    shortpos := (sellCond  or (diNeutral and shortpos[1]) )and  active_position
-    
-    di_crossover = longpos[1] and diNegative or shortpos[1] and diPositive 
-    noTradeZone =  di_crossover //or not validtrend 
-    
-    exitLong = noTradeZone and longpos[1] 
-    exitShort = noTradeZone and shortpos[1]
-    
-    
-    active_position := noTradeZone ? false : active_position
-    
-    
-    combined_status_code = exitLong ? ADX_EXIT_LONG : exitShort ? ADX_EXIT_SHORT :  
-         enterLong ? ADX_ENTER_LONG : enterShort ? ADX_ENTER_SHORT :  
-         longpos ? ADX_LONG : shortpos ? ADX_SHORT : ADX_NEUTRAL
-    
-    
-    [trend_dir, ob_os_flag, combined_status_code]
-
-
-
 
 get_status_code_trend_num(st) =>
-    st == ADX_ENTER_LONG or st == ADX_LONG or st == ADX_EXIT_SHORT ? 1 : st == ADX_ENTER_SHORT or st == ADX_SHORT or st == ADX_EXIT_LONG ? -1 : 0
+    st == STRAT_ENTER_LONG or st == STRAT_LONG or st == STRAT_EXIT_SHORT ? 1 : st == STRAT_ENTER_SHORT or st == STRAT_SHORT or st == STRAT_EXIT_LONG ? -1 : 0
 
 
-get_summary_trend_code(comb_code,adx_code,erg_code) =>
-    st_num = get_status_code_trend_num(comb_code) + 
-      get_status_code_trend_num(adx_code) + 
+get_summary_trend_code(adx_code,erg_code) =>
+    st_num = get_status_code_trend_num(adx_code) + 
       get_status_code_trend_num(erg_code)
      
     
-    summ_trend_code = st_num >= 1 ? ADX_LONG : st_num <= -1 ? ADX_SHORT : ADX_NEUTRAL
+    summ_trend_code = st_num >= 1 ? STRAT_LONG : st_num <= -1 ? STRAT_SHORT : STRAT_NEUTRAL
     
+    any_long_entry =  adx_code == STRAT_ENTER_LONG or erg_code == STRAT_ENTER_LONG
     
-    any_long_entry = comb_code == ADX_ENTER_LONG or adx_code == ADX_ENTER_LONG or erg_code == ADX_ENTER_LONG
-    
-    any_short_entry = comb_code == ADX_ENTER_SHORT or adx_code == ADX_ENTER_SHORT or erg_code == ADX_ENTER_SHORT
+    any_short_entry = adx_code == STRAT_ENTER_SHORT or erg_code == STRAT_ENTER_SHORT
 
-    summ_trend_code := (summ_trend_code == ADX_LONG and any_long_entry )? ADX_ENTER_LONG :   
-      (summ_trend_code == ADX_SHORT and any_short_entry) ? ADX_ENTER_SHORT :  summ_trend_code
+    summ_trend_code := (summ_trend_code == STRAT_LONG and any_long_entry and st_num == 2)? STRAT_ENTER_LONG :   
+      (summ_trend_code == STRAT_SHORT and any_short_entry and st_num == -2) ? STRAT_ENTER_SHORT :  summ_trend_code
     
     summ_trend_code
 
 
+calc_final_summary(adx_code,erg_code) =>
 
-calc_final_summary(comb_code,adx_code,erg_code) =>
-
-    summ_trend_code = get_summary_trend_code(comb_code,adx_code,erg_code)
-    [summ_txt, summ_col] = decodeADXCode(summ_trend_code)
+    summ_trend_code = get_summary_trend_code(adx_code,erg_code)
+    [summ_txt, summ_col] = decodeStratCode(summ_trend_code)
             
     
-    
-    summ_entry = summ_trend_code == ADX_ENTER_LONG or summ_trend_code == ADX_ENTER_SHORT
-    
+    summ_entry = summ_trend_code == STRAT_ENTER_LONG or summ_trend_code == STRAT_ENTER_SHORT
     
     curr_active_pos = false
     curr_active_pos := curr_active_pos[1]
     
     
-    buyCond = summ_trend_code == ADX_ENTER_LONG or summ_trend_code == ADX_LONG
-    sellCond = summ_trend_code == ADX_ENTER_SHORT or summ_trend_code == ADX_SHORT
+    buyCond = summ_trend_code == STRAT_ENTER_LONG or summ_trend_code == STRAT_LONG
+    sellCond = summ_trend_code == STRAT_ENTER_SHORT or summ_trend_code == STRAT_SHORT
     
     
     validtrend = buyCond or sellCond
     
-    validlongentry = summ_trend_code == ADX_ENTER_LONG 
-    validshortentry = summ_trend_code == ADX_ENTER_SHORT 
+    validlongentry = summ_trend_code == STRAT_ENTER_LONG 
+    validshortentry = summ_trend_code == STRAT_ENTER_SHORT 
     
     
     enterLong = validlongentry  and not curr_active_pos
@@ -584,112 +488,64 @@ calc_final_summary(comb_code,adx_code,erg_code) =>
     
     curr_active_pos := (exitLong or exitShort) ? false : curr_active_pos
     
-    final_summary_status_code = exitLong ? ADX_EXIT_LONG : exitShort ? ADX_EXIT_SHORT :  
-         enterLong ? ADX_ENTER_LONG : enterShort ? ADX_ENTER_SHORT :  
-         longpos ? ADX_LONG : shortpos ? ADX_SHORT : ADX_NEUTRAL
+    final_summary_status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT :  
+         enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT :  
+         longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
     
     
     final_summary_status_code
-
-
-
-
-
-
 
 
 get_all_status_codes() =>
 
     [sqzcolornum,fire_code] = calc_sqz()
     
-    [cci_sect,ccis_movement_code] = calc_cci()
-    
-    [mom_sect,mom_osc_code] = calc_smi()
-    
-    [trend_dir,ob_os_flag,combined_status_code] = get_combined_trend(mom_osc_code,ccis_movement_code,mom_sect, cci_sect)
-    
     adx_status_code = calc_ADX()
     
     erg_status_code = calc_SMI_Erg()
     
-    final_summary_status_code = calc_final_summary(combined_status_code,adx_status_code,erg_status_code)
+    final_summary_status_code = calc_final_summary(adx_status_code,erg_status_code)
 
-    [sqzcolornum, mom_osc_code, ccis_movement_code, mom_sect, cci_sect,trend_dir,ob_os_flag, fire_code, combined_status_code, adx_status_code,erg_status_code,final_summary_status_code]
+    [sqzcolornum, fire_code, adx_status_code,erg_status_code,final_summary_status_code]
 
 
 
 symb_arr = array.new_string(0)
 tf_arr = array.new_string(0)
 sqcolor_arr = array.new_int(0)
-mom_status_arr = array.new_int(0)
-cci_status_arr = array.new_int(0)
-
-comb_status_arr = array.new_int(0)
 adx_status_arr = array.new_int(0)
 erg_status_arr = array.new_int(0)
 summ_status_arr = array.new_int(0)
 
-
-mom_sect_arr = array.new_int(0)
-cci_sect_arr = array.new_int(0)
-
-trend_arr=array.new_int(0)
-ob_os_arr=array.new_bool(0)
-
 fire_sqz_arr = array.new_int(0)
 
-show_flag_arr=array.new_bool(0)
-
-flag_count_dummy_arr = array.new_bool(0)
 
 
 screenerFunc() => get_all_status_codes()
 
-updateStatusArr(symb,tf, sqcolor_code, mom_code,cci_code, mom_sect, cci_sect,trend_dir,ob_os_flag,fire_code,combined_status_code,adx_code,erg_code,final_summary_status_code) =>
-
-    istrend =  trend_dir != NEUTRAL
-    istrend := not show_only_strong_ob_os_trends ? istrend : (istrend and ob_os_flag)
-    
-    show_cond = sqcolor_code != NOSQZ  and show_sqz
-    
-    show_cond := show_combined_trending ? (show_sqz ? show_cond and istrend : istrend) : show_cond
-    
-    show_cond := fire_code != NOSQZ ? true : show_cond
-    
+updateStatusArr(symb,tf, sqcolor_code, fire_code,adx_code,erg_code,final_summary_status_code) =>
     ignore = false
-    // if (not show_comm and check_if_comm_list(symb) or (not show_eq and check_if_eq_list(symb)))
-    //     ignore := true
-    
+    if (not show_comm and check_if_comm_list(symb) or (not show_eq and check_if_eq_list(symb)))
+        ignore := true
     
     if not ignore
-        if (show_cond)
-            array.push(flag_count_dummy_arr, show_cond)
-            
         array.push(symb_arr, symb)
         array.push(tf_arr, tf)
         array.push(sqcolor_arr,sqcolor_code)
-        array.push(mom_status_arr,mom_code)
-        array.push(cci_status_arr,cci_code)
-        array.push(mom_sect_arr,mom_sect)
-        array.push(cci_sect_arr,cci_sect)
-        array.push(trend_arr,trend_dir)
-        array.push(ob_os_arr,ob_os_flag)
-        array.push(show_flag_arr,show_cond)
         array.push(fire_sqz_arr,fire_code)
-        array.push(comb_status_arr,combined_status_code)
         array.push(adx_status_arr,adx_code)
         array.push(erg_status_arr,erg_code)
         array.push(summ_status_arr,final_summary_status_code)
 
         
 f_sec(symb, tf) =>
-    [sqzcol_code, mom_code, cci_code, mom_sect, cci_sect,trend_dir,  
-     ob_os_flag,fire_code,combined_status_code,adx_code,erg_code,final_summary_status_code] = 
+    [sqzcol_code,fire_code,adx_code,erg_code,final_summary_status_code] = 
       security(symb, tf, screenerFunc(), lookahead = barmerge.lookahead_on)
       
-    updateStatusArr(symb,tf,sqzcol_code, mom_code,cci_code,mom_sect, cci_sect,
-      trend_dir,ob_os_flag,fire_code,combined_status_code, adx_code,erg_code,final_summary_status_code)
+    updateStatusArr(symb,tf,sqzcol_code,fire_code,adx_code,erg_code,final_summary_status_code)
 
+
+// Top 10 Symbols  4 TFs
 
 // f_sec(symb1, tf1)
 // f_sec(symb1, tf2)
@@ -742,70 +598,123 @@ f_sec(symb, tf) =>
 // f_sec(symb10, tf4)
 
 
-// Only Eq Top 17 
+//Top 20 Symbols, 2 TFs
+
+// f_sec(symb1, tf1)
+// f_sec(symb1, tf2)
+
+// f_sec(symb2, tf1)
+// f_sec(symb2, tf2)
+
+// f_sec(symb3, tf1)
+// f_sec(symb3, tf2)
+
+// f_sec(symb4, tf1)
+// f_sec(symb4, tf2)
+
+// f_sec(symb5, tf1)
+// f_sec(symb5, tf2)
+
+// f_sec(symb6, tf1)
+// f_sec(symb6, tf2)
+
+// f_sec(symb7, tf1)
+// f_sec(symb7, tf2)
+
+// f_sec(symb8, tf1)
+// f_sec(symb8, tf2)
+
+
+// f_sec(symb9, tf1)
+// f_sec(symb9, tf2)
+
+// f_sec(symb10, tf1)
+// f_sec(symb10, tf2)
+
+// f_sec(symb11, tf1)
+// f_sec(symb11, tf2)
+
+// f_sec(symb12, tf1)
+// f_sec(symb12, tf2)
+
+// f_sec(symb13, tf1)
+// f_sec(symb13, tf2)
+
+// f_sec(symb14, tf1)
+// f_sec(symb14, tf2)
+
+// f_sec(symb15, tf1)
+// f_sec(symb15, tf2)
+
+// f_sec(symb16, tf1)
+// f_sec(symb16, tf2)
+
+// f_sec(symb17, tf1)
+// f_sec(symb17, tf2)
+
+// f_sec(symb18, tf1)
+// f_sec(symb18, tf2)
+
+// f_sec(symb19, tf1)
+// f_sec(symb19, tf2)
+
+// f_sec(symb20, tf1)
+// f_sec(symb20, tf2)
+
+//---- Top 13 Symbs 3 TFs
 
 f_sec(symb1, tf1)
 f_sec(symb1, tf2)
+f_sec(symb1, tf3)
 
 f_sec(symb2, tf1)
 f_sec(symb2, tf2)
+f_sec(symb2, tf3)
 
 f_sec(symb3, tf1)
 f_sec(symb3, tf2)
+f_sec(symb3, tf3)
 
 f_sec(symb4, tf1)
 f_sec(symb4, tf2)
+f_sec(symb4, tf3)
 
 f_sec(symb5, tf1)
 f_sec(symb5, tf2)
+f_sec(symb5, tf3)
 
 f_sec(symb6, tf1)
 f_sec(symb6, tf2)
+f_sec(symb6, tf3)
 
 f_sec(symb7, tf1)
 f_sec(symb7, tf2)
+f_sec(symb7, tf3)
 
 f_sec(symb8, tf1)
 f_sec(symb8, tf2)
-
+f_sec(symb8, tf3)
 
 f_sec(symb9, tf1)
 f_sec(symb9, tf2)
+f_sec(symb9, tf3)
 
 f_sec(symb10, tf1)
 f_sec(symb10, tf2)
+f_sec(symb10, tf3)
 
 f_sec(symb11, tf1)
 f_sec(symb11, tf2)
+f_sec(symb11, tf3)
 
 f_sec(symb12, tf1)
 f_sec(symb12, tf2)
+f_sec(symb12, tf3)
 
 f_sec(symb13, tf1)
 f_sec(symb13, tf2)
+f_sec(symb13, tf3)
 
-f_sec(symb14, tf1)
-f_sec(symb14, tf2)
-
-f_sec(symb15, tf1)
-f_sec(symb15, tf2)
-
-f_sec(symb16, tf1)
-f_sec(symb16, tf2)
-
-f_sec(symb17, tf1)
-f_sec(symb17, tf2)
-
-f_sec(symb18, tf1)
-f_sec(symb18, tf2)
-
-f_sec(symb19, tf1)
-f_sec(symb19, tf2)
-
-f_sec(symb20, tf1)
-f_sec(symb20, tf2)
-
-//-----------
 
 
 scr_label = ""
@@ -816,8 +725,6 @@ row_count = symb_arr_size/tfcount
 
 any_fire_sqz_alert = false
 
-any_combined_trend_entry_alert = false
-
 any_adx_entry_alert = false
 
 any_erg_entry_alert = false
@@ -826,14 +733,14 @@ any_summary_entry_alert = false
 
 
 is_entry_alert(st,show_flag)=>
-    show_flag and (st == ADX_ENTER_LONG or st == ADX_ENTER_SHORT or st == ADX_EXIT_LONG or st == ADX_EXIT_SHORT)
+    show_flag and (st == STRAT_ENTER_LONG or st == STRAT_ENTER_SHORT or st == STRAT_EXIT_LONG or st == STRAT_EXIT_SHORT)
 
 
 
 get_alert_info(st,show_flag,symb,tf,indicator_name)=>
     any_entry = false
     
-    [dis_txt, dis_col] = decodeADXCode(st)
+    [dis_txt, dis_col] = decodeStratCode(st)
     
     if is_entry_alert(st , show_flag)
         any_entry := true
@@ -844,27 +751,7 @@ get_alert_info(st,show_flag,symb,tf,indicator_name)=>
 
 
 if symb_arr_size > 0 and barstate.islast
-    // var table tbl1 = table.new(position.bottom_center, tfcount+1,row_count+1, frame_color=color(na), frame_width=1, border_width=2, border_color=color(na))
-    // var table tbl2 = table.new(position.bottom_left, tfcount+1,row_count+1, frame_color=color(na), frame_width=1, border_width=2, border_color=color(na))
-    // var table tbl3 = table.new(position.bottom_right, tfcount+1,row_count+1, frame_color=color(na), frame_width=1, border_width=2, border_color=color(na))
     var table tbl4 = table.new(position.middle_center, tfcount+1,row_count+1, frame_color=color(na), frame_width=1, border_width=2, border_color=color(na))
-
-
-    // table.cell(tbl1, 0, 0, 'Combined',     text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-    // table.cell(tbl1, 1, 0, tf1,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-    // table.cell(tbl1, 2, 0, tf2,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-    
-    
-    
-    // table.cell(tbl2, 0, 0, 'ADX',     text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-    // table.cell(tbl2, 1, 0, tf1,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-    // table.cell(tbl2, 2, 0, tf2,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-    
-
-    // table.cell(tbl3, 0, 0, 'ERG',     text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-    // table.cell(tbl3, 1, 0, tf1,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-    // table.cell(tbl3, 2, 0, tf2,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
- 
 
     table.cell(tbl4, 0, 0, 'Summary',     text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
     table.cell(tbl4, 1, 0, tf1,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
@@ -872,18 +759,11 @@ if symb_arr_size > 0 and barstate.islast
     
     
     if tfcount >= 3
-        // table.cell(tbl1, 3, 0, tf3,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-        // table.cell(tbl1, 4, 0, tf4,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-    
-        // table.cell(tbl2, 3, 0, tf3,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-        // table.cell(tbl2, 4, 0, tf4,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-    
-        // table.cell(tbl3, 3, 0, tf3,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-        // table.cell(tbl3, 4, 0, tf4,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-     
         table.cell(tbl4, 3, 0, tf3,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+
+    if tfcount >= 4
         table.cell(tbl4, 4, 0, tf4,  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-     
+
 
     tab_i = 0
     tab_j = 0
@@ -896,17 +776,11 @@ if symb_arr_size > 0 and barstate.islast
         tf = array.get(tf_arr, i)
         
 
-        
         if tab_j == 0
-            // table.cell(tbl1, 0, tab_i + 1,symb ,text_halign = text.align_left,   bgcolor = color(na), text_color = color.white, text_size = size.small)
-            // table.cell(tbl2, 0, tab_i + 1,symb ,text_halign = text.align_left,   bgcolor = color(na), text_color = color.white, text_size = size.small)
-            // table.cell(tbl3, 0, tab_i + 1,symb ,text_halign = text.align_left,   bgcolor = color(na), text_color = color.white, text_size = size.small)
             table.cell(tbl4, 0, tab_i + 1,symb ,text_halign = text.align_left,   bgcolor = color(na), text_color = color.white, text_size = size.small)
 
 
-        trend_dir = array.get(trend_arr,i)
-        [trend_txt, trend_color] = decodeMovementCode(trend_dir)
-        
+
         fire_code = array.get(fire_sqz_arr, i)
         [fire_sqz_txt, fire_sqz_col] = decodeSqzColorCode(fire_code)
 
@@ -914,28 +788,9 @@ if symb_arr_size > 0 and barstate.islast
         [sq_col_txt, sq_col_obj] = decodeSqzColorCode(sq_col_code)
         
         
-        trend_first_char = array.get(str.split(trend_txt,''),0)
         fsqz_first_char = array.get(str.split(fire_sqz_txt,''),0)
         sqz_first_char = array.get(str.split(sq_col_txt,''),0)
 
-
-        sqz_dis_txt1 = ''
-
-        if fire_code != NOSQZ and show_fire_alert
-            any_fire_sqz_alert := true
-            symb_info = symb + sep + tf + sep + 'FIRE'+ sep + fire_sqz_txt + sep + trend_txt + '\n'
-            scr_label := scr_label + symb_info
-    
-        
-        sqz_dis_txt1 := fire_code != NOSQZ ? 'F'+fsqz_first_char: sqz_dis_txt1
-
-        
-        comb_code = array.get(comb_status_arr,i)
-        [any_entry1,symb_info1,comb_col] = get_alert_info(comb_code,show_comb_alert,symb,tf,'COMB')
-        if any_entry1
-            scr_label := scr_label + symb_info1
-            any_combined_trend_entry_alert := any_entry1
-        
 
         adx_code = array.get(adx_status_arr,i)
         [any_entry2,symb_info2,adx_col] = get_alert_info(adx_code,show_adx_alert,symb,tf,'ADX')
@@ -957,27 +812,28 @@ if symb_arr_size > 0 and barstate.islast
             scr_label := scr_label + symb_info4
             any_summary_entry_alert := any_entry4
             
+        
+        sqz_dis_txt1 = ''
+        if fire_code != NOSQZ and show_fire_alert
+            any_fire_sqz_alert := true
             
-        
-        // table.cell(tbl1, tab_j+1, tab_i + 1,sqz_dis_txt1 ,text_halign = text.align_center, bgcolor = comb_col, text_color = color.white, text_size = size.small)
-        
-        // table.cell(tbl2, tab_j+1, tab_i + 1,sqz_dis_txt1 ,text_halign = text.align_center, bgcolor = adx_col, text_color = color.white, text_size = size.small)
-        
-        // table.cell(tbl3, tab_j+1, tab_i + 1,sqz_dis_txt1 ,text_halign = text.align_center, bgcolor = erg_col, text_color = color.white, text_size = size.small)
+            [dis_txt, dis_col] = decodeStratCode(summ_trend_code)
 
+            symb_info = symb + sep + tf + sep + 'FIRE'+ sep + fire_sqz_txt + sep + dis_txt + '\n'
+            scr_label := scr_label + symb_info
+    
+    
+        sqz_dis_txt1 := fire_code != NOSQZ ? 'F'+fsqz_first_char: sqz_dis_txt1
+        
+        
         table.cell(tbl4, tab_j+1, tab_i + 1,sqz_dis_txt1 ,text_halign = text.align_center, bgcolor = summ_col, text_color = color.white, text_size = size.small)
         
         
 
-
 // Send alert only if screener is not empty
 if (scr_label != '' and (any_fire_sqz_alert or  any_summary_entry_alert or 
-      any_adx_entry_alert or any_erg_entry_alert or any_combined_trend_entry_alert))
+      any_adx_entry_alert or any_erg_entry_alert))
       
     final_msg = screener_sep + scr_label +screener_sep
     alert(final_msg, freq = alert.freq_once_per_bar_close)
-    
-    
-    
-    
     
