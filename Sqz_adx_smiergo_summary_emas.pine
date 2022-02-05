@@ -1,24 +1,8 @@
 //@version=4
-strategy(title="Sqz_ADX_CCI_SMI_EMAs Strategy", shorttitle="Sqz_ADX_CCI_SMI_EMAs", overlay=true, pyramiding=1,  
+strategy(title="Sqz_ADX_Ergo Strategy", shorttitle="Sqz_ADX_Ergo", overlay=true, pyramiding=1,  
   calc_on_every_tick=true,initial_capital=2000000,default_qty_type=strategy.percent_of_equity, default_qty_value=100)
 
-show_fire_alert = true
-show_comb_alert=true
-show_adx_alert = true
-show_erg_alert = true
-show_summ_alert = true
 
-show_strong_trend_alert = false
-
-
-show_sqz = true
-show_combined_trending = true // show only with non-neutral trends if true.
-
-show_only_strong_ob_os_trends = false  // Show only OB/OS strong trends if true.
-strict_sect_check = false
-
-show_comm = true
-show_eq = true
 
 
 // OSc Code Consts
@@ -33,24 +17,11 @@ ORANGE=3
 NOSQZ=0
 
 
-OB_SECT = 1
-OBM_SECT = 2
-OSM_SECT = 3
-OS_SECT = 4
-
 
 //---
-OB = 70
-OS = 30
-MAX= 100
-MIN=0
-MID = (OB + OS)/2
-avg_tr = MAX - MIN
 rad2degree=180/3.14159265359
 lookback_period = 1
 smoothing = 3
-stoch_smooth_k = 3
-stoch_smooth_d = 3
 
 
 //Sqz Code variables
@@ -101,12 +72,6 @@ calc_sqz()=>
 
 //------ End of Sqz Code--------
 
-get_section_code(osc_val)=>
-    osc_val >= OB ? OB_SECT : (osc_val < OB and osc_val >= MID) ? OBM_SECT :  (osc_val < MID and osc_val >= OS) ? OSM_SECT : OS_SECT
-
-decodeSectionCode(st) => 
-    st == OB_SECT ? 'OB' : st == OBM_SECT ? 'OBM' : st == OSM_SECT ?  'OSM' : 'OS'
-
 decodeSqzColorCode(st) => 
     col= st == YELLOW ? color.yellow : st == RED ? color.red : st == ORANGE ? color.orange : color.gray
     txt = st == YELLOW ? 'Yellow' : st == RED ? 'Red' : st == ORANGE ? 'Orange' : 'Nosqz'
@@ -125,75 +90,29 @@ get_osc_movement_with_params(osc, osc_ft, osc_cut_off,osc_avg_atr,osc_MAX,osc_MI
     osc_fb = -osc_ft
     osc_slope = linreg(angle(osc,osc_avg_atr), smoothing, 0)
     trend = osc_slope > osc_ft or osc >= (osc_MAX - osc_cut_off) ? UP: osc_slope < osc_fb or osc <= (osc_MIN + osc_cut_off) ? DOWN : NEUTRAL
-    sect = get_section_code(osc)
-    [sect,trend]
-
-get_osc_movement(osc, osc_ft, osc_cut_off) => get_osc_movement_with_params(osc, osc_ft, osc_cut_off,avg_tr,MAX,MIN)
-
-
-calc_cci() =>
-    // CCI Stoch Slope
-    cci_period = 14
-    stoch_period = 14
-    cci_cut_off = 5
-    cci_ft = 2
-
-    cci = cci(source, cci_period)
-    stoch_cci_k = sma(stoch(cci, cci, cci, stoch_period), stoch_smooth_k)
-    stoch_cci_d = sma(stoch_cci_k, stoch_smooth_d)
-    cci_s = stoch_cci_d
-    
-    get_osc_movement(cci_s,cci_ft,cci_cut_off)
-
-
-calc_smi() =>
-    //Momentum Oscillator Stoch
-    mom_length = 13
-    mom_stoch_period = 10
-    mom_cut_off = 5
-    mom_ft = 1.75
-
-    // mom = source - avg(avg(highest(high, mom_length), lowest(low, mom_length)), sma(source, mom_length))
-    // stoch_mom_k = sma(stoch(mom, mom, mom, mom_stoch_period), stoch_smooth_k)
-    // stoch_mom_d = sma(stoch_mom_k, stoch_smooth_d)
-    // mom_s = stoch_mom_d
-    
-    mom_highest = highest(high, mom_length)
-    mom_lowest = lowest(low, mom_length)
-    mom_ma = ema(source, mom_length)
-    mom_range = mom_highest - mom_lowest
-    
-    mom_avgmid = avg(mom_highest,mom_lowest)
-    
-    mom = source - avg(mom_avgmid,mom_ma)
-    
-    smi = avg(200 * mom/mom_range , 100)
-    stoch_mom_d = sma(sma(smi,stoch_smooth_k),stoch_smooth_d)
-    mom_s = stoch_mom_d
-    
-    get_osc_movement(mom_s, mom_ft, mom_cut_off)
+    trend
 
 
 // ADX Code
 
-ADX_NEUTRAL = 0
-ADX_LONG = 1 
-ADX_SHORT = 2  
-ADX_ENTER_LONG =3
-ADX_ENTER_SHORT = 4 
-ADX_EXIT_LONG  =5
-ADX_EXIT_SHORT  = 6
+STRAT_NEUTRAL = 0
+STRAT_LONG = 1 
+STRAT_SHORT = 2  
+STRAT_ENTER_LONG =3
+STRAT_ENTER_SHORT = 4 
+STRAT_EXIT_LONG  =5
+STRAT_EXIT_SHORT  = 6
 
 
-decodeADXCode(adx_code)=>
-    adx_col = adx_code == ADX_EXIT_LONG ? color.new(color.yellow,transp= 0) : adx_code == ADX_EXIT_SHORT ? color.new(color.blue,transp= 0) :  
-       adx_code == ADX_ENTER_LONG ? color.new(color.lime,transp= 0) : adx_code == ADX_ENTER_SHORT ? color.new(color.red,transp=0) :  
-       adx_code == ADX_LONG ? color.new(color.aqua,transp= 60) : adx_code == ADX_SHORT ? color.new(color.orange,transp= 60) : color.new(color.gray,transp= 60)
+decodeStratCode(adx_code)=>
+    adx_col = adx_code == STRAT_EXIT_LONG ? color.new(color.yellow,transp= 0) : adx_code == STRAT_EXIT_SHORT ? color.new(color.blue,transp= 0) :  
+       adx_code == STRAT_ENTER_LONG ? color.new(color.lime,transp= 0) : adx_code == STRAT_ENTER_SHORT ? color.new(color.red,transp=0) :  
+       adx_code == STRAT_LONG ? color.new(color.aqua,transp= 60) : adx_code == STRAT_SHORT ? color.new(color.orange,transp= 60) : color.new(color.gray,transp= 60)
      
     
-    adx_txt = adx_code == ADX_EXIT_LONG ? 'ExUp' : adx_code == ADX_EXIT_SHORT ? 'ExDn' :  
-       adx_code == ADX_ENTER_LONG ? 'EnUp' : adx_code == ADX_ENTER_SHORT ? 'EnDn' :  
-       adx_code == ADX_LONG ? 'Up' : adx_code == ADX_SHORT ? 'Dn' : 'Na'
+    adx_txt = adx_code == STRAT_EXIT_LONG ? 'ExUp' : adx_code == STRAT_EXIT_SHORT ? 'ExDn' :  
+       adx_code == STRAT_ENTER_LONG ? 'EnUp' : adx_code == STRAT_ENTER_SHORT ? 'EnDn' :  
+       adx_code == STRAT_LONG ? 'Up' : adx_code == STRAT_SHORT ? 'Dn' : 'Na'
      
     [adx_txt,adx_col]
 
@@ -222,11 +141,11 @@ calc_ADX() =>
     adx_fb = -adx_filter_range
     
     
-    adxentrylevel = 39
+    adxentrylevel = 49
     adxlowerlevel = 9
     
     
-    [dummy_sect, adx_trend] = get_osc_movement_with_params(adx,adx_ft,adx_cut_off, adx_avg_tr,adx_MAX,adx_MIN)
+    adx_trend = get_osc_movement_with_params(adx,adx_ft,adx_cut_off, adx_avg_tr,adx_MAX,adx_MIN)
     
     diPositive = plus > minus
     diNegative = not diPositive
@@ -273,9 +192,9 @@ calc_ADX() =>
     exitLong = noTradeZone and longpos[1]
     exitShort = noTradeZone and shortpos[1]
     
-    adx_status_code = exitLong ? ADX_EXIT_LONG : exitShort ? ADX_EXIT_SHORT :  
-     enterLong ? ADX_ENTER_LONG : enterShort ? ADX_ENTER_SHORT :  
-     longpos ? ADX_LONG : shortpos ? ADX_SHORT : ADX_NEUTRAL
+    adx_status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT :  
+     enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT :  
+     longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
      
     adx_status_code
 
@@ -304,18 +223,15 @@ calc_SMI_Erg()=>
     erg_avg_tr =  erg_MAX - erg_MIN
     erg_cut_off= 0
     
-    erg_filter_range = 2.75
-    
-    entryrange = 0.45 * erg_avg_tr
-    
+    erg_filter_range = 2
     
     erg_ft = erg_filter_range
     erg_fb = -erg_filter_range
     
-    [d_txt, erg_trend] = get_osc_movement_with_params(erg,erg_ft,erg_cut_off, erg_avg_tr,erg_MAX,erg_MIN)
+    erg_trend = get_osc_movement_with_params(erg,erg_ft,erg_cut_off, erg_avg_tr,erg_MAX,erg_MIN)
 
-    erg_validlong = erg < erg_MID + entryrange and erg_trend == UP
-    erg_validshort = erg > erg_MID - entryrange and erg_trend == DOWN
+    erg_validlong = erg_trend == UP
+    erg_validshort =erg_trend == DOWN
     
     erg_diPositive = erg > sig
     erg_diNegative = not erg_diPositive
@@ -352,9 +268,9 @@ calc_SMI_Erg()=>
     erg_exitShort = erg_noTradeZone and erg_shortpos[1]
     
     
-    erg_status_code = erg_exitLong ? ADX_EXIT_LONG : erg_exitShort ? ADX_EXIT_SHORT :  
-     erg_enterLong ? ADX_ENTER_LONG : erg_enterShort ? ADX_ENTER_SHORT :  
-     erg_longpos ? ADX_LONG : erg_shortpos ? ADX_SHORT : ADX_NEUTRAL
+    erg_status_code = erg_exitLong ? STRAT_EXIT_LONG : erg_exitShort ? STRAT_EXIT_SHORT :  
+     erg_enterLong ? STRAT_ENTER_LONG : erg_enterShort ? STRAT_ENTER_SHORT :  
+     erg_longpos ? STRAT_LONG : erg_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
      
     erg_status_code
 
@@ -363,172 +279,68 @@ get_trend_num(trend_code) =>
     trend_code == UP ? 1 : trend_code == DOWN ? -1 : 0
 
 
-get_combined_trend_num(mom_code,cci_code) =>
-    get_trend_num(mom_code) + get_trend_num(cci_code)
-
-
-get_combined_trend(mom_code,cci_code,mom_sect_code, cci_sect_code) =>
-    trend_dir = NEUTRAL
-    ob_os_flag = false
-    
-    if mom_code == cci_code
-        any_nonOS_flag = strict_sect_check? (mom_sect_code != OS_SECT or cci_sect_code != OS_SECT)  : true
-        any_nonOB_flag = strict_sect_check ? (mom_sect_code != OB_SECT or cci_sect_code != OB_SECT) : true
-        
-        any_ob_sect_flag = mom_sect_code == OB_SECT or cci_sect_code == OB_SECT
-        any_os_sect_flag = mom_sect_code == OS_SECT or cci_sect_code == OS_SECT
-        
-        if cci_code == DOWN and any_nonOS_flag
-            trend_dir := DOWN
-            ob_os_flag := any_ob_sect_flag
-            
-        else if cci_code == UP and any_nonOB_flag
-            trend_dir := UP
-            ob_os_flag := any_os_sect_flag
-    
-    
-    
-    combined_trend_num = get_combined_trend_num(mom_code,cci_code)
-
-    // fire = fireup or firedown
-    
-    // activefire = false
-    
-    // for i=0 to 4
-    //     if fire[i]
-    //         activefire := true
-    //         activefire
-    
-    diPositive = combined_trend_num >=1
-    diNegative = combined_trend_num <= -1 
-    diNeutral = combined_trend_num == 0
-    
-    
-    buyCond = diPositive
-    sellCond = diNegative
-    
-    
-    validtrend = buyCond or sellCond
-    validentry = abs(combined_trend_num) == 2
-    
-    validlongentry = buyCond and validentry //and current_trend == UP     //and activefire //and current_trend == UP
-    validshortentry = sellCond and validentry //and current_trend == DOWN //and activefire //and current_trend == DOWN
-    
-    
-    
-    active_position = false
-    active_position := active_position[1]
-    
-    enterLong = validlongentry  and not active_position
-    enterShort =  validshortentry and not active_position
-    
-    
-    active_position := (enterLong or enterShort) ? true :  active_position
-    
-    longpos = false
-    shortpos = false
-    
-    longpos := (buyCond or (diNeutral and longpos[1])) and  active_position 
-    shortpos := (sellCond  or (diNeutral and shortpos[1]) )and  active_position
-    
-    di_crossover = longpos[1] and diNegative or shortpos[1] and diPositive 
-    noTradeZone =  di_crossover //or not validtrend 
-    
-    exitLong = noTradeZone and longpos[1] 
-    exitShort = noTradeZone and shortpos[1]
-    
-    
-    active_position := noTradeZone ? false : active_position
-    
-    
-    combined_status_code = exitLong ? ADX_EXIT_LONG : exitShort ? ADX_EXIT_SHORT :  
-         enterLong ? ADX_ENTER_LONG : enterShort ? ADX_ENTER_SHORT :  
-         longpos ? ADX_LONG : shortpos ? ADX_SHORT : ADX_NEUTRAL
-    
-    
-    [trend_dir, ob_os_flag, combined_status_code]
-
-
 get_all_status_codes() =>
 
     [sqzcolornum,fire_code] = calc_sqz()
-    
-    [cci_sect,ccis_movement_code] = calc_cci()
-    
-    [mom_sect,mom_osc_code] = calc_smi()
-    
-    [trend_dir,ob_os_flag,combined_status_code] = get_combined_trend(mom_osc_code,ccis_movement_code,mom_sect, cci_sect)
     
     adx_status_code = calc_ADX()
     
     erg_status_code = calc_SMI_Erg()
 
-    [fire_code, combined_status_code, adx_status_code,erg_status_code]
-
-
-
-
-    
-show_strong_trend_alert_flags(trend_dir,ob_os_flag) =>
-    combined_arrow_down = trend_dir == DOWN and show_strong_trend_alert and ob_os_flag
-
-    combined_arrow_up = trend_dir == UP and show_strong_trend_alert and ob_os_flag
-
-    [combined_arrow_up, combined_arrow_down]
+    [fire_code,adx_status_code,erg_status_code]
 
 
 
 get_status_code_trend_num(st) =>
-    st == ADX_ENTER_LONG or st == ADX_LONG or st == ADX_EXIT_SHORT ? 1 : st == ADX_ENTER_SHORT or st == ADX_SHORT or st == ADX_EXIT_LONG ? -1 : 0
+    st == STRAT_ENTER_LONG or st == STRAT_LONG or st == STRAT_EXIT_SHORT ? 1 : st == STRAT_ENTER_SHORT or st == STRAT_SHORT or st == STRAT_EXIT_LONG ? -1 : 0
 
 
-get_summary_trend_code(comb_code,adx_code,erg_code) =>
-    st_num = get_status_code_trend_num(comb_code) + 
-      get_status_code_trend_num(adx_code) + 
+get_summary_trend_code(adx_code,erg_code) =>
+    st_num = get_status_code_trend_num(adx_code) + 
       get_status_code_trend_num(erg_code)
      
     
-    summ_trend_code = st_num >= 1 ? ADX_LONG : st_num <= -1 ? ADX_SHORT : ADX_NEUTRAL
+    summ_trend_code = st_num >= 1 ? STRAT_LONG : st_num <= -1 ? STRAT_SHORT : STRAT_NEUTRAL
     
     
-    any_long_entry = comb_code == ADX_ENTER_LONG or adx_code == ADX_ENTER_LONG or erg_code == ADX_ENTER_LONG
+    any_long_entry = adx_code == STRAT_ENTER_LONG or erg_code == STRAT_ENTER_LONG
     
-    any_short_entry = comb_code == ADX_ENTER_SHORT or adx_code == ADX_ENTER_SHORT or erg_code == ADX_ENTER_SHORT
+    any_short_entry = adx_code == STRAT_ENTER_SHORT or erg_code == STRAT_ENTER_SHORT
 
-    summ_trend_code := (summ_trend_code == ADX_LONG and any_long_entry )? ADX_ENTER_LONG :   
-      (summ_trend_code == ADX_SHORT and any_short_entry) ? ADX_ENTER_SHORT :  summ_trend_code
+    summ_trend_code := (summ_trend_code == STRAT_LONG and any_long_entry and st_num == 2 )? STRAT_ENTER_LONG :   
+      (summ_trend_code == STRAT_SHORT and any_short_entry and st_num == -2) ? STRAT_ENTER_SHORT :  summ_trend_code
     
     summ_trend_code
     
     
 
-[fire_code, comb_code, adx_code,erg_code] = get_all_status_codes() 
+[fire_code,adx_code,erg_code] = get_all_status_codes() 
 
 
-summ_trend_code = get_summary_trend_code(comb_code,adx_code,erg_code)
-[summ_txt, summ_col] = decodeADXCode(summ_trend_code)
+summ_trend_code = get_summary_trend_code(adx_code,erg_code)
+[summ_txt, summ_col] = decodeStratCode(summ_trend_code)
         
-
-
-summ_entry = summ_trend_code == ADX_ENTER_LONG or summ_trend_code == ADX_ENTER_SHORT
-
 
 curr_active_pos = false
 curr_active_pos := curr_active_pos[1]
 
 
-buyCond = summ_trend_code == ADX_ENTER_LONG or summ_trend_code == ADX_LONG
-sellCond = summ_trend_code == ADX_ENTER_SHORT or summ_trend_code == ADX_SHORT
+buyCond = summ_trend_code == STRAT_ENTER_LONG or summ_trend_code == STRAT_LONG
+sellCond = summ_trend_code == STRAT_ENTER_SHORT or summ_trend_code == STRAT_SHORT
 
 
 validtrend = buyCond or sellCond
 
-validlongentry = summ_trend_code == ADX_ENTER_LONG 
-validshortentry = summ_trend_code == ADX_ENTER_SHORT 
+validlongentry = summ_trend_code == STRAT_ENTER_LONG  
+validshortentry = summ_trend_code == STRAT_ENTER_SHORT
 
 
 enterLong = validlongentry  and not curr_active_pos
 enterShort =  validshortentry and not curr_active_pos
+
+
+// enterLong = buyCond  and not curr_active_pos
+// enterShort =  sellCond and not curr_active_pos
 
 
 curr_active_pos := (enterLong or enterShort) ? true :  curr_active_pos
@@ -547,12 +359,12 @@ exitShort = noTrade and shortpos[1] and curr_active_pos[1]
 curr_active_pos := (exitLong or exitShort) ? false : curr_active_pos
 
 
-final_summary_status_code = exitLong ? ADX_EXIT_LONG : exitShort ? ADX_EXIT_SHORT :  
-     enterLong ? ADX_ENTER_LONG : enterShort ? ADX_ENTER_SHORT :  
-     longpos ? ADX_LONG : shortpos ? ADX_SHORT : ADX_NEUTRAL
+final_summary_status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT :  
+     enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT :  
+     longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
 
 
-[fin_sum__txt, fin_summ_col] = decodeADXCode(final_summary_status_code)
+[fin_sum__txt, fin_summ_col] = decodeStratCode(final_summary_status_code)
 
 
 [fire_sqz_txt, fcolor] = decodeSqzColorCode(fire_code)
