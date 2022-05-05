@@ -1,6 +1,119 @@
-//@version=4
-strategy(title="Sqz_ADX_Ergo Strategy", shorttitle="Sqz_ADX_Ergo", overlay=true, pyramiding=1,  
-  calc_on_every_tick=true,initial_capital=2000000,default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+//@version=5
+strategy(title='Sqz_ADX_Ergo_Psar Strategy', shorttitle='Sqz_ADX_Ergo_psar', overlay=true, pyramiding=1, 
+   calc_on_every_tick=true, initial_capital=1000000, default_qty_type=strategy.percent_of_equity, default_qty_value=100, commission_value=0.025, process_orders_on_close=true)
+
+
+
+source = close
+
+len1 = 8
+len2 = 13
+len3 =  21
+
+last_n_days = input(120,'Last n Days')
+long_signal_flag  = input(true, title='Long Signal')
+short_signal_flag = input(true, title='Short Signal')
+
+force_flag = input(true, title='Force Flag')
+force_intraday_check = input(false, title='Force Intraday Check')
+with_sl_tr = input(false, title='With SL TR')
+
+sl_perc = input(1.2, title='SL_Perc')
+tr_perc = input(3.0, title='TR_Perc')
+
+// OSc Constants
+rad2degree = 180 / 3.14159265359
+lookback_period = 1
+smoothing = 3
+
+
+RANGE_BACK_BARS = 20
+osc_filter_range = 5.2
+
+adx_filter_range = 8.8
+erg_filter_range = 6
+
+
+intraday_list = array.new_string(0)
+
+// array.push(intraday_list, 'BPCL')
+// array.push(intraday_list, 'TATAMOTORS')
+
+
+
+check_if_intraday_list(symb) =>
+    check = false
+    
+    arrsize = array.size(intraday_list)
+    
+    if arrsize > 0
+        for i = 0 to arrsize - 1 by 1
+            if array.get(intraday_list, i) == symb
+                check := true
+                check
+    check
+
+
+check_if_nonintraday_list(symb) =>
+    not check_if_intraday_list(symb)
+
+
+is_comm_symb() =>
+    syminfo.ticker == 'CRUDEOIL1!' or syminfo.ticker == 'NATURALGAS1!' or syminfo.ticker == 'COPPER1!'
+
+is_all_day_symb() =>
+    syminfo.ticker == 'CL1!' or syminfo.ticker == 'NG1!'
+
+
+intraday_check = check_if_intraday_list(syminfo.ticker)
+intraday_check := force_flag ? force_intraday_check : intraday_check
+intraday_check := intraday_check and timeframe.isminutes
+
+
+get_entry_period_str(is_comm_symb) =>
+    is_comm_symb ? '0930-2330' : '0930-1530'
+
+
+get_timeframe_minutes_int()=>
+    num_back_bars = 1
+    timeframe.isminutes ? timeframe.multiplier * num_back_bars * 60 * 1000 : 0
+
+
+entry_period_str = get_entry_period_str(is_comm_symb())
+
+check_if_exit_time() =>
+    time_close >= time_close('D',entry_period_str)-get_timeframe_minutes_int()
+
+
+valid_entry_period = intraday_check and (na(time(timeframe.period, entry_period_str)) or check_if_exit_time())  ? false : true
+exit_all_pos_period = intraday_check and check_if_exit_time() ? true : false
+
+
+
+// ---------- EMAs --------------
+
+out1 = ta.ema(source, len1)
+plot(out1, title='EMA - 1', color=color.new(color.silver, transp=0), linewidth=2)
+
+out2 = ta.ema(source, len2)
+
+out3 = ta.ema(source, len3)
+plot(out3, title='EMA - 2', color=color.new(color.aqua, transp=0), linewidth=2)
+
+// out34 = ema(source, 34)
+// plot(out34, title="EMA - 3", color=color.new(color.blue, transp = 0), linewidth=2)
+
+// out55 = ema(source, 55)
+// plot(out55, title="EMA - 4", color=color.new(color.lime, transp = 0), linewidth=1)
+
+// out89 = ema(source, 89)
+// plot(out89, title="EMA - 5", color=color.new(color.yellow, transp = 0), linewidth=1)
+
+// out144 = ema(source, 144)
+// plot(out144, title="EMA - 6", color=color.new(color.orange, transp = 0), linewidth=1)
+
+// out233 = ema(source, 233)
+// plot(out233, title="EMA - 7", color=color.new(color.red, transp = 0), linewidth=1)
 
 
 
@@ -11,45 +124,37 @@ UP = 1
 DOWN = 2
 NEUTRAL = 0
 
-YELLOW=1
-RED=2
-ORANGE=3
-NOSQZ=0
-
-
-
-//---
-rad2degree=180/3.14159265359
-lookback_period = 1
-smoothing = 3
+YELLOW = 1
+RED = 2
+ORANGE = 3
+NOSQZ = 0
 
 
 //Sqz Code variables
-source = close
 
-calc_sqz()=>
+calc_sqz() =>
     length = 20
-    ma = sma(source, length)
-    devBB = stdev(source, length)
-    devKC = sma(tr, length)
-    
-    
+    ma = ta.sma(source, length)
+    devBB = ta.stdev(source, length)
+    devKC = ta.sma(ta.tr, length)
+
+
     //Bollinger 2x
     upBB = ma + devBB * 2
     lowBB = ma - devBB * 2
-    
+
     //Keltner 2x
     upKCWide = ma + devKC * 2
     lowKCWide = ma - devKC * 2
-    
+
     //Keltner 1.5x
     upKCNormal = ma + devKC * 1.5
     lowKCNormal = ma - devKC * 1.5
-    
+
     //Keltner 1x
     upKCNarrow = ma + devKC
     lowKCNarrow = ma - devKC
-    
+
     sqzOnWide = lowBB >= lowKCWide and upBB <= upKCWide  //WIDE SQUEEZE: ORANGE
     sqzOnNormal = lowBB >= lowKCNormal and upBB <= upKCNormal  //NORMAL SQUEEZE: RED
     sqzOnNarrow = lowBB >= lowKCNarrow and upBB <= upKCNarrow  //NARROW SQUEEZE: YELLOW
@@ -57,222 +162,279 @@ calc_sqz()=>
     sqzOffNormal = lowBB < lowKCNormal and upBB > upKCNormal  //FIRED NORMAL SQUEEZE
     sqzOffNarrow = lowBB < lowKCNarrow and upBB > upKCNarrow  //FIRED NARROW SQUEEZE
     noSqz = sqzOnWide == false and sqzOffWide == false  //NO SQUEEZE
-    
-    fire_code = sqzOffNarrow and sqzOnNarrow[1] ? YELLOW :
-       sqzOffNormal and sqzOnNormal[1] ? RED :
-       sqzOffWide and sqzOnWide[1] ? ORANGE : NOSQZ
-    
-    
-    sqzcolornum = noSqz ? NOSQZ : sqzOnNarrow ? YELLOW : 
-     sqzOnNormal ? RED : sqzOnWide ? ORANGE : NOSQZ
 
-    
-    [sqzcolornum,fire_code]
-        
+    fire_code = sqzOffNarrow and sqzOnNarrow[1] ? YELLOW : sqzOffNormal and sqzOnNormal[1] ? RED : sqzOffWide and sqzOnWide[1] ? ORANGE : NOSQZ
+
+
+    sqzcolornum = noSqz ? NOSQZ : sqzOnNarrow ? YELLOW : sqzOnNormal ? RED : sqzOnWide ? ORANGE : NOSQZ
+
+
+    [sqzcolornum, fire_code]
+
 
 //------ End of Sqz Code--------
 
-decodeSqzColorCode(st) => 
-    col= st == YELLOW ? color.yellow : st == RED ? color.red : st == ORANGE ? color.orange : color.gray
+decodeSqzColorCode(st) =>
+    col = st == YELLOW ? color.yellow : st == RED ? color.red : st == ORANGE ? color.orange : color.gray
     txt = st == YELLOW ? 'Yellow' : st == RED ? 'Red' : st == ORANGE ? 'Orange' : 'Nosqz'
     [txt, col]
 
-decodeMovementCode(st) => 
+decodeMovementCode(st) =>
     col = st == UP ? color.aqua : st == DOWN ? color.red : color.gray
     txt = st == UP ? 'Up' : st == DOWN ? 'Down' : 'Neutral'
     [txt, col]
 
 
-angle(_src,osc_avg_tr) =>
-    ang=rad2degree*atan((_src-nz(_src[lookback_period]))/(lookback_period*osc_avg_tr))
-    
-get_osc_movement_with_params(osc, osc_ft, osc_cut_off,osc_avg_atr,osc_MAX,osc_MIN) =>
+angle(_src, osc_avg_tr) =>
+    ang = rad2degree * math.atan((_src - nz(_src[lookback_period])) / (lookback_period * osc_avg_tr))
+    ang
+
+
+get_osc_trend_params(osc, osc_filter) =>
+    osc_max = ta.highest(osc, RANGE_BACK_BARS)
+    osc_min = ta.lowest(osc, RANGE_BACK_BARS)
+
+    osc_avg_tr = osc_max - osc_min
+
+    osc_ft = osc_filter
     osc_fb = -osc_ft
-    osc_slope = linreg(angle(osc,osc_avg_atr), smoothing, 0)
-    trend = osc_slope > osc_ft or osc >= (osc_MAX - osc_cut_off) ? UP: osc_slope < osc_fb or osc <= (osc_MIN + osc_cut_off) ? DOWN : NEUTRAL
+
+    osc_slope = ta.linreg(angle(osc, osc_avg_tr), smoothing, 0)
+    trend = osc_slope >= osc_ft or osc >= osc_max ? UP : osc_slope <= osc_fb or osc <= osc_min? DOWN : NEUTRAL
     trend
+
+
+
+get_osc_trend(osc) =>
+    get_osc_trend_params(osc, osc_filter_range)
+
+// Calc EMAs Trend
+
+out1_trend = get_osc_trend(out1)
+out2_trend = get_osc_trend(out2)
+out3_trend = get_osc_trend(out3)
 
 
 // ADX Code
 
 STRAT_NEUTRAL = 0
-STRAT_LONG = 1 
-STRAT_SHORT = 2  
-STRAT_ENTER_LONG =3
-STRAT_ENTER_SHORT = 4 
-STRAT_EXIT_LONG  =5
-STRAT_EXIT_SHORT  = 6
+STRAT_LONG = 1
+STRAT_SHORT = 2
+STRAT_ENTER_LONG = 3
+STRAT_ENTER_SHORT = 4
+STRAT_EXIT_LONG = 5
+STRAT_EXIT_SHORT = 6
 
 
-decodeStratCode(adx_code)=>
-    adx_col = adx_code == STRAT_EXIT_LONG ? color.new(color.yellow,transp= 0) : adx_code == STRAT_EXIT_SHORT ? color.new(color.blue,transp= 0) :  
-       adx_code == STRAT_ENTER_LONG ? color.new(color.lime,transp= 0) : adx_code == STRAT_ENTER_SHORT ? color.new(color.red,transp=0) :  
-       adx_code == STRAT_LONG ? color.new(color.aqua,transp= 60) : adx_code == STRAT_SHORT ? color.new(color.orange,transp= 60) : color.new(color.gray,transp= 60)
-     
-    
-    adx_txt = adx_code == STRAT_EXIT_LONG ? 'ExUp' : adx_code == STRAT_EXIT_SHORT ? 'ExDn' :  
-       adx_code == STRAT_ENTER_LONG ? 'EnUp' : adx_code == STRAT_ENTER_SHORT ? 'EnDn' :  
-       adx_code == STRAT_LONG ? 'Up' : adx_code == STRAT_SHORT ? 'Dn' : 'Na'
-     
-    [adx_txt,adx_col]
+decodeStratCode(adx_code) =>
+    adx_col = adx_code == STRAT_EXIT_LONG ? color.new(color.yellow, transp=0) : adx_code == STRAT_EXIT_SHORT ? color.new(color.blue, transp=0) : adx_code == STRAT_ENTER_LONG ? color.new(color.lime, transp=0) : adx_code == STRAT_ENTER_SHORT ? color.new(color.red, transp=0) : adx_code == STRAT_LONG ? color.new(color.aqua, transp=60) : adx_code == STRAT_SHORT ? color.new(color.orange, transp=60) : color.new(color.gray, transp=60)
 
 
+    adx_txt = adx_code == STRAT_EXIT_LONG ? 'ExUp' : adx_code == STRAT_EXIT_SHORT ? 'ExDn' : adx_code == STRAT_ENTER_LONG ? 'EnUp' : adx_code == STRAT_ENTER_SHORT ? 'EnDn' : adx_code == STRAT_LONG ? 'Up' : adx_code == STRAT_SHORT ? 'Dn' : 'Na'
 
-RANGE_BACK_BARS = 100
+    [adx_txt, adx_col]
+
 
 
 calc_ADX() =>
     adx_len = 14
     adx_lensig = 14
-    
+
     // Get ADX, PDI and MDI values
-    [plus, minus, adx] = dmi(adx_len, adx_lensig)
-    
-    adx_MAX=highest(adx,RANGE_BACK_BARS)
-    adx_MIN=lowest(adx,RANGE_BACK_BARS)
-    
-    
-    adx_avg_tr =  adx_MAX - adx_MIN
-    adx_cut_off= 0
-    
-    adx_filter_range = 2.55
-    
-    adx_ft = adx_filter_range
-    adx_fb = -adx_filter_range
-    
-    
+    [plus, minus, adx] = ta.dmi(adx_len, adx_lensig)
+
+
     adxentrylevel = 49
     adxlowerlevel = 9
+
     
-    
-    adx_trend = get_osc_movement_with_params(adx,adx_ft,adx_cut_off, adx_avg_tr,adx_MAX,adx_MIN)
-    
+    adx_going_low = adx < plus and adx < minus
+    adx_trend = get_osc_trend_params(adx, adx_filter_range)
+
+
     diPositive = plus > minus
     diNegative = not diPositive
     
-    adxinside = (diPositive and adx >= minus and adx <= plus) or (diNegative and adx >= plus and adx <= minus)
+
+    adxinside = diPositive and adx >= minus and adx <= plus or diNegative and adx >= plus and adx <= minus
+
+    adxvalidtrend = adx_trend == UP or adx_trend == NEUTRAL
     
-    adxvalidtrend = adx_trend == UP or adx_trend == NEUTRAL 
+
+    // adxvalidtrendentry = (adx >= adxlowerlevel and adx <= adxentrylevel and adx_trend == NEUTRAL) or adxinside or  adx_trend == UP
     
-    adxvalidtrendentry = (adx >= adxlowerlevel and adx <= adxentrylevel) or adxinside
-     
+    adxvalidtrendentry =  adxinside or  adx_trend == UP
+    
+
     buyCond = diPositive and adxvalidtrend
     sellCond = diNegative and adxvalidtrend
-    
-    
-    adxJustCrossed = cross(adx, plus) or cross(adx, minus)
-    
-    adxjustout = (adxinside[1] and not adxinside)
-    adxjustin = (not adxinside[1] and adxinside)
-    
-    di_crossover = (diNegative[1] and diPositive) or (diNegative and diPositive[1]) 
-    
-    
+
+
+    adxJustCrossed = ta.cross(adx, plus) or ta.cross(adx, minus)
+
+    adxjustout = adxinside[1] and not adxinside
+    adxjustin = not adxinside[1] and adxinside
+
+    di_crossover = (diNegative[1] and diPositive) or (diNegative and diPositive[1])
+
+
     validlongentry = buyCond and adxvalidtrendentry
     validshortentry = sellCond and adxvalidtrendentry
-    
-    noTradeZone = not adxvalidtrend or di_crossover
-    
-    
-    // get_active_position() =>
-    active_position = false
-    active_position := ((validlongentry or validshortentry) and not active_position[1] ? true : noTradeZone ? false : active_position[1])
-    active_position
 
-    //active_position = get_active_position()
-    
-    enterLong = validlongentry  and not active_position[1]
-    enterShort =  validshortentry and not active_position[1]
-    
-    
-    longpos = buyCond  and  active_position
+    noTradeZone = not adxvalidtrend or di_crossover
+
+
+    active_position = false
+    active_position := (validlongentry or validshortentry) and not active_position[1] ? true : noTradeZone ? false : active_position[1]
+
+
+    enterLong = validlongentry and not active_position[1]
+    enterShort = validshortentry and not active_position[1]
+
+
+    longpos = buyCond and active_position
     shortpos = sellCond and active_position
-    
-    
+
+
     exitLong = noTradeZone and longpos[1]
     exitShort = noTradeZone and shortpos[1]
-    
-    adx_status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT :  
-     enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT :  
-     longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
-     
+
+    adx_status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT : enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT : longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+
     adx_status_code
 
 
 
 //----- SMI Ergo
 
-calc_SMI_Erg()=>
-    erg_longlen =14
+calc_SMI_Erg() =>
+    erg_longlen = 14
     erg_shortlen = 8
     erg_siglen = 14
     erg_smoothing = 3
-    
-    erg1 = tsi(source, erg_shortlen, erg_longlen)
-    
-    erg = ema(erg1,erg_smoothing)
-    
-    sig = ema(erg1, erg_siglen)
-    
-    
-    erg_MAX=highest(erg,RANGE_BACK_BARS)
-    erg_MIN=lowest(erg,RANGE_BACK_BARS)
-    
-    erg_MID = (erg_MAX + erg_MIN)/2
-    
-    erg_avg_tr =  erg_MAX - erg_MIN
-    erg_cut_off= 0
-    
-    erg_filter_range = 2
-    
-    erg_ft = erg_filter_range
-    erg_fb = -erg_filter_range
-    
-    erg_trend = get_osc_movement_with_params(erg,erg_ft,erg_cut_off, erg_avg_tr,erg_MAX,erg_MIN)
+
+    erg1 = ta.tsi(source, erg_shortlen, erg_longlen)
+
+    erg = ta.ema(erg1, erg_smoothing)
+
+    sig = ta.ema(erg1, erg_siglen)
+
+    erg_trend = get_osc_trend_params(erg, erg_filter_range)
 
     erg_validlong = erg_trend == UP
-    erg_validshort =erg_trend == DOWN
-    
+    erg_validshort = erg_trend == DOWN
+
     erg_diPositive = erg > sig
     erg_diNegative = not erg_diPositive
-    
-    
-    erg_di_crossover = (erg_diNegative[1] and erg_diPositive) or (erg_diNegative and erg_diPositive[1]) 
-    
-    
+
+
+    erg_di_crossover = erg_diNegative[1] and erg_diPositive or erg_diNegative and erg_diPositive[1]
+
+
     erg_buyCond = erg_diPositive and erg_trend != DOWN
     erg_sellCond = erg_diNegative and erg_trend != UP
-    
-    
+
+
     ergvalidtrend = erg_buyCond or erg_sellCond
-    
-    erg_validlongentry = erg_buyCond and erg_validlong 
+
+    erg_validlongentry = erg_buyCond and erg_validlong
     erg_validshortentry = erg_sellCond and erg_validshort
-    
-    erg_noTradeZone = not ergvalidtrend or erg_di_crossover 
-    
-    
+
+    erg_noTradeZone = not ergvalidtrend or erg_di_crossover
+
+
     erg_active_position = false
-    erg_active_position := ((erg_validlongentry or erg_validshortentry) and not erg_active_position[1] ? true : erg_noTradeZone ? false : erg_active_position[1])
-    
-    
-    erg_enterLong = erg_validlongentry  and not erg_active_position[1] 
-    erg_enterShort =  erg_validshortentry and not erg_active_position[1]
-    
-    
-    erg_longpos = erg_buyCond  and  erg_active_position
+    erg_active_position := (erg_validlongentry or erg_validshortentry) and not erg_active_position[1] ? true : erg_noTradeZone ? false : erg_active_position[1]
+
+
+    erg_enterLong = erg_validlongentry and not erg_active_position[1]
+    erg_enterShort = erg_validshortentry and not erg_active_position[1]
+
+
+    erg_longpos = erg_buyCond and erg_active_position
     erg_shortpos = erg_sellCond and erg_active_position
-    
-    
-    erg_exitLong = erg_noTradeZone and erg_longpos[1] 
+
+
+    erg_exitLong = erg_noTradeZone and erg_longpos[1]
     erg_exitShort = erg_noTradeZone and erg_shortpos[1]
-    
-    
-    erg_status_code = erg_exitLong ? STRAT_EXIT_LONG : erg_exitShort ? STRAT_EXIT_SHORT :  
-     erg_enterLong ? STRAT_ENTER_LONG : erg_enterShort ? STRAT_ENTER_SHORT :  
-     erg_longpos ? STRAT_LONG : erg_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
-     
+
+
+    erg_status_code = erg_exitLong ? STRAT_EXIT_LONG : erg_exitShort ? STRAT_EXIT_SHORT : erg_enterLong ? STRAT_ENTER_LONG : erg_enterShort ? STRAT_ENTER_SHORT : erg_longpos ? STRAT_LONG : erg_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+
     erg_status_code
+
+
+
+calc_psar() =>
+    psar_start = 0.02
+    increment = 0.02
+    maximum = 0.2
+    psar = ta.sar(psar_start, increment, maximum)
+
+    psar_trend = get_osc_trend(psar)
+    [dum_txt, psar_color] = decodeMovementCode(psar_trend)
+
+
+    psar_validlong =  psar_trend == UP
+    psar_validshort = psar_trend == DOWN
+
+    psar_diPositive = psar < source
+    psar_diNegative = not psar_diPositive
+
+
+    psar_di_crossover = psar_diNegative[1] and psar_diPositive or psar_diNegative and psar_diPositive[1]
+
+
+    psar_buyCond = psar_diPositive
+    psar_sellCond = psar_diNegative
+
+    ergvalidtrend = psar_buyCond or psar_sellCond
+
+    psar_validlongentry = psar_buyCond and psar_validlong
+    psar_validshortentry = psar_sellCond and psar_validshort
+
+    psar_noTradeZone = not ergvalidtrend or psar_di_crossover
+
+
+    psar_active_position = false
+    psar_active_position := (psar_validlongentry or psar_validshortentry) and not psar_active_position[1] ? true : psar_noTradeZone ? false : psar_active_position[1]
+
+
+    psar_enterLong = psar_validlongentry and not psar_active_position[1]
+    psar_enterShort = psar_validshortentry and not psar_active_position[1]
+
+
+    psar_longpos = psar_buyCond and psar_active_position
+    psar_shortpos = psar_sellCond and psar_active_position
+
+
+    psar_exitLong = psar_noTradeZone and psar_longpos[1]
+    psar_exitShort = psar_noTradeZone and psar_shortpos[1]
+
+
+    psar_status_code = psar_exitLong ? STRAT_EXIT_LONG : psar_exitShort ? STRAT_EXIT_SHORT : psar_enterLong ? STRAT_ENTER_LONG : psar_enterShort ? STRAT_ENTER_SHORT : psar_longpos ? STRAT_LONG : psar_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+
+
+    psar_status_code
+
+
+checkEMA(isLong,super_strong_entry, isPriceEMA) =>
+    valid = false
+    
+    extra_long_check  = out1_trend == UP and out2_trend == UP and out3_trend == UP and  out1 > out2 and  out2 > out3
+    extra_short_check = out1_trend == DOWN and out2_trend == DOWN and out3_trend == DOWN and out1 < out2  and out2 < out3
+
+
+    if isLong 
+        if extra_long_check or (isPriceEMA and source > out3)
+            valid := true
+            valid
+    else if extra_short_check or (isPriceEMA and source < out3)
+        valid := true
+        valid
+    
+
+    valid
 
 
 get_trend_num(trend_code) =>
@@ -281,87 +443,89 @@ get_trend_num(trend_code) =>
 
 get_all_status_codes() =>
 
-    [sqzcolornum,fire_code] = calc_sqz()
-    
+    [sqzcolornum, fire_code] = calc_sqz()
+
     adx_status_code = calc_ADX()
-    
+
     erg_status_code = calc_SMI_Erg()
 
-    [fire_code,adx_status_code,erg_status_code]
+    psar_status_code = calc_psar()
+
+    [fire_code, adx_status_code, erg_status_code, psar_status_code]
 
 
 
 get_status_code_trend_num(st) =>
-    st == STRAT_ENTER_LONG or st == STRAT_LONG or st == STRAT_EXIT_SHORT ? 1 : st == STRAT_ENTER_SHORT or st == STRAT_SHORT or st == STRAT_EXIT_LONG ? -1 : 0
+    st == STRAT_ENTER_LONG or st == STRAT_LONG ? 1 : st == STRAT_ENTER_SHORT or st == STRAT_SHORT ? -1 : 0
 
 
-get_summary_trend_code(adx_code,erg_code) =>
-    st_num = get_status_code_trend_num(adx_code) + 
-      get_status_code_trend_num(erg_code)
-     
+get_summary_trend_code(adx_code, erg_code, psar_code) =>
+
+    adx_num = get_status_code_trend_num(adx_code)
+    erg_num = get_status_code_trend_num(erg_code)
+    psar_num =get_status_code_trend_num(psar_code)
+    
+    st_num = adx_num + erg_num + psar_num
+    repeat_st_num = adx_num == erg_num or adx_num == psar_num ? adx_num : erg_num == psar_num ? erg_num : 0
     
     summ_trend_code = st_num >= 1 ? STRAT_LONG : st_num <= -1 ? STRAT_SHORT : STRAT_NEUTRAL
     
+    if repeat_st_num == adx_num
+        summ_trend_code := repeat_st_num == 1  ? STRAT_ENTER_LONG : repeat_st_num == -1  ? STRAT_ENTER_SHORT : summ_trend_code
     
-    any_long_entry = adx_code == STRAT_ENTER_LONG or erg_code == STRAT_ENTER_LONG
+    exit_pos = false//adx_num ==0 and psar_num == 0 and psar_num == 0 // all_zeroes
     
-    any_short_entry = adx_code == STRAT_ENTER_SHORT or erg_code == STRAT_ENTER_SHORT
+    super_strong_entry = st_num == 3 or st_num == -3 ? true : false
 
-    summ_trend_code := (summ_trend_code == STRAT_LONG and any_long_entry and st_num == 2 )? STRAT_ENTER_LONG :   
-      (summ_trend_code == STRAT_SHORT and any_short_entry and st_num == -2) ? STRAT_ENTER_SHORT :  summ_trend_code
-    
-    summ_trend_code
+    [super_strong_entry, exit_pos, summ_trend_code]
     
     
+    
+[fire_code, adx_code, erg_code, psar_code] = get_all_status_codes()
 
-[fire_code,adx_code,erg_code] = get_all_status_codes() 
 
-
-summ_trend_code = get_summary_trend_code(adx_code,erg_code)
+[super_strong_entry, exit_pos, summ_trend_code] = get_summary_trend_code(adx_code, erg_code, psar_code)
 [summ_txt, summ_col] = decodeStratCode(summ_trend_code)
-        
+
 
 curr_active_pos = false
+longpos = false
+shortpos = false
+
 curr_active_pos := curr_active_pos[1]
 
+buyCond = (summ_trend_code == STRAT_ENTER_LONG or summ_trend_code == STRAT_LONG)  and checkEMA(true,super_strong_entry, true)
+ 
+sellCond = (summ_trend_code == STRAT_ENTER_SHORT or summ_trend_code == STRAT_SHORT)  and checkEMA(false,super_strong_entry, true)
 
-buyCond = summ_trend_code == STRAT_ENTER_LONG or summ_trend_code == STRAT_LONG
-sellCond = summ_trend_code == STRAT_ENTER_SHORT or summ_trend_code == STRAT_SHORT
+neutralCond = not buyCond and not sellCond
 
-
-validtrend = buyCond or sellCond
-
-validlongentry = summ_trend_code == STRAT_ENTER_LONG  
-validshortentry = summ_trend_code == STRAT_ENTER_SHORT
-
-
-enterLong = validlongentry  and not curr_active_pos
-enterShort =  validshortentry and not curr_active_pos
+validlongentry = summ_trend_code == STRAT_ENTER_LONG and checkEMA(true, super_strong_entry,false) and valid_entry_period
+validshortentry = summ_trend_code == STRAT_ENTER_SHORT and checkEMA(false, super_strong_entry,false) and valid_entry_period
 
 
-// enterLong = buyCond  and not curr_active_pos
-// enterShort =  sellCond and not curr_active_pos
+enterLong = validlongentry and not curr_active_pos and long_signal_flag
+enterShort = validshortentry and not curr_active_pos and short_signal_flag
 
 
-curr_active_pos := (enterLong or enterShort) ? true :  curr_active_pos
+curr_active_pos := enterLong or enterShort ? true : curr_active_pos
 
 
-longpos = buyCond  and  curr_active_pos 
-shortpos = sellCond and  curr_active_pos
+longpos := curr_active_pos and (buyCond or longpos[1] and neutralCond)
+shortpos := curr_active_pos and (sellCond or shortpos[1] and neutralCond)
 
-di_change = (longpos[1] and not buyCond) or (shortpos[1] and not sellCond) 
-noTrade =  di_change or not validtrend 
+di_change = (longpos[1] and sellCond) or (shortpos[1] and buyCond) 
 
-exitLong = noTrade and longpos[1] and curr_active_pos[1]
+noTrade = di_change or exit_all_pos_period or exit_pos
+
+exitLong = noTrade and longpos[1]  and curr_active_pos[1]
 exitShort = noTrade and shortpos[1] and curr_active_pos[1]
 
 
-curr_active_pos := (exitLong or exitShort) ? false : curr_active_pos
+curr_active_pos := exitLong or exitShort ? false : curr_active_pos
 
 
-final_summary_status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT :  
-     enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT :  
-     longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+final_summary_status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT : enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT : longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
 
 
 [fin_sum__txt, fin_summ_col] = decodeStratCode(final_summary_status_code)
@@ -369,64 +533,63 @@ final_summary_status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_
 
 [fire_sqz_txt, fcolor] = decodeSqzColorCode(fire_code)
 firedown = fire_code != NOSQZ and shortpos
-fireup =  fire_code != NOSQZ and longpos
+fireup = fire_code != NOSQZ and longpos
 
-fireneutral = fire_code != NOSQZ and not firedown  and not fireup
+fireneutral = fire_code != NOSQZ and not firedown and not fireup
 
 
 //FIRED SIGNALS
-plotshape(firedown, title='Fired Short', style=shape.triangledown, location=location.abovebar, color=color.white, size=size.small)
+plotshape(firedown, title='Fired Short', style=shape.triangledown, location=location.abovebar, color=color.new(color.white, 0), size=size.small)
 plotshape(firedown, title='Fired Short circle', style=shape.circle, location=location.abovebar, color=fcolor, size=size.tiny)
 
-plotshape(fireup, title='Fired Long', style=shape.triangleup, location=location.belowbar, color=color.white, size=size.small)
+plotshape(fireup, title='Fired Long', style=shape.triangleup, location=location.belowbar, color=color.new(color.white, 0), size=size.small)
 plotshape(fireup, title='Fired Long circle', style=shape.circle, location=location.belowbar, color=fcolor, size=size.tiny)
 
-plotshape(fireneutral, title='Fired Neutral', style=shape.square, location=location.belowbar, color=color.gray, size=size.small)
+plotshape(fireneutral, title='Fired Neutral', style=shape.square, location=location.belowbar, color=color.new(color.gray, 0), size=size.small)
 plotshape(fireneutral, title='Fired Neutral circle', style=shape.circle, location=location.belowbar, color=fcolor, size=size.tiny)
 
 
 
-bgcolor(color.new(fin_summ_col,transp=80))
-
-
-
-// ---------- EMAs --------------
-
-out8 = ema(source, 8)
-plot(out8, title="EMA - 1", color=color.new(color.silver, transp = 0), linewidth=1)
-
-out21 = ema(source, 21)
-plot(out21, title="EMA - 2", color=color.new(color.aqua, transp = 0), linewidth=1)
-
-out34 = ema(source, 34)
-plot(out34, title="EMA - 3", color=color.new(color.blue, transp = 0), linewidth=1)
-
-out55 = ema(source, 55)
-plot(out55, title="EMA - 4", color=color.new(color.lime, transp = 0), linewidth=1)
-
-out89 = ema(source, 89)
-plot(out89, title="EMA - 5", color=color.new(color.yellow, transp = 0), linewidth=1)
-
-out144 = ema(source, 144)
-plot(out144, title="EMA - 6", color=color.new(color.red, transp = 0), linewidth=1)
-
-//out233 = ema(source, 233)
-//plot(out233, title="EMA - 7", color=color.yellow, linewidth=1, transp=0)
-
+bgcolor(color.new(fin_summ_col, transp=80))
 
 
 //----- Strategy
 
-start     = timestamp(2021, 10, 1, 00, 00)            // backtest start  window
-finish    = timestamp(2022, 12, 31, 00, 00)              // backtest finish window
-window()  => time >= start and time <= finish ? true : false           // create function "within window of time"
+MILLISECONDS_IN_DAY = 24 * 60 * 60 * 1000
+start = timenow - MILLISECONDS_IN_DAY * last_n_days
+
+finish =  timestamp(2030, 01, 01, 00, 00) 
+window() =>  // create function "within window of time"
+    time >= start and time <= finish ? true : false
+    
 
 
-strategy.entry("long", strategy.long, when = window() and enterLong)
-strategy.close("long", when = window() and exitLong)
+entry_perc = 0.02
+long_entry_val = high * (1 + entry_perc * 0.01)
+short_entry_val = low * (1 - entry_perc * 0.01)
+
+longSL = long_entry_val * (1 - sl_perc * 0.01)
+shortSL = short_entry_val * (1 + sl_perc * 0.01)
+
+longTR = long_entry_val * (1 + tr_perc * 0.01)
+shortTR = short_entry_val * (1 - tr_perc * 0.01)
 
 
-strategy.entry("short", strategy.short, when = window() and enterShort)
-strategy.close("short", when = window() and exitShort)
+strategy.entry('long', strategy.long, when=window() and enterLong, stop=long_entry_val)
+if with_sl_tr
+    strategy.exit(id='Exitlong', from_entry='long', limit=longTR, stop=longSL, when=window() and enterLong)
+
+strategy.cancel_all(when=window() and exitLong)
+// strategy.cancel("long",when = window() and exitLong)
+strategy.close('long', when=window() and exitLong)
 
 
+strategy.entry('short', strategy.short, when=window() and enterShort, stop=short_entry_val)
+if with_sl_tr
+    strategy.exit(id='Exitshort', from_entry='short', limit=shortTR,stop=shortSL, when=window() and enterShort)
+
+strategy.cancel_all(when=window() and exitShort)
+// strategy.cancel("short",when = window() and exitShort)
+strategy.close('short', when=window() and exitShort)
+
+strategy.cancel_all(when=not window())
