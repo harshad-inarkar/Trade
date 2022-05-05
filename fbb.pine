@@ -1,8 +1,8 @@
 study(shorttitle="FBB", title="Fibonacci Bollinger Bands", overlay=true)
-length = 200
+length = 233
 src = close
 mult =3
-basis = sma(src,length)//vwma(src, length)
+basis = ema(src,length)//vwma(src, length)
 dev = mult * stdev(src, length)
 upper_1= basis + (0.236*dev)
 upper_2= basis + (0.382*dev)
