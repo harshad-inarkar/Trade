@@ -1,22 +1,17 @@
 //@version=5
 strategy(title='Scanner', shorttitle='Scan', overlay=true, calc_on_every_tick=false)
 
-
-var show_cum = input(false, title='Show Cumulative')
-var instant_flag = input(false, title='Instant')
-instant_flag := show_cum ? true : instant_flag
-maxpfilter = input(false, 'Maxp Filtering for Cum Stats')
-entry_perc = input(0.02,title='Entry Perc')
+ci_length = input.int(21, title = "Chop L")
+ci_threshold = input.int(44,title="Chop T")
 
 // webhook order
 
-var capital = input(50000, title='Capital')
 var ordType = input('MKT', title='ordType')
 var productType = input('I', title='productType')
 
 var secret = input('NShH5',title='Secret')
-var alert_type = input.string('no_order', title='Alert Type', options=['no_order','regular_order','basket_order'])
-var ignore_exit_alert = input(false, 'Ignore Exit Alert')
+var alert_type = input.string('no_order', title='Alert Type', options=['no_order','basket_order'])
+var ignore_exit_alert = input(true, 'Ignore Exit Alert')
 
 
 var basket_map = input("", title= "Basket Map")
@@ -33,13 +28,17 @@ len1 = 8
 len2 =  21
 len3 =  55
 len4 = 233
+rsilen=input(8,title='RSI Len')
+rsiMAlen = input(21,title='RSI MA Len')
 
-lineup_check = input.int(2, title='Lineup Check', options=[0,2,3,4])
-ma_filter = input.int(3, title='MA Filter', options=[1,2,3,4])
+lineup_check = input.int(3, title='Lineup Check', options=[0,2,3,4])
+ma_filter = input.int(4, title='MA Filter', options=[1,2,3,4])
 strict_confirm_trade_check = input.int(1, title='Strict confirm trade check', options=[0,1,2,3])
 strict_psar = input(true, title='Strict PSAR')
 strict_trailing_sl = input(false, title='Strict Trailing SL ')
 only_trailingsl_strat = input(false,title='Only Trailing SL Strategy')
+strict_rsici_exit = input(true, title='Strict RSICI')
+
 
 india_tz = "GMT+05:30"
 
@@ -50,14 +49,13 @@ eq_long_signal_flag  = input(true, title='Eq Long Signal')
 eq_short_signal_flag = input(true, title='Eq Short Signal')
 
 tf1_alert = input(true, title="tf1 Alert")
-tf2_alert = input(true, title="tf2 Alert")
+tf2_alert = input(false, title="tf2 Alert")
 
 tf1 = input('1', title="Tf1")
 tf2 = input('5', title="Tf2")
 
 show_trade_alert_flag = input(true, title="Trade Alert")
 
-force_show_flag = input(false, title="Force Show Flag")
 show_comm = input(true, title="Show Comm")
 show_eq = input(true, title="Show Eq")
 
@@ -67,22 +65,20 @@ comm_timing = input('0905-2330' , title="Comm Timing")
 eq_timing = input('0920-1530' , title="Eq Timing")
 
 var MILLISECONDS_IN_DAY = 24 * 60 * 60 * 1000
-var last_n_days = input.float(77,'Days')
+var last_n_days = input.float(21,'Days')
 var only_today = input.bool(false, 'Only Today')
 
-var start_pos_from_now  = input(false, title='start pos from now')
 var currtimenow = timenow
 var todaystimestamp = timestamp(year(currtimenow,india_tz),month(currtimenow,india_tz),dayofmonth(currtimenow,india_tz),0,0,1)
 
-var start = only_today ? todaystimestamp : start_pos_from_now ? currtimenow : math.round(currtimenow - MILLISECONDS_IN_DAY * last_n_days)
+var start = only_today ? todaystimestamp : math.round(currtimenow - MILLISECONDS_IN_DAY * last_n_days)
 
 
 var show_only_window = input(true, title='Show trades in window')
 
 window() =>  // create function "within window of time"
-    time >= start and (not show_cum or not barstate.islastconfirmedhistory)
+    time >= start and (not barstate.islastconfirmedhistory)
     
-USDINR= input(78, title='USDINR')
 
 //--- TF List--
 sep = ' : '
@@ -121,7 +117,7 @@ check_showlist(symb)=>
 // Flags -> (showflag)
 
 
-comm_sym_list_str = input('USOIL|NATURALGAS|ALUMINUM|CRUDEOIL1!|NATURALGAS1!|ALUMINIUM1!|DXY|SPX|DJI|IXIC|VIX|', title="COMM List")
+comm_sym_list_str = input('CAPITALCOM:GOLD|VANTAGE:USDINR|JPYUSD|EURUSD|GBPUSD|USOIL|NATURALGAS|COPPER|', title="COMM List")
 
 
 symb1 = input("USOIL", title="S1")
@@ -131,51 +127,49 @@ convert_flags(input('0', title="Flags"),symb1)
 symb2 = input('NATURALGAS', title="S2")
 convert_flags(input('0', title="Flags"),symb2)
 
-//-----
-
-symb3 = input("BANKNIFTY", title="S3")
+symb3 = input("COPPER", title="S3")
 convert_flags(input('0', title="Flags"),symb3)
 
-symb4 = input("NIFTY", title="S4")
+symb4 = input("GBPUSD", title="S4")
 convert_flags(input('0', title="Flags"),symb4)
 
-symb5 = input("ADANIENT", title="S5")
+symb5 = input("EURUSD", title="S5")
 convert_flags(input('0', title="Flags"),symb5)
 
-symb6 = input("ADANIPORTS", title="S6")
+symb6 = input("JPYUSD", title="S6")
 convert_flags(input('0', title="Flags"),symb6)
 
-symb7 = input("TCS", title="S7")
+symb7 = input("ADANIENT", title="S7")
 convert_flags(input('0', title="Flags"),symb7)
 
-symb8 = input("TECHM", title="S8")
+symb8 = input("ADANIPORTS", title="S8")
 convert_flags(input('0', title="Flags"),symb8)
 
 symb9 = input("RELIANCE", title="S9")
 convert_flags(input('0', title="Flags"),symb9)
 
-symb10 = input("TITAN", title="S10")
+symb10 = input("TCS", title="S10")
 convert_flags(input('0', title="Flags"),symb10)
 
-symb11 = input("HINDUNILVR", title="S11")
+symb11 = input("INFY", title="S11")
 convert_flags(input('0', title="Flags"),symb11)
 
-symb12 = input("TATACONSUM", title="S12")
+symb12 = input("TECHM", title="S12")
 convert_flags(input('0', title="Flags"),symb12)
 
-symb13 = input("M_M", title="S13")
+symb13 = input("AXISBANK", title="S13")
 convert_flags(input('0', title="Flags"),symb13)
 
-symb14 = input("TATAMOTORS", title="S14")
+symb14 = input("SBIN", title="S14")
 convert_flags(input('0', title="Flags"),symb14)
 
-symb15 = input("AXISBANK", title="S15")
+symb15 = input("HDFCBANK", title="S15")
 convert_flags(input('0', title="Flags"),symb15)
 
-symb16 = input("SBIN", title="S16")
+symb16 = input("TATAMOTORS", title="S16")
 convert_flags(input('0', title="Flags"),symb16)
 
-symb17 = input("UPL", title="S17")
+symb17 = input("M_M", title="S17")
 convert_flags(input('0', title="Flags"),symb17)
 
 symb18 = input("JINDALSTEL", title="S18")
@@ -314,19 +308,19 @@ decodeStratCode(adx_code) =>
           
     switch adx_code
         STRAT_EXIT_LONG => 
-            adx_txt := 'ExUp'  
+            adx_txt := 'XU'  
             adx_col := color.new(color.yellow, transp=0)
             
         STRAT_EXIT_SHORT =>
-            adx_txt := 'ExDn'
+            adx_txt := 'XD'
             adx_col := color.new(color.blue, transp=0) 
             
         STRAT_ENTER_LONG =>
-            adx_txt := 'EnUp'
+            adx_txt := 'U'
             adx_col :=color.new(color.lime, transp=0) 
             
         STRAT_ENTER_SHORT =>
-            adx_txt := 'EnDn' 
+            adx_txt := 'D' 
             adx_col := color.new(color.red, transp=0) 
             
         STRAT_LONG => 
@@ -341,6 +335,77 @@ decodeStratCode(adx_code) =>
             adx_col := color.new(color.gray, transp=60)
     
     [adx_txt, adx_col]
+
+
+
+
+ci = 100 * math.log10(math.sum(ta.atr(1), ci_length) / (ta.highest(ci_length) - ta.lowest(ci_length))) / math.log10(ci_length)
+nonchop = ci <=  ci_threshold 
+
+rsi = ta.rsi(source,rsilen)
+rsiMA= ta.rma(rsi,rsiMAlen)
+rsi_trend = get_osc_trend(rsi)
+
+
+calc_RSICI() =>
+
+    rsima_bull_mom = (rsiMA >= 50 and rsi >= rsiMA) //and rsi_trend == UP 
+    rsima_bear_mom = (rsiMA < 50 and rsi <= rsiMA) //and rsi_trend == DOWN 
+
+    current_trend = NEUTRAL
+    active_position = false
+    longpos = false
+    shortpos = false
+
+
+    buyCond = rsiMA >= 50
+    sellCond = rsiMA < 50
+
+
+    current_trend := buyCond ? UP : sellCond ? DOWN : current_trend[1]
+
+
+    diPositive = current_trend == UP
+    diNegative = current_trend == DOWN
+
+
+    validlongentry =  rsima_bull_mom and nonchop
+    validshortentry = rsima_bear_mom and nonchop
+
+
+    // di_crossover = (diNegative[1] and diPositive) or (diNegative and diPositive[1])
+
+
+    di_crossover = (diNegative[1] and diPositive) or (diNegative and diPositive[1])
+
+    validtrend = buyCond or sellCond
+
+    closetrend = (shortpos[1] and rsima_bull_mom) or ( longpos[1] and rsima_bear_mom )
+
+
+    noTradeZone = not validtrend or di_crossover or closetrend
+
+    current_trend := closetrend ? NEUTRAL : current_trend
+
+    active_position := (validlongentry or validshortentry) and not active_position[1] ? true : noTradeZone ? false : active_position[1]
+
+
+    enterLong = validlongentry and not active_position[1]
+    enterShort = validshortentry and not active_position[1]
+
+
+    longpos := buyCond and active_position
+    shortpos := sellCond and active_position
+
+
+    exitLong = noTradeZone and longpos[1]
+    exitShort = noTradeZone and shortpos[1]
+
+
+    status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT : enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT : longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+
+    status_code
+
 
 
 calc_ADX() =>
@@ -636,22 +701,25 @@ calc_trailingsl() =>
 
     [trailing_code, trailing_sl]
 
+
 calc_final_summary(is_comm_symb,adx_code, erg_code,psar_code,trailing_code) =>
 
     long_signal_flag = is_comm_symb ? comm_long_signal_flag : eq_long_signal_flag
     short_signal_flag = is_comm_symb ? comm_short_signal_flag : eq_short_signal_flag
     
-    intraday_check = force_intraday_check and (timeframe.isminutes and timeframe.multiplier < 15) 
+    intraday_check = force_intraday_check and ((timeframe.isminutes and timeframe.multiplier < 15) or timeframe.isseconds)
                        //and (is_comm_symb or syminfo.timezone == india_tz)
    
     entry_period_str = get_entry_period_str(is_comm_symb)
 
     valid_entry_period = intraday_check and (na(time(timeframe.period, entry_period_str,india_tz)) or check_if_exit_time(is_comm_symb)) ? false : true
-    exit_all_pos_period =  (intraday_check and check_if_exit_time(is_comm_symb)) or (show_only_window and not window())
+    exit_all_pos_period = intraday_check and check_if_exit_time(is_comm_symb)
     
-    valid_entry_period :=  valid_entry_period and (not show_only_window or window())
+    valid_entry_period :=  valid_entry_period and (not show_only_window or window()) and nonchop
 
     
+    rsici_code = calc_RSICI()
+
     summ_trend_code = get_summary_trend_code(adx_code, erg_code,psar_code,trailing_code)
     [summ_txt, summ_col] = decodeStratCode(summ_trend_code)
 
@@ -666,6 +734,14 @@ calc_final_summary(is_comm_symb,adx_code, erg_code,psar_code,trailing_code) =>
     buyCond = (summ_trend_code == STRAT_ENTER_LONG or summ_trend_code == STRAT_LONG) and checkEMA(true, true)
     sellCond = (summ_trend_code == STRAT_ENTER_SHORT or summ_trend_code == STRAT_SHORT) and checkEMA(false, true)
     
+    if strict_rsici_exit
+        longrsici =  (rsici_code == STRAT_ENTER_LONG or rsici_code == STRAT_LONG or rsici_code == STRAT_EXIT_SHORT)
+        shortrsici = (rsici_code == STRAT_ENTER_SHORT or rsici_code == STRAT_SHORT or rsici_code == STRAT_EXIT_LONG)
+        
+        buyCond := longrsici
+        sellCond := shortrsici
+    
+
     
     neutralCond = not buyCond and not sellCond
 
@@ -813,16 +889,6 @@ calc_trigger_entry(f_st) =>
     
     trigg_status_code
     
-
-
-calc_points(runup) =>
-    runuppoints = runup
-    if syminfo.currency == 'USD'
-        runuppoints := runuppoints * USDINR
-    
-    runuppoints
-
-
 get_all_status_codes() =>
     
     symb = syminfo.ticker
@@ -857,31 +923,8 @@ get_all_status_codes() =>
     curr_prof = 0.0
     maxp = 0.0
     entry_val = 0.0
-    maxpoints = 0.0
-    mdd = 0.0
     
-    cum_prof = 0.0
-    cum_prof := nz(cum_prof[1])
-    
-    cum_max = 0.0
-    cum_max := nz(cum_max[1])
-    
-    cum_maxpoints = 0.0
-    cum_maxpoints := nz(cum_maxpoints[1])
-    
-    cum_mdd = 0.0
-    cum_mdd := nz(cum_mdd[1])
-    
-    trades = 0
-    trades := nz(trades[1])
-    
-    wintrades = 0
-    wintrades := nz(wintrades[1])
-    
-    onlyprofpct = 0.0
-    onlyprofpct := nz(onlyprofpct[1])
-
-
+ 
     active_pos = false
     active_pos := nz(active_pos[1],false)
     
@@ -893,46 +936,18 @@ get_all_status_codes() =>
         bv = sig_long ? entry_val : ltp 
         sv = sig_long ? ltp : entry_val
         
-        curr_prof := ((sv - bv)*100)/bv
-        
-        curr_profpts = calc_points(sv - bv)
-        
-        maxpoints := nz(maxpoints[1]) > curr_profpts ? nz(maxpoints[1]) : curr_profpts
+        curr_prof := ((sv - bv)*100)/bv        
         maxp := nz(maxp[1]) > curr_prof ? nz(maxp[1]) : curr_prof
-        
-        abs_prof = math.abs(curr_prof)
-        mdd := nz(mdd[1])
-        mdd := (curr_prof < 0 and mdd < abs_prof) ? abs_prof : mdd
-        
+           
         
         if not active_pos and (is_long_entry or is_short_entry)
             active_pos := true
         
-        if active_pos and (is_long_exit or is_short_exit) and ( not maxpfilter or maxp >= entry_perc)
-            cum_prof := cum_prof + curr_prof
-            cum_max := cum_max + maxp
-            cum_maxpoints := cum_maxpoints + maxpoints
-            cum_mdd := cum_mdd + mdd
-            
-            trades := trades +1
-            
-            
-            if curr_prof > 0
-                wintrades := wintrades + 1
-                onlyprofpct := onlyprofpct + curr_prof
-                
+        if active_pos and (is_long_exit or is_short_exit)                            
             active_pos := false
         
-    
-    cum = str.tostring(trades) + sep + str.tostring(math.round(cum_prof,2)) + sep  
-           + str.tostring(math.round(cum_max,2)) + sep 
-           + str.tostring(math.round(cum_maxpoints,2)) + sep
-           + str.tostring(wintrades) + sep 
-           + str.tostring(onlyprofpct) + sep 
-           + str.tostring(cum_mdd) + sep 
-
         
-    [lineup_status,entry_val,value,ltp,actual_close_time, final_summary_status_code,math.round(curr_prof,2),math.round(maxp,2),cum]
+    [lineup_status,entry_val,value,ltp,actual_close_time, final_summary_status_code,math.round(curr_prof,2),math.round(maxp,2)]
 
 
 
@@ -945,7 +960,6 @@ time_close_arr = array.new_int(0)
 gl_entry_val_arr = array.new_float(0)
 gl_curr_prof_arr = array.new_float(0)
 gl_maxp_arr = array.new_float(0)
-gl_cum_arr = array.new_string(0)
 lineup_st_arr = array.new_int(0)
 
 
@@ -953,7 +967,7 @@ screenerFunc() =>
     get_all_status_codes()
 
 
-updateStatusArr(symb, tf, lineup_st,entry_val,value,ltp,actual_close_time,final_summary_status_code,curr_prof,maxp,cum) =>
+updateStatusArr(symb, tf, lineup_st,entry_val,value,ltp,actual_close_time,final_summary_status_code,curr_prof,maxp) =>
     
     is_comm_symb = check_if_comm_list(symb)
     check_show_list = check_showlist(symb)
@@ -961,7 +975,6 @@ updateStatusArr(symb, tf, lineup_st,entry_val,value,ltp,actual_close_time,final_
     entry_period_str = get_entry_period_str(is_comm_symb)
 
     out_of_intraday = force_intraday_check and na(time(timeframe.period, entry_period_str,india_tz))
-    out_of_intraday := show_cum ? false : out_of_intraday
     exclude = not check_show_list and ((not show_comm and is_comm_symb) or (not show_eq and not is_comm_symb) or out_of_intraday)
     
     if not exclude
@@ -974,13 +987,12 @@ updateStatusArr(symb, tf, lineup_st,entry_val,value,ltp,actual_close_time,final_
         array.push(gl_entry_val_arr, entry_val)
         array.push(gl_curr_prof_arr, curr_prof)
         array.push(gl_maxp_arr, maxp)
-        array.push(gl_cum_arr, cum)
         array.push(lineup_st_arr,lineup_st)
         
 
 f_sec(symb, tf)=>
-    [lineup_st,entry_val,value,ltp,actual_close_time,final_summary_status_code,curr_prof,maxp,cum] = request.security(symb, tf, screenerFunc(), lookahead=barmerge.lookahead_on)
-    updateStatusArr(symb, tf,lineup_st,entry_val,value, ltp,actual_close_time,final_summary_status_code,curr_prof,maxp,cum)
+    [lineup_st,entry_val,value,ltp,actual_close_time,final_summary_status_code,curr_prof,maxp] = request.security(symb, tf, screenerFunc(), lookahead=barmerge.lookahead_on)
+    updateStatusArr(symb, tf,lineup_st,entry_val,value, ltp,actual_close_time,final_summary_status_code,curr_prof,maxp)
 
 
 // ---- Security Calls ---
@@ -1088,7 +1100,7 @@ is_entry_alert(st, show_flag) =>
     show_flag and (st == STRAT_ENTER_LONG or st == STRAT_ENTER_SHORT or st == STRAT_EXIT_LONG or st == STRAT_EXIT_SHORT)
 
 
-get_alert_info(actual_close_time,st, show_flag,value, symb, tf, indicator_name) =>
+get_alert_info(actual_close_time,st, show_flag,value, symb, tf) =>
     any_entry = false
 
     [dis_txt, dis_col] = decodeStratCode(st)
@@ -1100,7 +1112,7 @@ get_alert_info(actual_close_time,st, show_flag,value, symb, tf, indicator_name) 
         any_entry
     
     
-    symb_info = symb + sep + tf + sep + indicator_name + sep + dis_txt + sep + str.tostring(value) + line_sep
+    symb_info = symb + sep + tf + sep + dis_txt + sep + str.tostring(value) + line_sep
 
     if not check_alert_pair_list(symb,tf,actual_close_time)
         any_entry := false
@@ -1125,7 +1137,6 @@ prof_arr1 = array.new_float(0)
 maxp_arr1 = array.new_float(0)
 sig_arr1 = array.new_color(0)
 time_arr1 = array.new_int(0)
-cum_arr1 = array.new_string(0)
 
 
 alert_arr2 = array.new_string(0)
@@ -1135,7 +1146,6 @@ prof_arr2 = array.new_float(0)
 maxp_arr2 = array.new_float(0)
 sig_arr2 = array.new_color(0)
 time_arr2 = array.new_int(0)
-cum_arr2 = array.new_string(0)
 
 get_arr_tuple(tf)=>
     alert_arr = tf == tf1 ? alert_arr1 : alert_arr2
@@ -1146,13 +1156,12 @@ get_arr_tuple(tf)=>
     sig_arr = tf == tf1 ? sig_arr1 : sig_arr2
     time_arr = tf == tf1 ? time_arr1 : time_arr2
     tblid = tf == tf1 ? tbl2 : tbl3
-    cum_arr = tf == tf1 ? cum_arr1 : cum_arr2
 
-    [alert_arr,entry_arr,curr_ltp_arr,prof_arr,maxp_arr,sig_arr,time_arr,tblid,cum_arr]
+    [alert_arr,entry_arr,curr_ltp_arr,prof_arr,maxp_arr,sig_arr,time_arr,tblid]
 
 
 clear_arr(tf) =>
-    [alert_arr,entry_arr,curr_ltp_arr,prof_arr,maxp_arr,sig_arr,time_arr,tblid,cum_arr] = get_arr_tuple(tf)
+    [alert_arr,entry_arr,curr_ltp_arr,prof_arr,maxp_arr,sig_arr,time_arr,tblid] = get_arr_tuple(tf)
     array.clear(alert_arr)
     array.clear(entry_arr)
     array.clear(curr_ltp_arr)
@@ -1160,8 +1169,6 @@ clear_arr(tf) =>
     array.clear(maxp_arr)
     array.clear(sig_arr)
     array.clear(time_arr)
-    array.clear(cum_arr)
-
 
 
 clear_all_arr() =>
@@ -1169,35 +1176,11 @@ clear_all_arr() =>
     clear_arr(tf2)
 
 
-add_alert_arr(symb,tf,lineup_st,summ_trend_code,entry_val,ltp,curr_prof,maxp,summ_col,actual_close_time,cum) =>
+add_alert_arr(symb,tf,lineup_st,summ_trend_code,entry_val,ltp,curr_prof,maxp,summ_col,actual_close_time) =>
     if check_alert_only_tf_list(tf)
-        [alert_arr,entry_arr,curr_ltp_arr,prof_arr,maxp_arr,sig_arr,time_arr,tblid,cum_arr] = get_arr_tuple(tf)
+        [alert_arr,entry_arr,curr_ltp_arr,prof_arr,maxp_arr,sig_arr,time_arr,tblid] = get_arr_tuple(tf)
         
-        if show_cum
-            splt_arr = str.split(cum,sep)
-            trades = math.round(str.tonumber(array.get(splt_arr,0)))
-            if trades > 0
-                cur_max = str.tonumber(array.get(splt_arr,2))
-                cur_max_avg = trades > 0 ? cur_max/trades : 0
-                last_indx = array.size(alert_arr) -1
-                insert_indx = -1
-                
-                if last_indx >=0
-                    for indx = 0 to last_indx
-                        indx_splt_arr = str.split(array.get(cum_arr,indx),sep)
-                        indx_trades = str.tonumber(array.get(indx_splt_arr,0))
-                        indx_max = str.tonumber(array.get(indx_splt_arr,2))
-                        indx_max_avg = indx_trades > 0 ? indx_max/indx_trades : 0
-                        if cur_max_avg > indx_max_avg
-                            insert_indx := indx
-                            break
-            
-                insert_indx := (insert_indx == -1 ?  last_indx+1 : insert_indx)
-                
-                array.insert(alert_arr, insert_indx, symb)
-                array.insert(cum_arr,insert_indx, cum)
-            
-        else if summ_trend_code != STRAT_NEUTRAL
+        if summ_trend_code != STRAT_NEUTRAL
         
             last_indx = array.size(alert_arr) -1
             insert_indx = -1
@@ -1222,116 +1205,40 @@ add_alert_arr(symb,tf,lineup_st,summ_trend_code,entry_val,ltp,curr_prof,maxp,sum
 
 
 recreate_alert_table(tf)=>
-    if valid_close_time(tf,0) or show_cum or instant_flag
-        [alert_arr,entry_arr,curr_ltp_arr,prof_arr,maxp_arr,sig_arr,time_arr,tblid,cum_arr] = get_arr_tuple(tf)
+    if valid_close_time(tf,0)
+        [alert_arr,entry_arr,curr_ltp_arr,prof_arr,maxp_arr,sig_arr,time_arr,tblid] = get_arr_tuple(tf)
         arr_size = array.size(alert_arr)
         table.delete(tblid)
-        num_col = show_cum ? 9 : 6
-        num_rows = show_cum ? arr_size + 2 : arr_size + 1
+        num_col =  6
+        num_rows = arr_size + 1
         
         if arr_size > 0
             tab_pos = tf == tf1 ? position.middle_center : position.middle_right
             tblid := table.new(tab_pos, num_col , num_rows, frame_color=color(na), frame_width=1, border_width=2, border_color=color(na))
         
             table.cell(tblid, 0, 0, 'Symb', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-            if show_cum
-                table.cell(tblid, 1, 0, 'T', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 2, 0, 'P', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 3, 0, 'RUp', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 4, 0, 'RAg', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 5, 0, 'CRt', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 6, 0, 'WRt', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 7, 0, 'RR', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 8, 0, 'MRR', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-    
-            else
-                table.cell(tblid, 1, 0, 'Entry', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 2, 0, 'LTP', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 3, 0, 'Prof', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 4, 0, 'MaxP', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 5, 0, 'Time', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-            
-            total_prof = 0.0
-            total_max = 0.0
-            total_trades = 0
-            total_runuppts = 0.0
-            total_winrate = 0.0
-            total_rrr = 0.0
-            total_maxrrr = 0.0
+ 
+            table.cell(tblid, 1, 0, 'Entry', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+            table.cell(tblid, 2, 0, 'LTP', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+            table.cell(tblid, 3, 0, 'Prof', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+            table.cell(tblid, 4, 0, 'MaxP', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+            table.cell(tblid, 5, 0, 'Time', text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
             
             for i = 0 to arr_size - 1
-                if show_cum
-                    cum_str = array.get(cum_arr,i)
-                    splt_arr = str.split(cum_str,sep)
-                    trades = math.round(str.tonumber(array.get(splt_arr,0)))
-                    prof = str.tonumber(array.get(splt_arr,1))
-                    max = str.tonumber(array.get(splt_arr,2))
-                    maxpoints = str.tonumber(array.get(splt_arr,3))
-                    wintrades = str.tonumber(array.get(splt_arr,4))
-                    onlyprofpct = str.tonumber(array.get(splt_arr,5))
-                    mdd = str.tonumber(array.get(splt_arr,6))
+                sig_col = color.new(array.get(sig_arr,i), transp=80)
+                table.cell(tblid, 0, i + 1, array.get(alert_arr,i), text_halign=text.align_left, bgcolor=sig_col, text_color=color.white, text_size=size.small)
+                table.cell(tblid, 1, i + 1, str.tostring(array.get(entry_arr,i)), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
+                table.cell(tblid, 2, i + 1, str.tostring(array.get(curr_ltp_arr,i)), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
+                table.cell(tblid, 3, i + 1, str.tostring(array.get(prof_arr,i)), text_halign=text.align_left, bgcolor=array.get(prof_arr,i)>0?greencol:redcol, text_color=color.white, text_size=size.small)
+                table.cell(tblid, 4, i + 1, str.tostring(array.get(maxp_arr,i)), text_halign=text.align_left, bgcolor=array.get(maxp_arr,i)>0.15?greencol:color(na), text_color=color.white, text_size=size.small)
+                
+                time_val= array.get(time_arr,i)
+                time_str = str.tostring(hour(time_val,india_tz)) +':'+ str.tostring(minute(time_val,india_tz))
+                
+                if dayofmonth(time_val,india_tz) != dayofmonth(timenow,india_tz)
+                    time_str := str.tostring(dayofmonth(time_val,india_tz)) +'/'+ str.tostring(month(time_val,india_tz))
                     
-                    
-                    runupavg = trades > 0 ? math.round(max/trades,2)  : 0
-
-                    losstrades = trades - wintrades
-                    winrate = trades > 0 ? math.round(wintrades*100/trades) : 0
-                    onlylosspct = onlyprofpct - prof
-                    RRR = losstrades > 0 and wintrades > 0 ? math.round((onlyprofpct/wintrades)/(onlylosspct/losstrades),2) : 0
-                    MaxRRR = mdd > 0 ? math.round(max/mdd,2) : 0
-                    crate = max > 0 ? math.round(prof*100/max) : 0
-                    
-                    
-                    
-                    total_prof := total_prof + prof
-                    total_max := total_max + max
-                    total_trades := total_trades + trades
-                    total_runuppts := total_runuppts + maxpoints
-                    total_winrate := total_winrate + winrate
-                    total_rrr := total_rrr + RRR
-                    total_maxrrr := total_maxrrr + MaxRRR
-                    
-                    table.cell(tblid, 0, i + 1, array.get(alert_arr,i), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-                    table.cell(tblid, 1, i + 1, str.tostring(trades), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-                    table.cell(tblid, 2, i + 1, str.tostring(prof), text_halign=text.align_left, bgcolor=prof>0 ? greencol:redcol, text_color=color.white, text_size=size.small)
-                    table.cell(tblid, 3, i + 1, str.tostring(max), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-                    table.cell(tblid, 4, i + 1, str.tostring(runupavg), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-                    table.cell(tblid, 5, i + 1, str.tostring(crate), text_halign=text.align_left, bgcolor=crate>0 ? greencol:redcol, text_color=color.white, text_size=size.small)
-                    table.cell(tblid, 6, i + 1, str.tostring(winrate), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-                    table.cell(tblid, 7, i + 1, str.tostring(RRR), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-                    table.cell(tblid, 8, i + 1, str.tostring(MaxRRR), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-    
-                else
-                    sig_col = color.new(array.get(sig_arr,i), transp=80)
-                    table.cell(tblid, 0, i + 1, array.get(alert_arr,i), text_halign=text.align_left, bgcolor=sig_col, text_color=color.white, text_size=size.small)
-                    table.cell(tblid, 1, i + 1, str.tostring(array.get(entry_arr,i)), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-                    table.cell(tblid, 2, i + 1, str.tostring(array.get(curr_ltp_arr,i)), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-                    table.cell(tblid, 3, i + 1, str.tostring(array.get(prof_arr,i)), text_halign=text.align_left, bgcolor=array.get(prof_arr,i)>0?greencol:redcol, text_color=color.white, text_size=size.small)
-                    table.cell(tblid, 4, i + 1, str.tostring(array.get(maxp_arr,i)), text_halign=text.align_left, bgcolor=array.get(maxp_arr,i)>0.15?greencol:color(na), text_color=color.white, text_size=size.small)
-                    
-                    time_val= array.get(time_arr,i)
-                    time_str = str.tostring(hour(time_val,india_tz)) +':'+ str.tostring(minute(time_val,india_tz))
-                    
-                    if dayofmonth(time_val,india_tz) != dayofmonth(timenow,india_tz)
-                        time_str := str.tostring(dayofmonth(time_val,india_tz)) +'/'+ str.tostring(month(time_val,india_tz))
-                        
-                    
-                    
-                    table.cell(tblid, 5, i + 1, time_str, text_halign=text.align_left, bgcolor=sig_col, text_color=color.white, text_size=size.small)
-            
-            if show_cum
-            
-                total_str = str.tostring(total_trades) + sep + str.tostring(math.round(total_prof,2)) + sep + str.tostring(math.round(total_max,2))
-                table.cell(tblid, 0, arr_size+1, 'Total', text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 1, arr_size+1, str.tostring(total_trades), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 2, arr_size+1, str.tostring(math.round(total_prof,2)), text_halign=text.align_left, bgcolor=total_prof>0 ? greencol:redcol, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 3, arr_size+1, str.tostring(math.round(total_max,2)), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 4, arr_size+1, str.tostring(math.round(total_max/total_trades,2)), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 5, arr_size+1, str.tostring(math.round(total_prof*100/total_max)), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 6, arr_size+1, str.tostring(math.round(total_winrate/arr_size)), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 7, arr_size+1, str.tostring(math.round(total_rrr/arr_size,2)), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(tblid, 8, arr_size+1, str.tostring(math.round(total_maxrrr/arr_size,2)), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-
+                table.cell(tblid, 5, i + 1, time_str, text_halign=text.align_left, bgcolor=sig_col, text_color=color.white, text_size=size.small)
 
 any_trade_alert = false
 string scr_label = na
@@ -1357,13 +1264,6 @@ get_basket_ids(s_name) =>
 
 comm_bask_txt = "\"secret\":\"{0}\",\"alertType\":\"basket\",\"basket_id\":\"{1}\""
 
-common_msg = "\"transactionType\": \"{0}\",\"orderType\": \"{1}\",\"quantity\": \"{2}\",
-  \"price\": \"{3}\",
-  \"exchange\": \"{4}\",
-  \"secret\": \"{5}\",
-  \"tradingSymbol\": \"{6}\",
-  \"productType\": \"{7}\""
-
 
 raise_order_alerts() =>
     symb_ele_arr = str.split(scr_label,line_sep)
@@ -1372,7 +1272,7 @@ raise_order_alerts() =>
         for i=0 to array.size(symb_ele_arr) -2
             symb_inf_arr = str.split(array.get(symb_ele_arr,i),sep)
             s_name = array.get(symb_inf_arr,0)
-            dis_txt = array.get(symb_inf_arr,3)
+            dis_txt = array.get(symb_inf_arr,2)
             
             [long_basket_id,exit_long_basket_id,short_basket_id,exit_short_basket_id] = get_basket_ids(s_name)
             long_basket_txt = "\{" + str.format(comm_bask_txt,secret,long_basket_id) + "\}"
@@ -1381,39 +1281,25 @@ raise_order_alerts() =>
             short_basket_txt = "\{" + str.format(comm_bask_txt,secret,short_basket_id) + "\}"
             exit_short_basket_txt = "\{" + str.format(comm_bask_txt,secret,exit_short_basket_id) + "\}"
             
-            ltp = str.tonumber(array.get(symb_inf_arr,4))
-            quant = math.floor(capital/ltp)
-            
-            price = ordType == 'MKT' ? '0' : str.tostring(ltp)
-
-
-            long_txt = "\{" + str.format(common_msg, "B",ordType,quant,price,'NSE',secret,s_name,productType) + "\}"
-            close_long_txt = "\{" + str.format(common_msg, "S",ordType,quant, price,'NSE',secret,s_name,productType) + "\}"
-            short_txt = "\{" + str.format(common_msg, "S",ordType,quant, price,'NSE',secret,s_name,productType) + "\}"
-            close_short_txt = "\{" + str.format(common_msg, "B",ordType,quant,price,'NSE',secret,s_name,productType) + "\}"
-
-            is_basket = alert_type == 'basket_order' ? true : false
-
-            ignore_alert = ignore_exit_alert and (dis_txt == 'ExUp' or dis_txt == 'ExDn')
+            ignore_alert = ignore_exit_alert and (dis_txt == 'XU' or dis_txt == 'XD')
 
             if not ignore_alert
                 switch dis_txt
-                    'EnUp' => alert(is_basket ? long_basket_txt : long_txt , freq=alert.freq_once_per_bar_close)
-                    'ExUp' => alert(is_basket ? exit_long_basket_txt: close_long_txt, freq=alert.freq_once_per_bar_close)
-                    'EnDn' => alert(is_basket ? short_basket_txt : short_txt, freq=alert.freq_once_per_bar_close)
-                    'ExDn' => alert(is_basket ? exit_short_basket_txt : close_short_txt, freq=alert.freq_once_per_bar_close)
+                    'U' => alert(long_basket_txt, freq=alert.freq_once_per_bar_close)
+                    'XU' => alert(exit_long_basket_txt, freq=alert.freq_once_per_bar_close)
+                    'D' => alert(short_basket_txt, freq=alert.freq_once_per_bar_close)
+                    'XD' => alert(exit_short_basket_txt, freq=alert.freq_once_per_bar_close)
 
 
-if symb_arr_size > 0 and barstate.islast and (barstate.isconfirmed or show_cum or instant_flag)
+if symb_arr_size > 0 and barstate.islast and (barstate.isconfirmed)
 
     start_time_str = str.tostring(hour(start,india_tz)) +':'+ str.tostring(minute(start,india_tz)) 
     
     var table tbl1 = table.new(position.middle_left, tfcount + 1, row_count + 1, frame_color=color(na), frame_width=1, border_width=2, border_color=color(na))
 
-    if not show_cum
-        table.cell(tbl1, 0, 0, start_time_str, text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-        table.cell(tbl1, 1, 0, tf1, text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-        table.cell(tbl1, 2, 0, tf2, text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+    table.cell(tbl1, 0, 0, start_time_str, text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+    table.cell(tbl1, 1, 0, tf1, text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+    table.cell(tbl1, 2, 0, tf2, text_halign=text.align_center, bgcolor=color.gray, text_color=color.white, text_size=size.small)
 
 
     tab_i = 0
@@ -1433,10 +1319,10 @@ if symb_arr_size > 0 and barstate.islast and (barstate.isconfirmed or show_cum o
         tf = array.get(tf_arr, i)
 
 
-        if tab_j == 0 and not show_cum
+        if tab_j == 0
             table.cell(tbl1, 0, tab_i + 1, symb, text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
         
-        if valid_close_time(tf,0) or show_cum or instant_flag
+        if valid_close_time(tf,0)
             summ_trend_code = array.get(summ_status_arr, i)
             lineup_st = array.get(lineup_st_arr,i)
             value =  array.get(val_arr, i)
@@ -1445,28 +1331,25 @@ if symb_arr_size > 0 and barstate.islast and (barstate.isconfirmed or show_cum o
             entry_val = array.get(gl_entry_val_arr, i)
             curr_prof = array.get(gl_curr_prof_arr, i)
             maxp = array.get(gl_maxp_arr, i)
-            cum = array.get(gl_cum_arr, i)
 
     
-            [trade_alert_flag, symb_info, summ_col] = get_alert_info(actual_close_time,summ_trend_code, show_trade_alert_flag, value, symb, tf, 'Trade')
+            [trade_alert_flag, symb_info, summ_col] = get_alert_info(actual_close_time,summ_trend_code, show_trade_alert_flag, value, symb, tf)
             
             if trade_alert_flag
                 any_trade_alert := trade_alert_flag
                 scr_label += symb_info
             
             
-            add_alert_arr(symb,tf,lineup_st,summ_trend_code,entry_val,ltp,curr_prof,maxp,summ_col,actual_close_time,cum)
+            add_alert_arr(symb,tf,lineup_st,summ_trend_code,entry_val,ltp,curr_prof,maxp,summ_col,actual_close_time)
             
-            if not show_cum
-                table.cell(tbl1, tab_j + 1, tab_i + 1, '', text_halign=text.align_center, bgcolor=summ_col, text_color=color.white, text_size=size.small)
+            table.cell(tbl1, tab_j + 1, tab_i + 1, '', text_halign=text.align_center, bgcolor=summ_col, text_color=color.white, text_size=size.small)
 
 
     //Send alert only if screener is not empty
-    if  not na(scr_label) and any_trade_alert and not show_cum
+    if  not na(scr_label) and any_trade_alert
         final_msg = screener_sep + scr_label + screener_sep
         alert(final_msg, freq=alert.freq_once_per_bar_close)
         switch alert_type
-            "regular_order" => raise_order_alerts()
             "basket_order" => raise_order_alerts()
             
             
