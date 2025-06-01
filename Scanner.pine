@@ -6,11 +6,8 @@ ci_threshold = input.int(44,title="Chop T")
 
 // webhook order
 
-var ordType = input('MKT', title='ordType')
-var productType = input('I', title='productType')
-
-var secret = input('NShH5',title='Secret')
-var alert_type = input.string('no_order', title='Alert Type', options=['no_order','basket_order'])
+var secret = input('',title='Secret')
+var alert_type = input.string('no_order', title='Alert Type', options=['no_order','basket_order','deltaexch_order'])
 var ignore_exit_alert = input(true, 'Ignore Exit Alert')
 
 
@@ -28,10 +25,10 @@ len1 = 8
 len2 =  21
 len3 =  55
 len4 = 233
-rsilen=input(8,title='RSI Len')
+rsilen=input(13,title='RSI Len')
 rsiMAlen = input(21,title='RSI MA Len')
 
-lineup_check = input.int(3, title='Lineup Check', options=[0,2,3,4])
+lineup_check = input.int(2, title='Lineup Check', options=[0,2,3,4])
 ma_filter = input.int(4, title='MA Filter', options=[1,2,3,4])
 strict_confirm_trade_check = input.int(1, title='Strict confirm trade check', options=[0,1,2,3])
 strict_psar = input(true, title='Strict PSAR')
@@ -49,20 +46,20 @@ eq_long_signal_flag  = input(true, title='Eq Long Signal')
 eq_short_signal_flag = input(true, title='Eq Short Signal')
 
 tf1_alert = input(true, title="tf1 Alert")
-tf2_alert = input(false, title="tf2 Alert")
+tf2_alert = input(true, title="tf2 Alert")
 
 tf1 = input('1', title="Tf1")
-tf2 = input('5', title="Tf2")
+tf2 = input('3', title="Tf2")
 
 show_trade_alert_flag = input(true, title="Trade Alert")
 
 show_comm = input(true, title="Show Comm")
 show_eq = input(true, title="Show Eq")
 
-force_intraday_check = input(true, title="Force Intraday Check")
+force_intraday_check = input(false, title="Force Intraday Check")
 
-comm_timing = input('0905-2330' , title="Comm Timing")
-eq_timing = input('0920-1530' , title="Eq Timing")
+comm_timing = input('0900-2330' , title="Comm Timing")
+eq_timing = input('0900-1530' , title="Eq Timing")
 
 var MILLISECONDS_IN_DAY = 24 * 60 * 60 * 1000
 var last_n_days = input.float(21,'Days')
@@ -74,7 +71,7 @@ var todaystimestamp = timestamp(year(currtimenow,india_tz),month(currtimenow,ind
 var start = only_today ? todaystimestamp : math.round(currtimenow - MILLISECONDS_IN_DAY * last_n_days)
 
 
-var show_only_window = input(true, title='Show trades in window')
+var show_only_window = input(false, title='Show trades in window')
 
 window() =>  // create function "within window of time"
     time >= start and (not barstate.islastconfirmedhistory)
@@ -111,44 +108,39 @@ check_showlist(symb)=>
 //----------- Symbols List ------------------
 
 
-// Top 3 Comm, 17 Eq
 
-// old Flags -> (tf1 alert, tf2alert, long, short, showflag)
-// Flags -> (showflag)
+comm_sym_list_str = input('COPPER1!|SILVER1!|GOLD1!|CRUDEOIL1!|NATURALGAS1!|', title="COMM List")
 
 
-comm_sym_list_str = input('CAPITALCOM:GOLD|VANTAGE:USDINR|JPYUSD|EURUSD|GBPUSD|USOIL|NATURALGAS|COPPER|', title="COMM List")
-
-
-symb1 = input("USOIL", title="S1")
+symb1 = input("CRUDEOIL1!", title="S1")
 convert_flags(input('0', title="Flags"),symb1)
 
 
-symb2 = input('NATURALGAS', title="S2")
+symb2 = input('NATURALGAS1!', title="S2")
 convert_flags(input('0', title="Flags"),symb2)
 
-symb3 = input("COPPER", title="S3")
+symb3 = input("GOLD1!", title="S3")
 convert_flags(input('0', title="Flags"),symb3)
 
-symb4 = input("GBPUSD", title="S4")
+symb4 = input("COINBASE:BTCUSD", title="S4")
 convert_flags(input('0', title="Flags"),symb4)
 
-symb5 = input("EURUSD", title="S5")
+symb5 = input("COINBASE:ETHUSD", title="S5")
 convert_flags(input('0', title="Flags"),symb5)
 
-symb6 = input("JPYUSD", title="S6")
+symb6 = input("COINBASE:SOLUSD", title="S6")
 convert_flags(input('0', title="Flags"),symb6)
 
-symb7 = input("ADANIENT", title="S7")
+symb7 = input("COINBASE:LTCUSD", title="S7")
 convert_flags(input('0', title="Flags"),symb7)
 
-symb8 = input("ADANIPORTS", title="S8")
+symb8 = input("NIFTY", title="S8")
 convert_flags(input('0', title="Flags"),symb8)
 
-symb9 = input("RELIANCE", title="S9")
+symb9 = input("BANKNIFTY", title="S9")
 convert_flags(input('0', title="Flags"),symb9)
 
-symb10 = input("TCS", title="S10")
+symb10 = input("NIFTY_MID_SELECT", title="S10")
 convert_flags(input('0', title="Flags"),symb10)
 
 symb11 = input("INFY", title="S11")
@@ -750,8 +742,8 @@ calc_final_summary(is_comm_symb,adx_code, erg_code,psar_code,trailing_code) =>
     trailing_short = trailing_code == STRAT_SHORT or trailing_code == STRAT_ENTER_SHORT
 
 
-    validlongentry = summ_trend_code == STRAT_ENTER_LONG and checkEMA(true,false) and valid_entry_period 
-    validshortentry = summ_trend_code == STRAT_ENTER_SHORT and checkEMA(false,false) and valid_entry_period
+    validlongentry = buyCond and summ_trend_code == STRAT_ENTER_LONG and checkEMA(true,false) and valid_entry_period 
+    validshortentry = sellCond and summ_trend_code == STRAT_ENTER_SHORT and checkEMA(false,false) and valid_entry_period
 
 
     enterLong = validlongentry and not curr_active_pos and long_signal_flag
@@ -1253,16 +1245,39 @@ get_basket_ids(s_name) =>
     if array.size(symb_bask_arr) > 0
         for i=0 to array.size(symb_bask_arr) -1
             ele_arr = str.split(array.get(symb_bask_arr,i),'|')
+            if array.size(ele_arr) < 5
+                break
             if array.get(ele_arr,0) == s_name
                 long_basket_id := array.get(ele_arr,1)
                 exit_long_basket_id := array.get(ele_arr,2)
                 short_basket_id := array.get(ele_arr,3)
                 exit_short_basket_id := array.get(ele_arr,4)
+                break
     
     [long_basket_id,exit_long_basket_id,short_basket_id,exit_short_basket_id]
 
 
+get_deltaexch_ids(s_name) =>
+    ticker_id = ''
+    qty = ''
+    
+    if array.size(symb_bask_arr) > 0
+        for i=0 to array.size(symb_bask_arr) -1
+            ele_arr = str.split(array.get(symb_bask_arr,i),'|')
+            if array.size(ele_arr) < 3
+                break
+            if array.get(ele_arr,0) == s_name
+                ticker_id := array.get(ele_arr,1)
+                qty := array.get(ele_arr,2)
+                break
+    
+    [ticker_id,qty]
+
+
+
 comm_bask_txt = "\"secret\":\"{0}\",\"alertType\":\"basket\",\"basket_id\":\"{1}\""
+
+comm_delta_txt = "\"symbol\":\"{0}\",\"side\":\"{1}\",\"qty\":\"{2}\",\"trigger_time\":\"{3}\",\"strategy_id\":\"{4}\""
 
 
 raise_order_alerts() =>
@@ -1274,21 +1289,37 @@ raise_order_alerts() =>
             s_name = array.get(symb_inf_arr,0)
             dis_txt = array.get(symb_inf_arr,2)
             
-            [long_basket_id,exit_long_basket_id,short_basket_id,exit_short_basket_id] = get_basket_ids(s_name)
-            long_basket_txt = "\{" + str.format(comm_bask_txt,secret,long_basket_id) + "\}"
-            exit_long_basket_txt = "\{" + str.format(comm_bask_txt,secret,exit_long_basket_id) + "\}"
+            long_basket_txt = ''
+            exit_long_basket_txt = ''
+            short_basket_txt = ''
+            exit_short_basket_txt = ''
 
-            short_basket_txt = "\{" + str.format(comm_bask_txt,secret,short_basket_id) + "\}"
-            exit_short_basket_txt = "\{" + str.format(comm_bask_txt,secret,exit_short_basket_id) + "\}"
+            if alert_type == 'basket_order'
+                [long_basket_id,exit_long_basket_id,short_basket_id,exit_short_basket_id] = get_basket_ids(s_name)
+
+                long_basket_txt := "\{" + str.format(comm_bask_txt,secret,long_basket_id) + "\}"
+                exit_long_basket_txt := "\{" + str.format(comm_bask_txt,secret,exit_long_basket_id) + "\}"
+
+                short_basket_txt := "\{" + str.format(comm_bask_txt,secret,short_basket_id) + "\}"
+                exit_short_basket_txt := "\{" + str.format(comm_bask_txt,secret,exit_short_basket_id) + "\}"
+            else if alert_type == 'deltaexch_order'
+                [ticker_id,qty] = get_deltaexch_ids(s_name)
+                long_basket_txt := "\{" +str.format(comm_delta_txt,ticker_id,'buy',qty,str.format_time(timenow),secret) + "\}"
+                exit_long_basket_txt := "\{" +str.format(comm_delta_txt,ticker_id,'sell',qty,str.format_time(timenow),secret) + "\}"
+                short_basket_txt := "\{" +str.format(comm_delta_txt,ticker_id,'sell',qty,str.format_time(timenow),secret) + "\}"
+                exit_short_basket_txt := "\{" +str.format(comm_delta_txt,ticker_id,'buy',qty,str.format_time(timenow),secret) + "\}"
+
+
             
             ignore_alert = ignore_exit_alert and (dis_txt == 'XU' or dis_txt == 'XD')
 
             if not ignore_alert
                 switch dis_txt
-                    'U' => alert(long_basket_txt, freq=alert.freq_once_per_bar_close)
-                    'XU' => alert(exit_long_basket_txt, freq=alert.freq_once_per_bar_close)
-                    'D' => alert(short_basket_txt, freq=alert.freq_once_per_bar_close)
-                    'XD' => alert(exit_short_basket_txt, freq=alert.freq_once_per_bar_close)
+                    'U' => alert(long_basket_txt, freq=alert.freq_all)
+                    'XU' => alert(exit_long_basket_txt, freq=alert.freq_all)
+                    'D' => alert(short_basket_txt, freq=alert.freq_all)
+                    'XD' => alert(exit_short_basket_txt, freq=alert.freq_all)
+            
 
 
 if symb_arr_size > 0 and barstate.islast and (barstate.isconfirmed)
@@ -1349,8 +1380,8 @@ if symb_arr_size > 0 and barstate.islast and (barstate.isconfirmed)
     if  not na(scr_label) and any_trade_alert
         final_msg = screener_sep + scr_label + screener_sep
         alert(final_msg, freq=alert.freq_once_per_bar_close)
-        switch alert_type
-            "basket_order" => raise_order_alerts()
+        if alert_type != 'no_order'
+            raise_order_alerts()
             
             
     recreate_alert_table(tf1)
