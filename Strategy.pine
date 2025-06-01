@@ -10,12 +10,9 @@ ci_threshold = input.int(44,title="Chop T")
 
 var ignore_exit_alert = input(true, 'Ignore Exit Alert')
 
-ordType = input('MKT', title='ordType')
-productType = input('I', title='productType')
-
 secret = input('ZLQdk',title='Secret')
 
-var alert_type = input.string('regular_order', title='Alert Type', options=['no_order','regular_order','basket_order'])
+var alert_type = input.string('regular_order', title='Alert Type', options=['no_order','regular_order','basket_order','deltaexch_order'])
 
 long_basket_id = ''
 exit_long_basket_id = ''
@@ -35,14 +32,32 @@ wh_close_short_script = input("", title= "XD")
 
 symb_bask_arr = str.split(basket_map,' ')
 
-if array.size(symb_bask_arr) > 0
-    for i=0 to array.size(symb_bask_arr) -1
-        ele_arr = str.split(array.get(symb_bask_arr,i),'|')
-        if array.get(ele_arr,0) == basket_id
-            long_basket_id := array.get(ele_arr,1)
-            exit_long_basket_id := array.get(ele_arr,2)
-            short_basket_id := array.get(ele_arr,3)
-            exit_short_basket_id := array.get(ele_arr,4)
+
+ticker_id = ''
+qty = ''
+
+if alert_type == 'basket_order'
+    if array.size(symb_bask_arr) > 0
+        for i=0 to array.size(symb_bask_arr) -1
+            ele_arr = str.split(array.get(symb_bask_arr,i),'|')
+            if array.size(ele_arr) < 5
+                break
+            else if array.get(ele_arr,0) == basket_id
+                long_basket_id := array.get(ele_arr,1)
+                exit_long_basket_id := array.get(ele_arr,2)
+                short_basket_id := array.get(ele_arr,3)
+                exit_short_basket_id := array.get(ele_arr,4)
+                break
+else if alert_type == 'deltaexch_order'
+    if array.size(symb_bask_arr) > 0
+        for i=0 to array.size(symb_bask_arr) -1
+            ele_arr = str.split(array.get(symb_bask_arr,i),'|')
+            if array.size(ele_arr) < 3
+                break
+            else if array.get(ele_arr,0) == basket_id
+                ticker_id := array.get(ele_arr,1)
+                qty := array.get(ele_arr,2)
+                break
 
 source = close
 
@@ -61,17 +76,17 @@ len1 = input(8, title='MA_1')
 len2 =  input(21, title='MA_2')
 len3 =  input(55, title='MA_3')
 len4= input(233,title='MA_4')
-rsilen=input(8,title='RSI Len')
+rsilen=input(13,title='RSI Len')
 rsiMAlen = input(21,title='RSI MA Len')
 
-lineup_check = input.int(3, title='Lineup Check', options=[1,2,3,4])
+lineup_check = input.int(2, title='Lineup Check', options=[1,2,3,4])
 ma_filter = input.int(4, title='MA Filter', options=[1,2,3,4])
 strict_confirm_trade_check = input.int(1, title='Strict confirm trade check', options=[0,1,2,3])
 strict_psar = input(true, title='Strict PSAR')
 strict_trailing_sl = input(false, title='Strict Trailing SL ')
 strict_rsici_exit = input(true, title='Strict RSICI')
 
-last_n_days = input.float(21,'Days')
+last_n_days = input.float(60,'Days')
 
 show_only_window = input(true, title='Show trades in window')
 
@@ -84,9 +99,9 @@ window() =>  // create function "within window of time"
 long_signal_flag  = input(true, title='Long Signal')
 short_signal_flag = input(true, title='Short Signal')
 
-force_intraday_check = input(true, title='Force Intraday Check')
-comm_timing = input('0905-2330' , title="Comm Timing")
-eq_timing = input('0920-1530' , title="Eq Timing")
+force_intraday_check = input(false, title='Force Intraday Check')
+comm_timing = input('0900-2330' , title="Comm Timing")
+eq_timing = input('0900-1530' , title="Eq Timing")
 
 
 // OSc Constants
@@ -104,7 +119,7 @@ erg_filter_range = 6
 ci = 100 * math.log10(math.sum(ta.atr(1), ci_length) / (ta.highest(ci_length) - ta.lowest(ci_length))) / math.log10(ci_length)
 nonchop = ci <=  ci_threshold 
 
-comm_sym_list_str = input('CAPITALCOM:GOLD|VANTAGE:USDINR|JPYUSD|EURUSD|GBPUSD|USOIL|NATURALGAS|COPPER|', title="COMM List")
+comm_sym_list_str = input('COPPER1!|SILVER1!|GOLD1!|CRUDEOIL1!|NATURALGAS1!|', title="COMM List")
 
 is_comm_symb() =>
     str.contains(comm_sym_list_str,syminfo.ticker+'|')
@@ -132,7 +147,7 @@ check_if_exit_time() =>
 valid_entry_period =  intraday_check and (na(time(timeframe.period, entry_period_str,india_tz)) or check_if_exit_time())  ? false : true
 valid_entry_period := valid_entry_period and (not show_only_window or window()) and nonchop
 
-exit_all_pos_period = intraday_check and check_if_exit_time() ? true : false
+exit_all_pos_period = intraday_check and (na(time(timeframe.period, entry_period_str,india_tz)) or check_if_exit_time())
 
 
 
@@ -156,60 +171,6 @@ UP = 1
 DOWN = 2
 NEUTRAL = 0
 
-YELLOW = 1
-RED = 2
-ORANGE = 3
-NOSQZ = 0
-
-
-//Sqz Code variables
-
-calc_sqz() =>
-    length = 20
-    ma = ta.sma(source, length)
-    devBB = ta.stdev(source, length)
-    devKC = ta.sma(ta.tr, length)
-
-
-    //Bollinger 2x
-    upBB = ma + devBB * 2
-    lowBB = ma - devBB * 2
-
-    //Keltner 2x
-    upKCWide = ma + devKC * 2
-    lowKCWide = ma - devKC * 2
-
-    //Keltner 1.5x
-    upKCNormal = ma + devKC * 1.5
-    lowKCNormal = ma - devKC * 1.5
-
-    //Keltner 1x
-    upKCNarrow = ma + devKC
-    lowKCNarrow = ma - devKC
-
-    sqzOnWide = lowBB >= lowKCWide and upBB <= upKCWide  //WIDE SQUEEZE: ORANGE
-    sqzOnNormal = lowBB >= lowKCNormal and upBB <= upKCNormal  //NORMAL SQUEEZE: RED
-    sqzOnNarrow = lowBB >= lowKCNarrow and upBB <= upKCNarrow  //NARROW SQUEEZE: YELLOW
-    sqzOffWide = lowBB < lowKCWide and upBB > upKCWide  //FIRED WIDE SQUEEZE
-    sqzOffNormal = lowBB < lowKCNormal and upBB > upKCNormal  //FIRED NORMAL SQUEEZE
-    sqzOffNarrow = lowBB < lowKCNarrow and upBB > upKCNarrow  //FIRED NARROW SQUEEZE
-    noSqz = sqzOnWide == false and sqzOffWide == false  //NO SQUEEZE
-
-    fire_code = sqzOffNarrow and sqzOnNarrow[1] ? YELLOW : sqzOffNormal and sqzOnNormal[1] ? RED : sqzOffWide and sqzOnWide[1] ? ORANGE : NOSQZ
-
-
-    sqzcolornum = noSqz ? NOSQZ : sqzOnNarrow ? YELLOW : sqzOnNormal ? RED : sqzOnWide ? ORANGE : NOSQZ
-
-
-    [sqzcolornum, fire_code]
-
-
-//------ End of Sqz Code--------
-
-decodeSqzColorCode(st) =>
-    col = st == YELLOW ? color.yellow : st == RED ? color.red : st == ORANGE ? color.orange : color.gray
-    txt = st == YELLOW ? 'Yellow' : st == RED ? 'Red' : st == ORANGE ? 'Orange' : 'Nosqz'
-    [txt, col]
 
 decodeMovementCode(st) =>
     col = st == UP ? color.aqua : st == DOWN ? color.red : color.gray
@@ -269,13 +230,13 @@ STRAT_ENTER_SHORT = 4
 STRAT_EXIT_LONG = 5
 STRAT_EXIT_SHORT = 6
 
-exitlong_col = color.new(color.yellow, transp=0)
-exitshort_col = color.new(color.blue, transp=0)
-enterlong_col = color.new(color.lime, transp=0)
-entershort_col = color.new(color.red, transp=0)
-longpos_col = color.new(color.aqua, transp=60)
-shortpos_col = color.new(color.orange, transp=60)
-neutral_col = color.new(color.gray, transp=60)
+exitlong_col = color.new(color.yellow, transp=70)
+exitshort_col = color.new(color.blue, transp=70)
+enterlong_col = color.new(color.lime, transp=70)
+entershort_col = color.new(color.red, transp=70)
+longpos_col = color.new(color.aqua, transp=80)
+shortpos_col = color.new(color.orange, transp=80)
+neutral_col = color.new(na,transp=100)
 
 decodeStratCode(adx_code) =>
     adx_col = neutral_col
@@ -290,109 +251,6 @@ decodeStratCode(adx_code) =>
     adx_txt = adx_code == STRAT_EXIT_LONG ? 'ExUp' : adx_code == STRAT_EXIT_SHORT ? 'ExDn' : adx_code == STRAT_ENTER_LONG ? 'EnUp' : adx_code == STRAT_ENTER_SHORT ? 'EnDn' : adx_code == STRAT_LONG ? 'Up' : adx_code == STRAT_SHORT ? 'Dn' : 'Na'
 
     [adx_txt, adx_col]
-
-
-
-
-
-
-    
-_inRange(cond) =>
-    rangeUpper = 60
-    rangeLower = 5
-    bars = ta.barssince(cond == true)
-    rangeLower <= bars and bars <= rangeUpper
-
-calc_divergence() =>
-    lbR = 5
-    lbL = 5
-    
-    plFound = na(ta.pivotlow(rsi, lbL, lbR)) ? false : true
-    phFound = na(ta.pivothigh(rsi, lbL, lbR)) ? false : true
-    
-
-    //------------------------------------------------------------------------------
-    // Regular Bullish
-    // rsi: Higher Low
-    
-    rsiHL = rsi[lbR] > ta.valuewhen(plFound, rsi[lbR], 1) and _inRange(plFound[1])
-    
-    // Price: Lower Low
-    
-    priceLL = low[lbR] < ta.valuewhen(plFound, low[lbR], 1)
-    bullCond =  priceLL and rsiHL and plFound
-    
-   
-    //------------------------------------------------------------------------------
-    // Regular Bearish
-    // rsi: Lower High
-    
-    rsiLH = rsi[lbR] < ta.valuewhen(phFound, rsi[lbR], 1) and _inRange(phFound[1])
-    
-    // Price: Higher High
-    
-    priceHH = high[lbR] > ta.valuewhen(phFound, high[lbR], 1)
-    
-    bearCond = priceHH and rsiLH and phFound
-    
-   
-   // END
-    
-    
-    current_trend = NEUTRAL
-    active_position = false
-    longpos = false
-    shortpos = false
-    
-    
-    current_trend := bullCond ? UP : bearCond ? DOWN : current_trend[1]
-    
-    
-    diPositive = current_trend == UP
-    diNegative = current_trend == DOWN
-    
-    
-    buyCond = diPositive
-    sellCond = diNegative
-    
-    
-    validlongentry = rsi_bull_mom and buyCond
-    validshortentry = rsi_bear_mom and sellCond
-    
-    
-    // di_crossover = (diNegative[1] and diPositive) or (diNegative and diPositive[1])
-    
-    
-    di_crossover = (diNegative[1] and diPositive) or (diNegative and diPositive[1])
-    
-    validtrend = buyCond or sellCond
-    
-    closetrend = (shortpos[1] and rsi_bull_mom) or ( longpos[1] and rsi_bear_mom )
-    
-    
-    noTradeZone = not validtrend or di_crossover or closetrend
-    
-    current_trend := closetrend ? NEUTRAL : current_trend
-    
-    active_position := (validlongentry or validshortentry) and not active_position[1] ? true : noTradeZone ? false : active_position[1]
-    
-    
-    enterLong = validlongentry and not active_position[1]
-    enterShort = validshortentry and not active_position[1]
-    
-    
-    longpos := buyCond and active_position
-    shortpos := sellCond and active_position
-    
-    
-    exitLong = noTradeZone and longpos[1]
-    exitShort = noTradeZone and shortpos[1]
-
-
-    div_status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT : enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT : longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
-
-    div_status_code
-
 
 
 
@@ -454,8 +312,6 @@ calc_RSICI() =>
     status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT : enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT : longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
 
     status_code
-
-
 
 
 
@@ -700,17 +556,13 @@ get_trend_num(trend_code) =>
 
 get_all_status_codes() =>
     
-    
-    
-    [sqzcolornum, fire_code] = calc_sqz()
-
     adx_status_code = calc_ADX()
 
     erg_status_code = calc_SMI_Erg()
 
     psar_status_code = calc_psar()
 
-    [fire_code, adx_status_code, erg_status_code, psar_status_code]
+    [adx_status_code, erg_status_code, psar_status_code]
 
 
 
@@ -771,7 +623,7 @@ calc_trailingsl() =>
 
 rsici_code = calc_RSICI()
 
-[fire_code, adx_code, erg_code, psar_code] = get_all_status_codes()
+[adx_code, erg_code, psar_code] = get_all_status_codes()
 
 [trailing_code, trailing_sl] = calc_trailingsl()
 
@@ -806,8 +658,8 @@ trailing_long = trailing_code == STRAT_LONG or trailing_code == STRAT_ENTER_LONG
 trailing_short = trailing_code == STRAT_SHORT or trailing_code == STRAT_ENTER_SHORT
 
 
-validlongentry = summ_trend_code == STRAT_ENTER_LONG and checkEMA(true,false) and valid_entry_period 
-validshortentry = summ_trend_code == STRAT_ENTER_SHORT and checkEMA(false,false) and valid_entry_period
+validlongentry = buyCond and summ_trend_code == STRAT_ENTER_LONG and checkEMA(true,false) and valid_entry_period 
+validshortentry = sellCond and summ_trend_code == STRAT_ENTER_SHORT and checkEMA(false,false) and valid_entry_period
 
 
 enterLong = validlongentry and not curr_active_pos and long_signal_flag
@@ -835,108 +687,7 @@ curr_active_pos := exitLong or exitShort ? false : curr_active_pos
 final_summary_status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT : enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT : longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
 
 
-[fire_sqz_txt, fcolor] = decodeSqzColorCode(fire_code)
-
-openpos = shortpos or longpos
-firedown = fire_code != NOSQZ and openpos and out1_trend == DOWN
-fireup = fire_code != NOSQZ and openpos and out1_trend == UP
-
-
-//FIRED SIGNALS
-plotshape(firedown, title='Fired Long', style=shape.triangledown, location=location.abovebar, color=color.new(color.white, 0), size=size.small)
-plotshape(firedown, title='Fired Short circle', style=shape.circle, location=location.abovebar, color=fcolor, size=size.tiny)
-
-plotshape(fireup, title='Fired Long', style=shape.triangleup, location=location.belowbar, color=color.new(color.white, 0), size=size.small)
-plotshape(fireup, title='Fired Long circle', style=shape.circle, location=location.belowbar, color=fcolor, size=size.tiny)
-
-
-
-// TMA Code
-
-bull_mom =  rsi_bull_mom //or out1_trend == UP or longpos or out1 >= out2   //and openpos
-bear_mom =  rsi_bear_mom //or out1_trend == DOWN or shortpos or out1 <= out2  //and openpos
-
-// ### 3 Line Strike
-
-bearSig3 = close[3] > open[3] and close[2] >= open[2] and close[1] > open[1] and close < open[1] 
-bullSig3 = close[3] < open[3] and close[2] <= open[2] and close[1] < open[1] and close > open[1]
-
-
-// ### 2 Line Strike
-
-bearSig2 = close[2] >= open[2] and close[1] > open[1] and close < open[1] 
-bullSig2 = close[2] <= open[2] and close[1] < open[1] and close > open[1]
-
-
-// End ###
-
-//### Engulfing Candles
-
-
-openBarPrevious = open[1]
-closeBarPrevious = close[1]
-openBarCurrent = open
-closeBarCurrent = close
-
-
-bullishEngulfing = closeBarCurrent > openBarCurrent and (low <= closeBarPrevious or openBarCurrent <= closeBarPrevious) and openBarCurrent < openBarPrevious and closeBarCurrent > openBarPrevious
-bearishEngulfing = closeBarCurrent < openBarCurrent and (high >= closeBarPrevious or openBarCurrent >= closeBarPrevious) and openBarCurrent > openBarPrevious and closeBarCurrent < openBarPrevious
-
-
-triple_bull_sig = bull_mom and bullishEngulfing and bullSig3
-triple_bear_sig = bear_mom and bearishEngulfing and bearSig3
-
-double_bull_sig = bull_mom and bullishEngulfing and bullSig2 and not triple_bull_sig
-double_bear_sig = bear_mom and bearishEngulfing and bearSig2 and not triple_bear_sig
-
-only_triple_bull = bull_mom and bullSig3 and not triple_bull_sig
-only_triple_bear = bear_mom and bearSig3 and not triple_bear_sig
-
-plotshape(only_triple_bull, style=shape.triangleup, color=color.new(color.green, 0), location=location.belowbar, size=size.small)
-plotshape(only_triple_bear, style=shape.triangledown, color=color.new(color.red, 0), location=location.abovebar, size=size.small)
-
-
-plotshape(double_bull_sig, style=shape.triangleup, location=location.belowbar, color=color.new(color.green, 0), size=size.tiny)
-plotshape(double_bear_sig, style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.tiny)
-plotshape(double_bull_sig, style=shape.triangleup, color=color.new(color.green, 0), location=location.belowbar, size=size.small)
-plotshape(double_bear_sig, style=shape.triangledown, color=color.new(color.red, 0), location=location.abovebar, size=size.small)
-
-
-plotshape(triple_bull_sig, style=shape.diamond, location=location.belowbar, color=color.new(color.green, 0), size=size.small)
-plotshape(triple_bear_sig, style=shape.diamond, location=location.abovebar, color=color.new(color.red, 0), size=size.small)
-
-
-plotshape(rsi_bull_cross, style=shape.labelup, location=location.belowbar, color=exitshort_col, size=size.small)
-plotshape(rsi_bear_cross, style=shape.labeldown, location=location.abovebar, color=exitlong_col, size=size.small)
-
-
-div_st_code = calc_divergence()
-
-[div_txt, div_col] = decodeStratCode(div_st_code)
-
-plotshape(div_st_code == STRAT_ENTER_LONG, style=shape.labelup, text='D',location=location.belowbar, color=div_col, size=size.tiny)
-plotshape(div_st_code == STRAT_ENTER_SHORT, style=shape.labeldown,text='D', location=location.abovebar, color=div_col, size=size.tiny)
-
-
-// trailing SL
-
-[ trail_txt, trail_col] = decodeStratCode(trailing_code)
-
-plotshape(trailing_code == STRAT_ENTER_LONG, style=shape.labelup, text='T',location=location.belowbar, color=trail_col, size=size.tiny)
-plotshape(trailing_code == STRAT_ENTER_SHORT, style=shape.labeldown,text='T', location=location.abovebar, color=trail_col, size=size.tiny)
-
-
-
 //----- Strategy
-
-
-// last_n_days = input(60,'Last n Days')
-// MILLISECONDS_IN_DAY = 24 * 60 * 60 * 1000
-// start = timenow - MILLISECONDS_IN_DAY * last_n_days
-// finish =  timestamp(2030, 01, 01, 00, 00) 
-// window() =>  // create function "within window of time"
-//     time >= start and time <= finish ? true : false
-
 
 calc_trigger_entry(f_st) =>
     
@@ -1049,7 +800,7 @@ fin_status_code = strict_confirm_trade_check !=0 ? trigg_status_code : final_sum
 
 [fin_txt, fin_status_col] = decodeStratCode(fin_status_code)
 
-bgcolor(color.new(fin_status_col, transp=80))
+bgcolor(fin_status_col)
 
 
 final_long_pos = (fin_status_code == STRAT_LONG or fin_status_code == STRAT_ENTER_LONG or fin_status_code == STRAT_EXIT_LONG )
@@ -1075,26 +826,33 @@ final_exitShort = fin_status_code == STRAT_EXIT_SHORT
 
 
 sep = ' : '
-
 quant = 1 
-
-price = ordType == 'MKT' ? '0' : str.tostring(source)
-
-
-long_txt = wh_long_script
-close_long_txt = wh_close_long_script
-short_txt = wh_short_script
-close_short_txt = wh_close_short_script
-
 
 
 comm_bask_txt = "\"secret\":\"{0}\",\"alertType\":\"basket\",\"basket_id\":\"{1}\""
+comm_delta_txt = "\"symbol\":\"{0}\",\"side\":\"{1}\",\"qty\":\"{2}\",\"trigger_time\":\"{3}\",\"strategy_id\":\"{4}\""
 
-long_basket_txt = "\{" + str.format(comm_bask_txt,secret,long_basket_id) + "\}"
-exit_long_basket_txt = "\{" + str.format(comm_bask_txt,secret,exit_long_basket_id) + "\}"
 
-short_basket_txt = "\{" + str.format(comm_bask_txt,secret,short_basket_id) + "\}"
-exit_short_basket_txt = "\{" + str.format(comm_bask_txt,secret,exit_short_basket_id) + "\}"
+long_basket_txt = ''
+exit_long_basket_txt = ''
+short_basket_txt = ''
+exit_short_basket_txt = ''
+
+if alert_type == 'basket_order'
+    long_basket_txt := "\{" + str.format(comm_bask_txt,secret,long_basket_id) + "\}"
+    exit_long_basket_txt := "\{" + str.format(comm_bask_txt,secret,exit_long_basket_id) + "\}"
+    short_basket_txt := "\{" + str.format(comm_bask_txt,secret,short_basket_id) + "\}"
+    exit_short_basket_txt := "\{" + str.format(comm_bask_txt,secret,exit_short_basket_id) + "\}"
+else if alert_type == 'deltaexch_order'
+    long_basket_txt := "\{" + str.format(comm_delta_txt,ticker_id,'buy',qty,str.format_time(timenow),secret) + "\}"
+    exit_long_basket_txt := "\{" + str.format(comm_delta_txt,ticker_id,'sell',qty,str.format_time(timenow),secret) + "\}"
+    short_basket_txt := "\{" + str.format(comm_delta_txt,ticker_id,'sell',qty,str.format_time(timenow),secret) + "\}"
+    exit_short_basket_txt := "\{" + str.format(comm_delta_txt,ticker_id,'buy',qty,str.format_time(timenow),secret) + "\}"
+else if alert_type == 'regular_order'
+    long_basket_txt := wh_long_script
+    exit_long_basket_txt := wh_close_long_script
+    short_basket_txt := wh_short_script
+    exit_short_basket_txt := wh_close_short_script
 
 
 raise_wh_alert(wh_txt,ord_type) =>
@@ -1107,42 +865,38 @@ raise_wh_alert(wh_txt,ord_type) =>
 
 
 
+
 if final_enterLong
     strategy.entry('long', strategy.long,qty=quant)
-    switch alert_type
-        "basket_order" => raise_wh_alert(long_basket_txt,'U')
-        "regular_order" => raise_wh_alert(long_txt,'U')
-    
-
+    if alert_type != 'no_order'
+        raise_wh_alert(long_basket_txt,'U')
 
 if final_exitLong
     strategy.cancel_all()
 
 if final_exitLong
     strategy.close('long')
- 
-    switch alert_type
-        "basket_order" => raise_wh_alert(exit_long_basket_txt,'XU')
-        "regular_order" => raise_wh_alert(close_long_txt,'XU')
-    
+
+    if alert_type != 'no_order'
+        raise_wh_alert(exit_long_basket_txt,'XU')
+
 
 if final_enterShort
     strategy.entry('short', strategy.short,qty=quant)
     
-    switch alert_type
-        "basket_order" => raise_wh_alert(short_basket_txt,'D')
-        "regular_order" => raise_wh_alert(short_txt,'D')
-    
+    if alert_type != 'no_order'
+        raise_wh_alert(short_basket_txt,'D')
+
+
 if final_exitShort
     strategy.cancel_all()
     
 if final_exitShort
     strategy.close('short')
 
-    switch alert_type
-        "basket_order" => raise_wh_alert(exit_short_basket_txt,'XD')
-        "regular_order" => raise_wh_alert(close_short_txt,'XD')
-    
+    if alert_type != 'no_order'
+        raise_wh_alert(exit_short_basket_txt,'XD')
+
 
 if not window()
     strategy.cancel_all()
