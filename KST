@@ -1,0 +1,18 @@
+//@version=6
+indicator(title="Know Sure Thing By Harshad", shorttitle="KSTH", format=format.price, precision=4, timeframe="", timeframe_gaps=true)
+roclen1 = input.int(8, minval=1, title = "ROC Length #1")
+roclen2 = input.int(13, minval=1, title = "ROC Length #2")
+roclen3 = input.int(21, minval=1, title = "ROC Length #3")
+roclen4 = input.int(34, minval=1, title = "ROC Length #4")
+smalen1 = input.int(8, minval=1, title = "SMA Length #1")
+smalen2 = input.int(8, minval=1, title = "SMA Length #2")
+smalen3 = input.int(8, minval=1, title = "SMA Length #3")
+smalen4 = input.int(13, minval=1, title = "SMA Length #4")
+siglen = input.int(13, minval=1, title = "Signal Line Length")
+smaroc(roclen, smalen) => ta.rma(ta.roc(close, roclen), smalen)
+kst = smaroc(roclen1, smalen1) + 2 * smaroc(roclen2, smalen2) + 3 * smaroc(roclen3, smalen3) + 4 * smaroc(roclen4, smalen4)
+sig = ta.rma(kst, siglen)
+
+plot(kst, color=color.new(color.aqua, 0), title="KST")
+plot(sig, color=color.new(color.red, 0), title="Signal")
+hline(0, title="Zero", color = color.new(color.gray, 0))
