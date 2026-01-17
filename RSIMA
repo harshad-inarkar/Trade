@@ -1,0 +1,119 @@
+//@version=6
+indicator(title = 'RSI MA Strat', shorttitle = 'RSIMA', format = format.price)
+len = input(title = 'RSI len', defval = 8)
+smmaLen = input(title = 'RSI MA Len', defval = 21)
+
+
+src = close
+
+rsi = ta.rsi(src, len)
+rsiMA = ta.rma(rsi, smmaLen)
+
+
+// End ###
+
+//plot(rsi, title = 'RSI', linewidth = 2, color = color.silver)
+
+hl = input(63)
+ml = input(50)
+ll = input(36)
+
+hline(hl, title = 'Middle Line', linewidth = 2, linestyle = hline.style_dotted, color = color.yellow)
+hline(ml, title = 'Middle Line', linewidth = 2, linestyle = hline.style_dotted, color = color.red)
+hline(ll, title = 'Middle Line', linewidth = 2, linestyle = hline.style_dotted, color = color.blue)
+
+plot(rsiMA, linewidth = 2, color = color.aqua)
+
+
+
+// END ###
+
+STRAT_NEUTRAL = 0
+STRAT_LONG = 1
+STRAT_SHORT = 2
+STRAT_ENTER_LONG = 3
+STRAT_ENTER_SHORT = 4
+STRAT_EXIT_LONG = 5
+STRAT_EXIT_SHORT = 6
+
+
+decodeStratCode(adx_code) =>
+    adx_col = adx_code == STRAT_EXIT_LONG ? color.new(color.yellow, transp = 80) : adx_code == STRAT_EXIT_SHORT ? color.new(color.blue, transp = 80) : adx_code == STRAT_ENTER_LONG ? color.new(color.lime, transp = 80) : adx_code == STRAT_ENTER_SHORT ? color.new(color.red, transp = 80) : adx_code == STRAT_LONG ? color.new(color.aqua, transp = 80) : adx_code == STRAT_SHORT ? color.new(color.orange, transp = 80) : na
+
+
+    adx_txt = adx_code == STRAT_EXIT_LONG ? 'ExUp' : adx_code == STRAT_EXIT_SHORT ? 'ExDn' : adx_code == STRAT_ENTER_LONG ? 'EnUp' : adx_code == STRAT_ENTER_SHORT ? 'EnDn' : adx_code == STRAT_LONG ? 'Up' : adx_code == STRAT_SHORT ? 'Dn' : 'Na'
+
+    [adx_txt, adx_col]
+
+
+
+UP = 1
+DOWN = -1
+NEUTRAL = 0
+
+get_osc_trend(osc) =>
+    osc[2] < osc[1] and osc[1] < osc ? UP : osc < osc[1] and osc[1 ] < osc[2] ? DOWN : NEUTRAL
+
+
+rsi_trend = get_osc_trend(rsiMA)
+
+
+rsi_bull_mom =  (ta.crossover(rsiMA, ml)  or ta.crossover(rsiMA[1], ml) ) and rsiMA >= ml // and rsi_trend == UP 
+rsi_bear_mom =  (ta.crossunder(rsiMA, ml) or ta.crossunder(rsiMA[1], ml) ) and rsiMA < ml  //and rsi_trend == DOWN 
+
+
+current_trend = NEUTRAL
+active_position = false
+longpos = false
+shortpos = false
+
+
+buyCond = rsiMA >= ml 
+sellCond = rsiMA < ml
+
+
+current_trend := buyCond ? UP : sellCond ? DOWN : current_trend[1]
+
+
+diPositive = current_trend == UP
+diNegative = current_trend == DOWN
+
+
+validlongentry = rsi_bull_mom 
+validshortentry = rsi_bear_mom 
+
+
+exit_overbought = ta.crossunder(rsiMA, hl)
+exit_oversold  = ta.crossover(rsiMA, ll)
+
+di_crossover = diNegative[1] and diPositive or diNegative and diPositive[1]
+
+validtrend = buyCond or sellCond
+
+closetrend = shortpos[1] and (rsi_bull_mom or exit_oversold) or longpos[1] and (rsi_bear_mom or exit_overbought)
+
+
+noTradeZone = not validtrend or di_crossover or closetrend or exit_overbought or exit_oversold
+
+current_trend := closetrend ? NEUTRAL : current_trend
+
+active_position := (validlongentry or validshortentry) and not active_position[1] ? true : noTradeZone ? false : active_position[1]
+
+
+enterLong = validlongentry and not active_position[1]
+enterShort = validshortentry and not active_position[1]
+
+
+longpos := buyCond and active_position
+shortpos := sellCond and active_position
+
+
+exitLong = noTradeZone and longpos[1]
+exitShort = noTradeZone and shortpos[1]
+
+
+status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT : enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT : longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+[txt, col] = decodeStratCode(status_code)
+
+
+bgcolor(col)
