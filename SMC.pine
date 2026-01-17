@@ -3,6 +3,20 @@ indicator('SMCH', overlay = true, max_labels_count = 500, max_lines_count = 500,
 //---------------------------------------------------------------------------------------------------------------------}
 //CONSTANTS & STRINGS & INPUTS
 //---------------------------------------------------------------------------------------------------------------------{
+
+len1 = input(8, title = 'MA_1')
+len2 = input(21, title = 'MA_2')
+source = close
+plotma = input(false, title = 'Plot MAs')
+
+out1 = ta.rma(source, len1)
+out2 = ta.rma(source, len2)
+
+plot(plotma? out1: na, title = 'RMA - 1', color = color.new(color.silver, transp = 0), linewidth = 2)
+plot(plotma? out2: na, title = 'RMA - 2', color = color.new(color.aqua, transp = 0), linewidth = 2)
+
+
+
 BULLISH_LEG = 1
 BEARISH_LEG = 0
 
