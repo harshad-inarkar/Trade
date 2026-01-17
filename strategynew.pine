@@ -1,0 +1,823 @@
+//@version=6
+strategy(title = 'StrategyNew', shorttitle = 'StrategyNew', overlay = true, pyramiding = 1, calc_on_every_tick = false, initial_capital = 100000000, default_qty_type = strategy.percent_of_equity, default_qty_value = 1,process_orders_on_close = true)
+
+
+india_tz = 'Asia/Kolkata'
+
+
+var ignore_exit_alert = input(true, 'Ignore Exit Alert')
+
+secret = input('ZLQdk', title = 'Secret')
+
+var alert_type = input.string('regular_order', title = 'Alert Type', options = ['no_order', 'regular_order', 'basket_order', 'deltaexch_order'])
+
+long_basket_id = ''
+exit_long_basket_id = ''
+short_basket_id = ''
+exit_short_basket_id = ''
+
+basket_map = input('', title = 'Basket Map')
+
+basket_id = input('', title = 'Basket id')
+
+wh_long_script = input('', title = 'U')
+wh_short_script = input('', title = 'D')
+
+wh_close_long_script = input('', title = 'XU')
+wh_close_short_script = input('', title = 'XD')
+
+
+symb_bask_arr = str.split(basket_map, ' ')
+
+
+ticker_id = ''
+qty = ''
+
+if alert_type == 'basket_order'
+    if array.size(symb_bask_arr) > 0
+        for i = 0 to array.size(symb_bask_arr) - 1 by 1
+            ele_arr = str.split(array.get(symb_bask_arr, i), '|')
+            if array.size(ele_arr) < 5
+                break
+            else if array.get(ele_arr, 0) == basket_id
+                long_basket_id := array.get(ele_arr, 1)
+                exit_long_basket_id := array.get(ele_arr, 2)
+                short_basket_id := array.get(ele_arr, 3)
+                exit_short_basket_id := array.get(ele_arr, 4)
+                break
+else if alert_type == 'deltaexch_order'
+    if array.size(symb_bask_arr) > 0
+        for i = 0 to array.size(symb_bask_arr) - 1 by 1
+            ele_arr = str.split(array.get(symb_bask_arr, i), '|')
+            if array.size(ele_arr) < 3
+                break
+            else if array.get(ele_arr, 0) == basket_id
+                ticker_id := array.get(ele_arr, 1)
+                qty := array.get(ele_arr, 2)
+                break
+
+source = close
+
+
+atr_length = input(5, title = 'ATR Length')
+atr_mult = input.float(1, title = 'ATR Mult')
+lookback = input.int(5, title = 'lookback')
+entry_perc = input.float(0.02, title = 'Entry Perc')
+atr = ta.atr(atr_length)
+
+
+
+len1 = input(8, title = 'MA_1')
+len2 = input(21, title = 'MA_2')
+len3 = input(55, title = 'MA_3')
+len4 = input(233, title = 'MA_4')
+rsilen = input(8, title = 'RSI Len')
+rsiMAlen = input(21, title = 'RSI MA Len')
+hl = input(63)
+ml = input(50)
+ll = input(36)
+
+lineup_check = input.int(2, title = 'Lineup Check', options = [1, 2, 3, 4])
+ma_filter = input.int(2, title = 'MA Filter', options = [1, 2, 3, 4])
+strict_confirm_trade_check = input.int(1, title = 'Strict confirm trade check', options = [0, 1, 2, 3])
+
+last_n_days = input.float(60, 'Days')
+
+show_only_window = input(true, title = 'Show trades in window')
+
+MILLISECONDS_IN_DAY = 24 * 60 * 60 * 1000
+start = timenow - MILLISECONDS_IN_DAY * last_n_days
+window() => // create function "within window of time"
+    time >= start
+
+
+long_signal_flag = input(true, title = 'Long Signal')
+short_signal_flag = input(true, title = 'Short Signal')
+
+force_intraday_check = input(false, title = 'Force Intraday Check')
+comm_timing = input('0900-2330', title = 'Comm Timing')
+eq_timing = input('0900-1530', title = 'Eq Timing')
+
+
+// OSc Constants
+rad2degree = 180 / 3.14159265359
+lookback_period = 1
+smoothing = 3
+
+
+RANGE_BACK_BARS = 20
+osc_filter_range = 5.2
+adx_filter_range = 8.8
+erg_filter_range = 6
+
+
+
+comm_sym_list_str = input('COPPER1!|SILVER1!|GOLD1!|CRUDEOIL1!|NATURALGAS1!|', title = 'COMM List')
+
+is_comm_symb() =>
+    str.contains(comm_sym_list_str, syminfo.ticker + '|')
+
+intraday_check = force_intraday_check and (timeframe.isminutes and timeframe.multiplier < 15 or timeframe.isseconds) and (is_comm_symb() or syminfo.timezone == india_tz)
+
+
+get_entry_period_str(is_comm_symb) =>
+    is_comm_symb ? comm_timing : eq_timing
+
+
+get_timeframe_minutes_int() =>
+    num_back_bars = 1
+    timeframe.isminutes ? timeframe.multiplier * num_back_bars * 60 * 1000 : timeframe.isseconds ? timeframe.multiplier * num_back_bars * 1000 : 0
+
+
+entry_period_str = get_entry_period_str(is_comm_symb())
+
+check_if_exit_time() =>
+    time_close >= time_close('D', entry_period_str, india_tz) - get_timeframe_minutes_int()
+
+
+valid_entry_period = intraday_check and (na(time(timeframe.period, entry_period_str, india_tz)) or check_if_exit_time()) ? false : true
+valid_entry_period := valid_entry_period and (not show_only_window or window()) 
+
+exit_all_pos_period = intraday_check and (na(time(timeframe.period, entry_period_str, india_tz)) or check_if_exit_time())
+
+
+
+// ---------- EMAs --------------
+
+out1 = ta.rma(source, len1)
+out2 = ta.rma(source, len2)
+out3 = ta.rma(source, len3)
+out4 = ta.rma(source, len4)
+
+
+
+// OSc Code Consts
+
+UP = 1
+DOWN = 2
+NEUTRAL = 0
+
+
+decodeMovementCode(st) =>
+    col = st == UP ? color.aqua : st == DOWN ? color.red : color.gray
+    txt = st == UP ? 'Up' : st == DOWN ? 'Down' : 'Neutral'
+    [txt, col]
+
+
+angle(_src, osc_avg_tr) =>
+    ang = rad2degree * math.atan((_src - nz(_src[lookback_period])) / (lookback_period * osc_avg_tr))
+    ang
+
+
+get_osc_trend_params(osc, osc_filter) =>
+    osc_max = ta.highest(osc, RANGE_BACK_BARS)
+    osc_min = ta.lowest(osc, RANGE_BACK_BARS)
+
+    osc_avg_tr = osc_max - osc_min
+
+    osc_ft = osc_filter
+    osc_fb = -osc_ft
+
+    osc_slope = ta.linreg(angle(osc, osc_avg_tr), smoothing, 0)
+    trend = osc_slope >= osc_ft or osc >= osc_max ? UP : osc_slope <= osc_fb or osc <= osc_min ? DOWN : NEUTRAL
+    trend
+
+
+
+get_osc_trend(osc) =>
+    get_osc_trend_params(osc, osc_filter_range)
+
+
+// Calc EMAs Trend
+
+out1_trend = get_osc_trend(out1)
+out2_trend = get_osc_trend(out2)
+out3_trend = get_osc_trend(out3)
+
+
+
+// ADX Code
+
+STRAT_NEUTRAL = 0
+STRAT_LONG = 1
+STRAT_SHORT = 2
+STRAT_ENTER_LONG = 3
+STRAT_ENTER_SHORT = 4
+STRAT_EXIT_LONG = 5
+STRAT_EXIT_SHORT = 6
+
+exitlong_col = color.new(color.yellow, transp = 70)
+exitshort_col = color.new(color.blue, transp = 70)
+enterlong_col = color.new(color.lime, transp = 70)
+entershort_col = color.new(color.red, transp = 70)
+longpos_col = color.new(color.aqua, transp = 80)
+shortpos_col = color.new(color.orange, transp = 80)
+neutral_col = color(na) 
+
+decodeStratCode(adx_code) =>
+    adx_col = neutral_col
+    adx_col := adx_code == STRAT_EXIT_LONG ? exitlong_col : adx_code == STRAT_EXIT_SHORT ? exitshort_col : adx_code == STRAT_ENTER_LONG ? enterlong_col : adx_code == STRAT_ENTER_SHORT ? entershort_col : adx_code == STRAT_LONG ? longpos_col : adx_code == STRAT_SHORT ? shortpos_col : neutral_col
+
+
+    adx_txt = adx_code == STRAT_EXIT_LONG ? 'ExUp' : adx_code == STRAT_EXIT_SHORT ? 'ExDn' : adx_code == STRAT_ENTER_LONG ? 'EnUp' : adx_code == STRAT_ENTER_SHORT ? 'EnDn' : adx_code == STRAT_LONG ? 'Up' : adx_code == STRAT_SHORT ? 'Dn' : 'Na'
+
+    [adx_txt, adx_col]
+
+
+
+calc_RSI() =>
+
+    rsi = ta.rsi(source, rsilen)
+    rsiMA = ta.rma(rsi, rsiMAlen)
+    rsi_trend = get_osc_trend(rsiMA)
+
+    //rsi_bull_mom = rsiMA >= ml  and rsi_trend == UP 
+    //rsi_bear_mom = rsiMA < ml  and rsi_trend == DOWN 
+
+
+    rsi_bull_mom =  (ta.crossover(rsiMA, ml)  or ta.crossover(rsiMA[1], ml) ) //and rsiMA >= ml  and rsi_trend == UP 
+    rsi_bear_mom =  (ta.crossunder(rsiMA, ml) or ta.crossunder(rsiMA[1], ml) ) //and rsiMA < ml  and rsi_trend == DOWN 
+
+    current_trend = NEUTRAL
+    active_position = false
+    longpos = false
+    shortpos = false
+
+
+    buyCond = rsiMA >= ml 
+    sellCond = rsiMA < ml
+
+
+    current_trend := buyCond ? UP : sellCond ? DOWN : current_trend[1]
+
+
+    diPositive = current_trend == UP
+    diNegative = current_trend == DOWN
+
+
+    validlongentry = rsi_bull_mom 
+    validshortentry = rsi_bear_mom 
+
+
+    exit_overbought = ta.crossunder(rsiMA, hl)
+    exit_oversold  = ta.crossover(rsiMA, ll)
+
+    di_crossover = diNegative[1] and diPositive or diNegative and diPositive[1]
+
+    validtrend = buyCond or sellCond
+
+    closetrend = shortpos[1] and (rsi_bull_mom or exit_oversold) or longpos[1] and (rsi_bear_mom or exit_overbought)
+
+
+    noTradeZone = not validtrend or di_crossover or closetrend or exit_overbought or exit_oversold
+
+    current_trend := closetrend ? NEUTRAL : current_trend
+
+    active_position := (validlongentry or validshortentry) and not active_position[1] ? true : noTradeZone ? false : active_position[1]
+
+
+    enterLong = validlongentry and not active_position[1]
+    enterShort = validshortentry and not active_position[1]
+
+
+    longpos := buyCond and active_position
+    shortpos := sellCond and active_position
+
+
+    exitLong = noTradeZone and longpos[1]
+    exitShort = noTradeZone and shortpos[1]
+
+
+    status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT : enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT : longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+
+    status_code
+
+
+checkEMA(isLong, isPriceEMA) =>
+
+    valid = false
+
+    extra_ma_long_filter = switch ma_filter
+        4 => source >= out4
+        3 => source >= out3
+        2 => source >= out2
+        1 => source >= out1
+
+    extra_ma_short_filter = switch ma_filter
+        4 => source <= out4
+        3 => source <= out3
+        2 => source <= out2
+        1 => source <= out1
+
+
+    extra_long_check = out1_trend == UP and extra_ma_long_filter
+    extra_short_check = out1_trend == DOWN and extra_ma_short_filter
+
+    if lineup_check >= 2
+        extra_long_check := extra_long_check and out2_trend == UP and out1 >= out2
+        extra_short_check := extra_short_check and out2_trend == DOWN and out1 <= out2
+        extra_short_check
+
+    if lineup_check >= 3
+        strict_long_ma_check = source >= out3 and out1 >= out2 and out2 >= out3
+        strict_short_ma_check = source <= out3 and out1 <= out2 and out2 <= out3
+
+        if lineup_check == 4
+            strict_long_ma_check := source >= out4 and out3 >= out4 and strict_long_ma_check
+            strict_short_ma_check := source <= out4 and out3 <= out4 and strict_short_ma_check
+            strict_short_ma_check
+
+        extra_long_check := extra_long_check and strict_long_ma_check
+        extra_short_check := extra_short_check and strict_short_ma_check
+        extra_short_check
+
+
+    if isLong
+        if extra_long_check or isPriceEMA and source >= out2
+            valid := true
+            valid
+    else if extra_short_check or isPriceEMA and source <= out2
+        valid := true
+        valid
+
+    
+    valid
+
+
+get_trend_num(trend_code) =>
+    trend_code == UP ? 1 : trend_code == DOWN ? -1 : 0
+
+
+
+// KST code 
+smaroc(roclen, smalen) => ta.rma(ta.roc(source, roclen), smalen)
+roclen1 = 8 
+roclen2 = 13 
+roclen3 = 21 
+roclen4 = 34 
+smalen1 = 8 
+smalen2 = 8 
+smalen3 = 8
+smalen4 = 13 
+siglen = 13
+
+
+calc_KST() =>
+
+    kst = smaroc(roclen1, smalen1) + 2 * smaroc(roclen2, smalen2) + 3 * smaroc(roclen3, smalen3) + 4 * smaroc(roclen4, smalen4)
+    sig = ta.rma(kst, siglen)
+
+
+    kst_trend = get_osc_trend(kst)
+
+
+    kst_validlong = kst_trend == UP
+    kst_validshort = kst_trend == DOWN
+
+    kst_diPositive = kst > sig
+    kst_diNegative = not kst_diPositive
+
+
+    kst_di_crossover = kst_diNegative[1] and kst_diPositive or kst_diNegative and kst_diPositive[1]
+
+
+    kst_buyCond = kst_diPositive and kst >= 0
+    kst_sellCond = kst_diNegative and kst < 0
+
+
+    ergvalidtrend = kst_buyCond or kst_sellCond
+
+    kst_validlongentry = kst_buyCond and kst_validlong
+    kst_validshortentry = kst_sellCond and kst_validshort
+
+    kst_noTradeZone = not ergvalidtrend or kst_di_crossover
+
+
+    kst_active_position = false
+    kst_active_position := (kst_validlongentry or kst_validshortentry) and not kst_active_position[1] ? true : kst_noTradeZone ? false : kst_active_position[1]
+
+
+    kst_enterLong = kst_validlongentry and not kst_active_position[1]
+    kst_enterShort = kst_validshortentry and not kst_active_position[1]
+
+
+    kst_longpos = kst_buyCond and kst_active_position
+    kst_shortpos = kst_sellCond and kst_active_position
+
+
+    kst_exitLong = kst_noTradeZone and kst_longpos[1]
+    kst_exitShort = kst_noTradeZone and kst_shortpos[1]
+
+
+    kst_status_code = kst_exitLong ? STRAT_EXIT_LONG : kst_exitShort ? STRAT_EXIT_SHORT : kst_enterLong ? STRAT_ENTER_LONG : kst_enterShort ? STRAT_ENTER_SHORT : kst_longpos ? STRAT_LONG : kst_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+
+    kst_status_code
+
+
+    
+
+get_all_status_codes() =>
+
+    rsi_code = calc_RSI()
+    kst_code = calc_KST()
+    [rsi_code, kst_code]
+
+
+
+get_status_code_trend_num(st) =>
+    st == STRAT_ENTER_LONG or st == STRAT_LONG or st == STRAT_EXIT_SHORT ? 1 : st == STRAT_ENTER_SHORT or st == STRAT_SHORT  or st == STRAT_EXIT_LONG? -1 : 0
+
+
+get_summary_trend_code(rsi_code, kst_code) =>
+
+    summ_trend_code = STRAT_NEUTRAL
+
+    rsi_num = get_status_code_trend_num(rsi_code)
+    kst_num = get_status_code_trend_num(kst_code)
+
+    st_num = rsi_num + kst_num
+    summ_trend_code := st_num == 2? STRAT_ENTER_LONG : st_num == 1 ?  STRAT_LONG : st_num  == -2 ?  STRAT_ENTER_SHORT : st_num == -1 ? STRAT_SHORT : STRAT_NEUTRAL
+        
+    summ_trend_code
+
+
+
+[rsi_code, kst_code] = get_all_status_codes()
+
+
+summ_trend_code = get_summary_trend_code(rsi_code, kst_code)
+[summ_txt, summ_col] = decodeStratCode(summ_trend_code)
+
+
+curr_active_pos = false
+longpos = false
+shortpos = false
+
+curr_active_pos := curr_active_pos[1]
+
+
+
+
+buyCond = (summ_trend_code == STRAT_ENTER_LONG or summ_trend_code == STRAT_LONG) //and checkEMA(true, true)
+
+sellCond = (summ_trend_code == STRAT_ENTER_SHORT or summ_trend_code == STRAT_SHORT) //and checkEMA(false, true)
+
+
+
+neutralCond = not buyCond and not sellCond
+
+
+validlongentry = buyCond and summ_trend_code == STRAT_ENTER_LONG and checkEMA(true, false) and valid_entry_period
+validshortentry = sellCond and summ_trend_code == STRAT_ENTER_SHORT and checkEMA(false, false) and valid_entry_period
+
+
+enterLong = validlongentry and not curr_active_pos and long_signal_flag
+enterShort = validshortentry and not curr_active_pos and short_signal_flag
+
+
+curr_active_pos := enterLong or enterShort ? true : curr_active_pos
+
+longpos := curr_active_pos and (buyCond or longpos[1] and neutralCond)
+shortpos := curr_active_pos and (sellCond or shortpos[1] and neutralCond)
+
+di_change = longpos[1] and sellCond or shortpos[1] and buyCond
+
+noTrade = di_change or exit_all_pos_period
+
+exitLong = noTrade and longpos[1] and curr_active_pos[1]
+exitShort = noTrade and shortpos[1] and curr_active_pos[1]
+
+
+curr_active_pos := exitLong or exitShort ? false : curr_active_pos
+
+final_summary_status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT : enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT : longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+
+
+//----- Strategy
+
+calc_trigger_entry(f_st) =>
+
+    f_enterLong = f_st == STRAT_ENTER_LONG
+    f_enterShort = f_st == STRAT_ENTER_SHORT
+
+    f_exitLong = f_st == STRAT_EXIT_LONG
+    f_exitShort = f_st == STRAT_EXIT_SHORT
+
+
+    curr_long_entry_val = float(na)
+    curr_short_entry_val = float(na)
+
+    curr_long_entry_val := curr_long_entry_val[1]
+    curr_short_entry_val := curr_short_entry_val[1]
+
+    if f_enterLong[1]
+        high_3 = math.max(high[1], high[2], high)
+        long_entry_val = high_3
+        curr_long_entry_val := long_entry_val + atr * atr_mult
+        curr_long_entry_val
+
+    if f_enterShort[1]
+        low_3 = math.min(low[1], low[2], low)
+        short_entry_val = low_3
+        curr_short_entry_val := short_entry_val - atr * atr_mult
+        curr_short_entry_val
+
+
+    if f_exitLong
+        curr_long_entry_val := float(na)
+        curr_long_entry_val
+
+    if f_exitShort
+        curr_short_entry_val := float(na)
+        curr_short_entry_val
+
+
+    trigg_active_pos = false
+    trigg_longpos = false
+    trigg_shortpos = false
+    trigg_active_pos := trigg_active_pos[1]
+
+
+    first_trigg_enterLong = not trigg_active_pos and not na(curr_long_entry_val) and source > curr_long_entry_val and barstate.isconfirmed
+    first_trigg_enterShort = not trigg_active_pos and not na(curr_short_entry_val) and source < curr_short_entry_val and barstate.isconfirmed
+
+
+    first_long_entry_val = float(na)
+    first_short_entry_val = float(na)
+
+    first_long_entry_val := first_long_entry_val[1]
+    first_short_entry_val := first_short_entry_val[1]
+
+    first_long_entry_val := first_trigg_enterLong and na(first_long_entry_val) ? high : first_long_entry_val
+    first_short_entry_val := first_trigg_enterShort and na(first_short_entry_val) ? low : first_short_entry_val
+
+
+    if f_exitLong
+        first_long_entry_val := float(na)
+        first_long_entry_val
+
+    if f_exitShort
+        first_short_entry_val := float(na)
+        first_short_entry_val
+
+
+    second_trigg_enterLong = not trigg_active_pos and not na(first_long_entry_val) and source > first_long_entry_val and barstate.isconfirmed
+    second_trigg_enterShort = not trigg_active_pos and not na(first_short_entry_val) and source < first_short_entry_val and barstate.isconfirmed
+
+    second_long_entry_val = float(na)
+    second_short_entry_val = float(na)
+
+    second_long_entry_val := second_long_entry_val[1]
+    second_short_entry_val := second_short_entry_val[1]
+
+    second_long_entry_val := second_trigg_enterLong and na(second_long_entry_val) ? high : second_long_entry_val
+    second_short_entry_val := second_trigg_enterShort and na(second_short_entry_val) ? low : second_short_entry_val
+
+
+    if f_exitLong
+        second_long_entry_val := float(na)
+        second_long_entry_val
+
+    if f_exitShort
+        second_short_entry_val := float(na)
+        second_short_entry_val
+
+
+    third_trigg_enterLong = not trigg_active_pos and not na(second_long_entry_val) and source > second_long_entry_val and barstate.isconfirmed
+    third_trigg_enterShort = not trigg_active_pos and not na(second_short_entry_val) and source < second_short_entry_val and barstate.isconfirmed
+
+    trigg_enterLong = strict_confirm_trade_check == 1 ? first_trigg_enterLong : strict_confirm_trade_check == 2 ? second_trigg_enterLong : third_trigg_enterLong
+    trigg_enterShort = strict_confirm_trade_check == 1 ? first_trigg_enterShort : strict_confirm_trade_check == 2 ? second_trigg_enterShort : third_trigg_enterShort
+
+
+    trigg_active_pos := trigg_enterLong or trigg_enterShort ? true : trigg_active_pos
+
+    trigg_longpos := trigg_active_pos and (trigg_enterLong or trigg_longpos[1])
+    trigg_shortpos := trigg_active_pos and (trigg_enterShort or trigg_shortpos[1])
+
+
+    trigg_exitLong = f_exitLong and trigg_active_pos
+    trigg_exitShort = f_exitShort and trigg_active_pos
+
+
+    trigg_active_pos := trigg_exitLong or trigg_exitShort ? false : trigg_active_pos
+
+
+    trigg_status_code = trigg_exitLong ? STRAT_EXIT_LONG : trigg_exitShort ? STRAT_EXIT_SHORT : trigg_enterLong ? STRAT_ENTER_LONG : trigg_enterShort ? STRAT_ENTER_SHORT : trigg_longpos ? STRAT_LONG : trigg_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+
+    trigg_status_code
+
+
+
+trigg_status_code = calc_trigger_entry(final_summary_status_code)
+fin_status_code = strict_confirm_trade_check != 0 ? trigg_status_code : final_summary_status_code
+
+[fin_txt, fin_status_col] = decodeStratCode(fin_status_code)
+
+bgcolor(fin_status_col)
+
+
+final_long_pos = fin_status_code == STRAT_LONG or fin_status_code == STRAT_ENTER_LONG or fin_status_code == STRAT_EXIT_LONG
+final_short_pos = fin_status_code == STRAT_SHORT or fin_status_code == STRAT_ENTER_SHORT or fin_status_code == STRAT_EXIT_SHORT
+
+final_open_pos = final_long_pos or final_short_pos
+
+
+
+plot(out1, title = 'RMA - 1', color = color.new(color.silver, transp = 0), linewidth = 2)
+plot(out2, title = 'RMA - 2', color = color.new(color.aqua, transp = 0), linewidth = 2)
+//plot(out3, title = 'RMA - 3', color = color.new(color.yellow, transp = 0), linewidth = 2)
+//plot(out4, title = 'RMA - 4', color = color.new(color.red, transp = 0), linewidth = 2)
+
+
+
+final_enterLong = fin_status_code == STRAT_ENTER_LONG
+final_enterShort = fin_status_code == STRAT_ENTER_SHORT
+
+final_exitLong = fin_status_code == STRAT_EXIT_LONG
+final_exitShort = fin_status_code == STRAT_EXIT_SHORT
+
+
+sep = ' : '
+quant = 1
+
+
+comm_bask_txt = '"secret":"{0}","alertType":"basket","basket_id":"{1}"'
+comm_delta_txt = '"symbol":"{0}","side":"{1}","qty":"{2}","trigger_time":"{3}","strategy_id":"{4}"'
+
+
+long_basket_txt = ''
+exit_long_basket_txt = ''
+short_basket_txt = ''
+exit_short_basket_txt = ''
+
+if alert_type == 'basket_order'
+    long_basket_txt := '{' + str.format(comm_bask_txt, secret, long_basket_id) + '}'
+    exit_long_basket_txt := '{' + str.format(comm_bask_txt, secret, exit_long_basket_id) + '}'
+    short_basket_txt := '{' + str.format(comm_bask_txt, secret, short_basket_id) + '}'
+    exit_short_basket_txt := '{' + str.format(comm_bask_txt, secret, exit_short_basket_id) + '}'
+    exit_short_basket_txt
+else if alert_type == 'deltaexch_order'
+    long_basket_txt := '{' + str.format(comm_delta_txt, ticker_id, 'buy', qty, str.format_time(timenow), secret) + '}'
+    exit_long_basket_txt := '{' + str.format(comm_delta_txt, ticker_id, 'sell', qty, str.format_time(timenow), secret) + '}'
+    short_basket_txt := '{' + str.format(comm_delta_txt, ticker_id, 'sell', qty, str.format_time(timenow), secret) + '}'
+    exit_short_basket_txt := '{' + str.format(comm_delta_txt, ticker_id, 'buy', qty, str.format_time(timenow), secret) + '}'
+    exit_short_basket_txt
+else if alert_type == 'regular_order'
+    long_basket_txt := wh_long_script
+    exit_long_basket_txt := wh_close_long_script
+    short_basket_txt := wh_short_script
+    exit_short_basket_txt := wh_close_short_script
+    exit_short_basket_txt
+
+
+raise_wh_alert(wh_txt, ord_type) =>
+    alert(ord_type + sep + str.tostring(source), freq = alert.freq_once_per_bar_close)
+
+    ignore_alert = ignore_exit_alert and (ord_type == 'XU' or ord_type == 'XD')
+
+    if not ignore_alert
+        alert(wh_txt, freq = alert.freq_once_per_bar_close)
+
+
+
+
+if final_enterLong
+    strategy.entry('long', strategy.long,qty = quant)
+    if alert_type != 'no_order'
+        raise_wh_alert(long_basket_txt, 'U')
+
+if final_exitLong
+    strategy.cancel_all()
+
+if final_exitLong
+    strategy.close('long',qty = quant)
+
+    if alert_type != 'no_order'
+        raise_wh_alert(exit_long_basket_txt, 'XU')
+
+
+if final_enterShort
+    strategy.entry('short', strategy.short,qty = quant)
+
+    if alert_type != 'no_order'
+        raise_wh_alert(short_basket_txt, 'D')
+
+
+if final_exitShort
+    strategy.cancel_all()
+
+if final_exitShort
+    strategy.close('short',qty = quant)
+
+    if alert_type != 'no_order'
+        raise_wh_alert(exit_short_basket_txt, 'XD')
+
+
+if not window()
+    strategy.cancel_all()
+
+
+calc_points(runup, abs_size) =>
+    runup / abs_size
+
+
+if barstate.islastconfirmedhistory
+
+    total_closetrades = strategy.closedtrades
+    total_opentrades = strategy.opentrades
+
+
+    maxpoints = 0.0
+    total_down_points = 0.0
+    total_profit_points = 0.0
+    onlyprof = 0.0
+    wintrades = 0
+
+    max_pct = 0.0
+    down_pct = 0.0
+    prof_pct = 0.0
+    onlyprofpct = 0.0
+
+    if total_closetrades > 0
+        for i = 0 to total_closetrades - 1 by 1
+            act_size = strategy.closedtrades.size(i) * syminfo.pointvalue
+            abs_size = math.abs(act_size)
+            runup = strategy.closedtrades.max_runup(i)
+            entry_price = strategy.closedtrades.entry_price(i) * abs_size
+            short_buy_price = act_size < 0 ? entry_price - runup : 0
+            buy_price = act_size > 0 ? entry_price : short_buy_price
+
+            profit = strategy.closedtrades.profit(i)
+
+
+            runuppoints = calc_points(runup, abs_size)
+            maxpoints := maxpoints + runuppoints
+
+            profitpoints = calc_points(profit, abs_size)
+            total_profit_points := total_profit_points + profitpoints
+
+            buypoints = calc_points(buy_price, abs_size)
+            max_pct := max_pct + runuppoints * 100 / buypoints
+            curr_prof_pct = profitpoints * 100 / buypoints
+            prof_pct := prof_pct + curr_prof_pct
+
+            if profitpoints >= 0
+                onlyprof := onlyprof + profitpoints
+                onlyprofpct := onlyprofpct + curr_prof_pct
+                wintrades := wintrades + 1
+                wintrades
+
+
+
+    if total_opentrades > 0
+        for i = 0 to total_opentrades - 1 by 1
+            act_size = strategy.opentrades.size(i) * syminfo.pointvalue
+            abs_size = math.abs(act_size)
+            runup = strategy.opentrades.max_runup(i)
+            entry_price = strategy.opentrades.entry_price(i) * abs_size
+            short_buy_price = act_size < 0 ? entry_price - runup : 0
+            buy_price = act_size > 0 ? entry_price : short_buy_price
+
+            profit = strategy.opentrades.profit(i)
+
+
+            runuppoints = calc_points(runup, abs_size)
+            maxpoints := maxpoints + runuppoints
+
+
+            profitpoints = calc_points(profit, abs_size)
+            total_profit_points := total_profit_points + profitpoints
+
+            buypoints = calc_points(buy_price, abs_size)
+            max_pct := max_pct + runuppoints * 100 / buypoints
+            curr_prof_pct = profitpoints * 100 / buypoints
+            prof_pct := prof_pct + curr_prof_pct
+
+            if profitpoints >= 0
+                onlyprof := onlyprof + profitpoints
+                onlyprofpct := onlyprofpct + curr_prof_pct
+
+                wintrades := wintrades + 1
+                wintrades
+
+
+
+    total_trades = total_closetrades + total_opentrades
+
+    max_run_pct_avg = total_trades > 0 ? math.round(max_pct / total_trades, 2) : 0
+    winrate = total_trades > 0 ? math.round(wintrades / total_trades, 2) : 0.0
+
+    // label.new(bar_index, high, text= str.tostring(math.round(maxrunup,2)) + " | "+  str.tostring(total_trades) + " | "+ str.tostring(max_run_avg))
+    var table tbl1 = table.new(position.top_right, 2, 5, frame_color = na, frame_width = 1, border_width = 2, border_color = na)
+
+    table.cell(tbl1, 0, 0, 'Trades', text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
+    table.cell(tbl1, 0, 1, 'MaxPct', text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
+    table.cell(tbl1, 0, 2, 'MaxPCTAvg', text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
+    table.cell(tbl1, 0, 3, 'WinRate', text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
+
+
+    table.cell(tbl1, 1, 0, str.tostring(total_trades), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
+    table.cell(tbl1, 1, 1, str.tostring(math.round(max_pct, 2)), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
+    table.cell(tbl1, 1, 2, str.tostring(max_run_pct_avg), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
+    table.cell(tbl1, 1, 3, str.tostring(winrate), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
