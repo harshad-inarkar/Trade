@@ -1,14 +1,13 @@
-//@version=5
-indicator(title="CI", shorttitle="CHOP", format=format.price, precision=2, timeframe="", timeframe_gaps=true)
-length = input.int(21, minval=1)
+//@version=6
+indicator(title = 'CI', shorttitle = 'CHOP', format = format.price, precision = 2, timeframe = '', timeframe_gaps = true)
+length = input.int(21, minval = 1)
 ci = 100 * math.log10(math.sum(ta.atr(1), length) / (ta.highest(length) - ta.lowest(length))) / math.log10(length)
 threshold = input.int(44)
 
-plot(ci, "CHOP", color=color.blue,linewidth = 2)
+plot(ci, 'CHOP', color = color.blue, linewidth = 2)
 
-hline(threshold, "Threshold", color=color.red,linestyle=hline.style_dashed,linewidth = 1)
+hline(threshold, 'Threshold', color = color.red, linestyle = hline.style_dashed, linewidth = 1)
 
-bgcol = ci <=  threshold ? color.aqua : color.gray
+bgcol = ci <= threshold ? color.aqua : color.gray
 
-bgcolor(color.new(bgcol, transp=80))
-
+bgcolor(color.new(bgcol, transp = 80))
