@@ -13,6 +13,87 @@ smaroc(roclen, smalen) => ta.rma(ta.roc(close, roclen), smalen)
 kst = smaroc(roclen1, smalen1) + 2 * smaroc(roclen2, smalen2) + 3 * smaroc(roclen3, smalen3) + 4 * smaroc(roclen4, smalen4)
 sig = ta.rma(kst, siglen)
 
-plot(kst, color=color.new(color.aqua, 0), title="KST")
-plot(sig, color=color.new(color.red, 0), title="Signal")
+plot(kst, color=color.new(color.aqua, 0),linewidth = 2, title="KST")
+plot(sig, color=color.new(color.red, 0),linewidth = 2, title="Signal")
 hline(0, title="Zero", color = color.new(color.gray, 0))
+
+
+
+
+
+
+
+STRAT_NEUTRAL = 0
+STRAT_LONG = 1
+STRAT_SHORT = 2
+STRAT_ENTER_LONG = 3
+STRAT_ENTER_SHORT = 4
+STRAT_EXIT_LONG = 5
+STRAT_EXIT_SHORT = 6
+
+decodeStratCode(adx_code) =>
+    adx_col = adx_code == STRAT_EXIT_LONG ? color.new(color.yellow, transp = 80) : adx_code == STRAT_EXIT_SHORT ? color.new(color.blue, transp = 80) : adx_code == STRAT_ENTER_LONG ? color.new(color.lime, transp = 80) : adx_code == STRAT_ENTER_SHORT ? color.new(color.red, transp = 80) : adx_code == STRAT_LONG ? color.new(color.aqua, transp = 80) : adx_code == STRAT_SHORT ? color.new(color.orange, transp = 80) : na
+
+
+    adx_txt = adx_code == STRAT_EXIT_LONG ? 'ExUp' : adx_code == STRAT_EXIT_SHORT ? 'ExDn' : adx_code == STRAT_ENTER_LONG ? 'EnUp' : adx_code == STRAT_ENTER_SHORT ? 'EnDn' : adx_code == STRAT_LONG ? 'Up' : adx_code == STRAT_SHORT ? 'Dn' : 'Na'
+
+    [adx_txt, adx_col]
+
+
+
+UP = 1
+DOWN = -1
+NEUTRAL = 0
+
+get_osc_trend(osc) =>
+    osc[2] < osc[1] and osc[1] < osc ? UP : osc < osc[1] and osc[1 ] < osc[2] ? DOWN : NEUTRAL
+
+
+kst_trend = get_osc_trend(kst)
+
+kst_validlong = kst_trend == UP
+kst_validshort = kst_trend == DOWN
+
+kst_diPositive = kst > sig
+kst_diNegative = not kst_diPositive
+
+
+kst_di_crossover = kst_diNegative[1] and kst_diPositive or kst_diNegative and kst_diPositive[1]
+
+
+kst_buyCond = kst_diPositive and kst >= 0
+kst_sellCond = kst_diNegative and kst < 0
+
+
+ergvalidtrend = kst_buyCond or kst_sellCond
+
+kst_validlongentry = kst_buyCond and kst_validlong
+kst_validshortentry = kst_sellCond and kst_validshort
+
+kst_noTradeZone = not ergvalidtrend or kst_di_crossover
+
+
+kst_active_position = false
+kst_active_position := (kst_validlongentry or kst_validshortentry) and not kst_active_position[1] ? true : kst_noTradeZone ? false : kst_active_position[1]
+
+
+kst_enterLong = kst_validlongentry and not kst_active_position[1]
+kst_enterShort = kst_validshortentry and not kst_active_position[1]
+
+
+kst_longpos = kst_buyCond and kst_active_position
+kst_shortpos = kst_sellCond and kst_active_position
+
+
+kst_exitLong = kst_noTradeZone and kst_longpos[1]
+kst_exitShort = kst_noTradeZone and kst_shortpos[1]
+
+
+kst_status_code = kst_exitLong ? STRAT_EXIT_LONG : kst_exitShort ? STRAT_EXIT_SHORT : kst_enterLong ? STRAT_ENTER_LONG : kst_enterShort ? STRAT_ENTER_SHORT : kst_longpos ? STRAT_LONG : kst_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+
+
+
+[txt, col] = decodeStratCode(kst_status_code)
+
+
+bgcolor(col)
