@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ symbol }} - Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh; padding: 20px;
+        }
+        .container {
+            max-width: 1400px; margin: 0 auto;
+            background: white; border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); padding: 40px;
+        }
+        h1 { color: #333; margin-bottom: 10px; font-size: 2.5em; }
+        .back-link {
+            display: inline-block; margin-bottom: 20px; padding: 10px 20px;
+            background: #667eea; color: white; text-decoration: none;
+            border-radius: 5px; transition: background 0.3s;
+        }
+        .back-link:hover { background: #764ba2; }
+        .tabs { display: flex; gap: 10px; margin: 20px 0; border-bottom: 2px solid #e0e0e0; }
+        .tab {
+            padding: 12px 24px; background: #f5f5f5; border: none;
+            border-radius: 8px 8px 0 0; cursor: pointer; font-size: 1.1em;
+            font-weight: 600; color: #666; transition: all 0.3s;
+        }
+        .tab:hover { background: #e8e8ff; }
+        .tab.active { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white; 
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .chart-container {
+            position: relative; height: 450px; margin: 30px 0;
+            background: #fafafa; padding: 20px; border-radius: 10px;
+        }
+        .data-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+        .data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .data-table th { background: #667eea; color: white; font-weight: bold; }
+        .data-table tr:hover { background: #f5f5f5; }
+        .stats {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px; margin: 20px 0;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 20px; border-radius: 10px; text-align: center;
+        }
+        .stat-value { font-size: 2em; font-weight: bold; margin-top: 10px; }
+        .stat-label { font-size: 0.9em; opacity: 0.9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to All Symbols</a>
+        <h1>{{ symbol }}</h1>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('volume')">📊 Volume</button>
+            <button class="tab" onclick="showTab('price')">💰 Price</button>
+            <button class="tab" onclick="showTab('perc')">📈 VOL %</button>
+        </div>
+        
+        <!-- Volume Tab -->
+        <div id="volume" class="tab-content active">
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-label">Data Points</div>
+                    <div class="stat-value">{{ data|length }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Avg Volume</div>
+                    <div class="stat-value" id="vol-avg">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Max Volume</div>
+                    <div class="stat-value" id="vol-max">-</div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="volumeChart"></canvas>
+            </div>
+            <table class="data-table">
+                <thead><tr><th>File</th><th>Time</th><th>Volume</th></tr></thead>
+                <tbody>
+                    {% for item in data %}
+                    <tr>
+                        <td>{{ item.file }}</td>
+                        <td>{{ item.timestamp }}</td>
+                        <td>{{ "%.0f"|format(item.volume|default(0)) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Price Tab -->
+        <div id="price" class="tab-content">
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-label">Data Points</div>
+                    <div class="stat-value" id="price-count">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Min LTP</div>
+                    <div class="stat-value" id="min-avg">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Max LTP</div>
+                    <div class="stat-value" id="price-max">-</div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="priceChart"></canvas>
+            </div>
+            <table class="data-table">
+                <thead><tr><th>File</th><th>Time</th><th>LTP (₹)</th></tr></thead>
+                <tbody id="price-tbody"></tbody>
+            </table>
+        </div>
+        
+        <!-- Percent Tab -->
+        <div id="perc" class="tab-content">
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-label">Data Points</div>
+                    <div class="stat-value" id="perc-count">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Avg VOL%</div>
+                    <div class="stat-value" id="perc-avg">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Max VOL%</div>
+                    <div class="stat-value" id="perc-max">-</div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="percChart"></canvas>
+            </div>
+            <table class="data-table">
+                <thead><tr><th>File</th><th>Time</th><th>VOL %</th></tr></thead>
+                <tbody id="perc-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const rawData = {{ data | tojson }};
+        
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            initVolumeChart();
+            initPriceChart();
+            initPercChart();
+        });
+        
+        function initVolumeChart() {
+            const volumes = rawData.map(item => parseFloat(item.volume) || 0);
+            const validVolumes = volumes.filter(v => v > 0);
+            
+            if (validVolumes.length > 0) {
+                const avgVol = validVolumes.reduce((a, b) => a + b, 0) / validVolumes.length;
+                const maxVol = Math.max(...validVolumes);
+                
+                document.getElementById('vol-avg').textContent = avgVol.toFixed(0);
+                document.getElementById('vol-max').textContent = maxVol.toFixed(0);
+                
+                const ctx = document.getElementById('volumeChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: rawData.map(item => item.timestamp),
+                        datasets: [{
+                            label: 'Volume',
+                            data: volumes,
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true },
+                            x: { ticks: { maxRotation: 45 } }
+                        }
+                    }
+                });
+            }
+        }
+        
+        function initPriceChart() {
+            const priceData = rawData.filter(item => item.ltp !== undefined);
+            if (priceData.length > 0) {
+                const prices = priceData.map(item => parseFloat(item.ltp) || 0);
+                const validPrices = prices.filter(p => p > 0);
+                
+                if (validPrices.length > 0) {
+                    const minPrice = Math.min(...validPrices);
+                    const maxPrice = Math.max(...validPrices);
+                    
+                    document.getElementById('price-count').textContent = validPrices.length;
+                    document.getElementById('min-avg').textContent = '₹' + minPrice.toFixed(2);
+                    document.getElementById('price-max').textContent = '₹' + maxPrice.toFixed(2);
+                    
+                    const tbody = document.getElementById('price-tbody');
+                    tbody.innerHTML = '';
+                    priceData.forEach(item => {
+                        if (item.ltp && parseFloat(item.ltp) > 0) {
+                            const row = tbody.insertRow();
+                            row.insertCell(0).textContent = item.file;
+                            row.insertCell(1).textContent = item.timestamp;
+                            row.insertCell(2).textContent = '₹' + parseFloat(item.ltp).toFixed(2);
+                        }
+                    });
+                    
+                    const ctx = document.getElementById('priceChart').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: rawData.map(item => item.timestamp),
+                            datasets: [{
+                                label: 'LTP (₹)',
+                                data: rawData.map(item => parseFloat(item.ltp) || 0),
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                borderWidth: 3,
+                                fill: true,
+                                tension: 0.4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: { beginAtZero: false },
+                                x: { ticks: { maxRotation: 45 } }
+                            }
+                        }
+                    });
+                }
+            }
+        }
+
+        function initPercChart() {
+            const percData = rawData.filter(item => item.perc !== undefined);
+            if (percData.length > 0) {
+                const percs = percData.map(item => parseFloat(item.perc) || 0);
+                const validPercs = percs.filter(p => p >= 0);
+                
+                if (validPercs.length > 0) {
+                    const avgPerc = validPercs.reduce((a, b) => a + b, 0) / validPercs.length;
+                    const maxPerc = Math.max(...validPercs);
+                    
+                    document.getElementById('perc-count').textContent = validPercs.length;
+                    document.getElementById('perc-avg').textContent = avgPerc.toFixed(1) + '%';
+                    document.getElementById('perc-max').textContent = maxPerc.toFixed(1) + '%';
+                    
+                    const tbody = document.getElementById('perc-tbody');
+                    tbody.innerHTML = '';
+                    percData.forEach(item => {
+                        if (item.perc !== undefined) {
+                            const row = tbody.insertRow();
+                            row.insertCell(0).textContent = item.file;
+                            row.insertCell(1).textContent = item.timestamp;
+                            row.insertCell(2).textContent = parseFloat(item.perc).toFixed(1) + '%';
+                        }
+                    });
+                    
+                    const ctx = document.getElementById('percChart').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: rawData.map(item => item.timestamp),
+                            datasets: [{
+                                label: 'Vol %',
+                                data: rawData.map(item => parseFloat(item.perc) || 0),
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                borderWidth: 3,
+                                fill: true,
+                                tension: 0.4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: { beginAtZero: false },
+                                x: { ticks: { maxRotation: 45 } }
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
