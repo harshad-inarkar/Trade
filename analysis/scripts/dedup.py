@@ -22,8 +22,6 @@ with open(file1, "r") as f:
 
 sorted_symb = sorted(sym_perc.items(), key=lambda x: x[1], reverse=True)
 
-print(f"deduplicate {file1} original count {count1}  unique count {len(sorted_symb)}. Final candidates count {top}")
-
 with open(file1, "w") as out1, open(file2,'w') as out2:
     count =0
     for symbol, comb_val in sorted_symb:
@@ -34,5 +32,5 @@ with open(file1, "w") as out1, open(file2,'w') as out2:
             count+=1
 
 
-print(f"Dedup output {file1} {file2}")
+print(f"Dedup output {count1} {file1}  {len(sorted_symb)} {file2} {top}")
 

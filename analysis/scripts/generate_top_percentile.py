@@ -4,6 +4,8 @@ import math
 import os
 import re
 from datetime import datetime
+from nse_daily_data_downloader import NSE_DAILY_DATA, OUT_DIR
+
 
 
 if len(sys.argv) != 7:
@@ -22,7 +24,6 @@ append_file = True if sys.argv[6] == '1' else False
 value_col = 'Value (₹ Lakhs) - Futures' if  fo else 'Value (₹ Lakhs) - Options (Premium)'
 
 
-data_dir = 'nse_data'
 symb_ltp = {}
 symbol_percentile_ewma_final = {}
 symbol_vol_data = {}
@@ -30,7 +31,7 @@ symbol_vol_data = {}
 
 
 def process_files():
-    all_files = os.listdir(data_dir)
+    all_files = os.listdir(NSE_DAILY_DATA)
     csv_files = [f for f in all_files if f.endswith('.csv')]
 
     nse_files_with_dates = []
@@ -56,7 +57,7 @@ def process_files():
 
 
     sorted_files = sorted(nse_files_with_dates, key=lambda x: x['date_obj'])
-    files = [f'{data_dir}/{file_info['filename']}' for file_info in sorted_files]
+    files = [f'{NSE_DAILY_DATA}/{file_info['filename']}' for file_info in sorted_files]
 
  
     day_indx = 1
@@ -144,7 +145,7 @@ if __name__ == "__main__":
 
     sorted_perc_symbs = sorted(symbol_percentile_ewma_final.items(), key=lambda x: x[1], reverse=True)
     merge_mode = 'a' if append_file else 'w'
-    with open('out/merged.txt', merge_mode) as out1, open('out/candidates.txt', 'w') as out2:
+    with open(f'{OUT_DIR}/merged.txt', merge_mode) as out1, open(f'{OUT_DIR}/candidates.txt', 'w') as out2:
         count=0
         for symbol, comb_val in sorted_perc_symbs:
             out1.write(f"{symbol},{int(comb_val)}\n")
@@ -155,4 +156,4 @@ if __name__ == "__main__":
     instr = 'Futures' if fo else 'Options'
 
     append_string = 'appended' if append_file else ''
-    print(f"Processed {n} {instr} files. Last {last_ndays} days and top {topk}. Output: merged.txt {len(sorted_perc_symbs)} {append_string} candidates.txt {top}")
+    print(f"Processed {n} {instr} files. Last {last_ndays} days and top {topk}. Output: merged.txt {len(sorted_perc_symbs)} {append_string} candidates.txt {count}")

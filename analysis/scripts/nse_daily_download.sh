@@ -29,12 +29,11 @@ if [ -n "$3" ]; then
     download=false
 fi
 
-echo "Use last $lastn and top $topk"
 
 cd /Users/harshad/Documents/trade/analysis
 
 if $download; then
-	python nse_data_downloader.py
+	python nse_daily_data_downloader.py
 fi
 
 python generate_top_percentile.py $final_cands $lastn $topk 600-6000 o 0
