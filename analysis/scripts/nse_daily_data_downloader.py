@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import requests
 from datetime import datetime
-import os
+import os, sys
 import glob
 import hashlib
 import pandas as pd
@@ -11,9 +11,7 @@ OUT_DIR='out'
 NSE_DATA = 'nse_data'
 NSE_DAILY_DATA = f'{NSE_DATA}/daily'
 NSE_INDX_DATA = f'{NSE_DATA}/index'
-
-
-os.makedirs(NSE_DAILY_DATA, exist_ok=True)
+NSE_INTRA_DAY = f'{NSE_DATA}/intraday'
 
 
 
@@ -37,9 +35,9 @@ def compare_csv_files_by_hash(file1, file2):
     return hash1 == hash2
 
 
-def delete_duplicate_csv():
+def delete_duplicate_csv(data_dir):
  
-    csv_files = glob.glob(os.path.join(NSE_DAILY_DATA, "*.csv"))
+    csv_files = glob.glob(os.path.join(data_dir, "*.csv"))
 
     if len(csv_files) < 2:
         print(f"Found only {len(csv_files)} CSV file(s). Need at least 2 files to compare.")
@@ -58,7 +56,20 @@ def delete_duplicate_csv():
         print(f"Duplicate file {file1} deleted successfully!")
  
 
-def download_nse_data():
+def download_nse_data(intraday=False):
+
+    data_dir = NSE_DAILY_DATA
+    date_timestamp = datetime.now().strftime("%d%m%Y")
+    timestamp= date_timestamp
+
+    if intraday:
+        data_dir = f'{NSE_INTRA_DAY}/{date_timestamp}'
+        timestamp = datetime.now().strftime("%H%M")
+
+    
+    os.makedirs(data_dir, exist_ok=True)
+
+
     url = "https://www.nseindia.com/api/live-analysis-most-active-underlying?csv=true"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -68,18 +79,20 @@ def download_nse_data():
     session = requests.Session()
     session.get('https://www.nseindia.com', headers=headers)
     
-    timestamp = datetime.now().strftime("%d%m%Y")
+    
     filename = f"nse_data_{timestamp}.csv"
     
     response = session.get(url, headers=headers, timeout=30)
 
     
-    with open(f"{NSE_DAILY_DATA}/{filename}", 'wb') as f:
+    file_path = f"{data_dir}/{filename}"
+
+    with open(file_path, 'wb') as f:
         f.write(response.content)
     
-    print(f"Downloaded: {filename}")
+    print(f"Downloaded: {file_path}")
 
-    delete_duplicate_csv()
+    delete_duplicate_csv(data_dir)
 
 
 
@@ -87,4 +100,16 @@ def download_nse_data():
 
 
 if __name__ == "__main__":
-    download_nse_data()
+
+
+    if len(sys.argv) != 2 and len(sys.argv) != 1:
+        print("Usage: python script.py <intraday_flag>")
+        sys.exit(1)
+
+    intraday_flag = False
+
+    if len(sys.argv) == 2:
+        intraday_flag = True if sys.argv[1] == '1' else False
+
+
+    download_nse_data(intraday_flag)
