@@ -6,16 +6,15 @@ import glob
 import hashlib
 import pandas as pd
 
-
-OUT_DIR='out'
-NSE_DATA = 'nse_data'
+PARENT_DIR='../'  # analysis dir
+OUT_DIR=f'{PARENT_DIR}/out'
+NSE_DATA = f'{PARENT_DIR}/nse_data'
 NSE_DAILY_DATA = f'{NSE_DATA}/daily'
 NSE_INDX_DATA = f'{NSE_DATA}/index'
 NSE_INTRA_DAY = f'{NSE_DATA}/intraday'
 
 start_session = '0915'
 end_session = '1530'
-
 
 
 def calculate_intervals(tf=1, start_time_str=start_session, end_time_str=end_session):
