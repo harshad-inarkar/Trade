@@ -8,18 +8,14 @@ fi
 
 ##########
 
+MAX_SIZE_KB='10'
 nse_logs_dir="nse_data/logs"
 log_file="nse_downloader.log"
-lastn="5"
-topk="20"
-final_cands="60"
 download=true
-intraday=false
-ftp_range="600-6000"
 
 
 usage() {
-  echo "Usage: $0 -lo <log_file> -ln <lastn> -tk <topk> -fc <final_cands> -dl <download> -id <intraday> -fr <ftp_range>"
+  echo "Usage: $0 -lo <log_file>  -dl <download>"
   exit 1
 }
 
@@ -55,28 +51,8 @@ while [[ $# -gt 0 ]]; do
       log_file="$2"
       shift 2
       ;;
-    -ln)
-      lastn="$2"
-      shift 2
-      ;;
-    -tk)
-      topk="$2"
-      shift 2
-      ;;
-   -fc)
-      final_cands="$2"
-      shift 2
-      ;;
    -dl)
       download="$(parse_bool "$2")"
-      shift 2
-      ;;
-   -id)
-      intraday="$(parse_bool "$2")"
-      shift 2
-      ;;
-   -fr)
-      ftp_range="$2"
       shift 2
       ;;
     -h|--help)
@@ -90,35 +66,36 @@ while [[ $# -gt 0 ]]; do
 done
 
 
-intraday_flag='0'
-# Use as real boolean
-if $intraday; then
-  intraday_flag='1'
-else
-  intraday_flag='0'
-fi
-
 log_file_path="$nse_logs_dir/$log_file"
 
 ####################
 
-
 cd /Users/harshad/Documents/trade/analysis
-exec > "$log_file_path" 2>&1
+exec >> "$log_file_path" 2>&1
+
+echo "######"
+# Check if file exists
+if [ ! -f "$log_file_path" ]; then
+    echo "Error: File '$log_file_path' does not exist."
+fi
+
+# Get file size in KB (bytes / 1024)
+FILE_SIZE_KB=$(($(stat -f %z "$log_file_path") / 1024))
+
+if [ "$FILE_SIZE_KB" -gt "$MAX_SIZE_KB" ]; then
+    rm "$log_file_path"
+    echo "Deleted $log_file_path (size: ${FILE_SIZE_KB} KB > ${MAX_SIZE_KB} KB)."
+else
+    echo "$log_file_path size is ${FILE_SIZE_KB} KB, within limit ${MAX_SIZE_KB} "
+fi
+
 
 echo "######"
 echo "$(date)"
 
 
+
 if $download; then
-	python nse_daily_data_downloader.py $intraday_flag
+	python nse_daily_data_downloader.py
 fi
 
-if $intraday; then 
-    echo 'Intraday'
-else
-    echo 'Run generate candidates scripts.'
-    python generate_top_percentile.py $final_cands $lastn $topk $ftp_range o 0
-    python generate_top_percentile.py $final_cands $lastn $topk $ftp_range f 1
-    python dedup.py out/merged.txt out/candidates.txt $final_cands
-fi

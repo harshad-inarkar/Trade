@@ -13,6 +13,40 @@ NSE_DAILY_DATA = f'{NSE_DATA}/daily'
 NSE_INDX_DATA = f'{NSE_DATA}/index'
 NSE_INTRA_DAY = f'{NSE_DATA}/intraday'
 
+start_session = '0915'
+end_session = '1530'
+
+
+
+def calculate_intervals(tf=1, start_time_str=start_session, end_time_str=end_session):
+    start = datetime.strptime(start_time_str, '%H%M')
+    end = datetime.strptime(end_time_str, '%H%M')
+    if start >= end:
+        return 0
+
+    total_duration = (end - start).total_seconds() / 60
+    res = total_duration // tf
+    return res
+
+
+def check_valid_session(curr_time):
+    interval = calculate_intervals(end_time_str=curr_time)
+    valid_flag = interval > 0
+
+    new_ts = curr_time
+
+    if valid_flag and interval > calculate_intervals():
+        print(f'Current timestamp {curr_time} passed end session time {end_session}')
+        new_ts = end_session
+
+    return valid_flag, new_ts
+    
+
+
+SESSION_URL='https://www.nseindia.com'
+REFER_URL='https://www.nseindia.com/market-data/most-active-underlying'
+API_URL="https://www.nseindia.com/api/live-analysis-most-active-underlying?csv=true"
+
 
 
 def compare_csv_files_by_hash(file1, file2):
@@ -56,28 +90,30 @@ def delete_duplicate_csv(data_dir):
         print(f"Duplicate file {file1} deleted successfully!")
  
 
-def download_nse_data(intraday=False):
+def download_nse_data():
 
-    data_dir = NSE_DAILY_DATA
     date_timestamp = datetime.now().strftime("%d%m%Y")
-    timestamp= date_timestamp
+    data_dir = f'{NSE_INTRA_DAY}/{date_timestamp}'
+    timestamp = datetime.now().strftime("%H%M")
 
-    if intraday:
-        data_dir = f'{NSE_INTRA_DAY}/{date_timestamp}'
-        timestamp = datetime.now().strftime("%H%M")
 
-    
+    valid_flag , timestamp = check_valid_session(timestamp)
+
+    if not valid_flag: 
+        print(f'Not Valid timestamp {timestamp}. Ignore download')
+        return
+
+
     os.makedirs(data_dir, exist_ok=True)
 
-
-    url = "https://www.nseindia.com/api/live-analysis-most-active-underlying?csv=true"
+    url = API_URL
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'https://www.nseindia.com/market-data/most-active-underlying',
+        'Referer': REFER_URL,
     }
     
     session = requests.Session()
-    session.get('https://www.nseindia.com', headers=headers)
+    session.get(SESSION_URL, headers=headers)
     
     
     filename = f"nse_data_{timestamp}.csv"
@@ -95,21 +131,6 @@ def download_nse_data(intraday=False):
     delete_duplicate_csv(data_dir)
 
 
-
-
-
-
 if __name__ == "__main__":
-
-
-    if len(sys.argv) != 2 and len(sys.argv) != 1:
-        print("Usage: python script.py <intraday_flag>")
-        sys.exit(1)
-
-    intraday_flag = False
-
-    if len(sys.argv) == 2:
-        intraday_flag = True if sys.argv[1] == '1' else False
-
-
-    download_nse_data(intraday_flag)
+    
+    download_nse_data()
