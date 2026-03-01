@@ -9,7 +9,7 @@ fi
 ##########
 
 MAX_SIZE_KB='10'
-nse_logs_dir="../nse_data/logs"
+nse_logs_dir="../../nse_data/logs"
 log_file="nse_downloader.log"
 download=true
 
@@ -70,7 +70,8 @@ log_file_path="$nse_logs_dir/$log_file"
 
 ####################
 
-cd /Users/harshad/Documents/trade/analysis/scripts/
+cd "$(dirname "$0")"
+
 exec >> "$log_file_path" 2>&1
 
 echo "######"

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Symbol Volume Portal</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #ececec 0%, #a3a3a3 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    background: #ffffff;
+    border-radius: 15px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+    padding: 40px;
+}
+
+h1 {
+    color: #1a1a1a;
+    margin-bottom: 10px;
+    font-size: 1em;
+}
+
+.subtitle {
+    color: #6b7280;
+    margin-bottom: 30px;
+    font-size: 1.1em;
+}
+
+.header-bar {
+    border-bottom: 3px solid #9ca3af;
+    padding-bottom: 20px;
+    margin-bottom: 30px;
+}
+
+.tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.tabs .tab {
+    padding: 8px 16px;
+    border-radius: 6px;
+    background: #e5e7eb;
+    color: #1a1a1a;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.tabs .tab:hover {
+    background: #d1d5db;
+}
+
+.tabs .tab.active {
+    background: #9ca3af;
+    color: #ffffff;
+}
+
+.symbols-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+}
+
+.symbols-table thead {
+    background: #d1d5db;
+    color: #1a1a1a;
+}
+
+.symbols-table th {
+    padding: 15px 20px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 1.05em;
+    user-select: none;
+}
+
+.symbols-table th:last-child,
+.symbols-table td:last-child {
+    text-align: right;
+}
+
+.symbols-table td {
+    padding: 15px 20px;
+    border-bottom: 1px solid #e5e7eb;
+    color: #1a1a1a;
+}
+
+.symbols-table tbody tr:hover {
+    background: #edeef0;
+    transform: scale(1.01);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.06);
+}
+
+.symbol-link {
+    color: #fff !important;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1.1em;
+    background-color: #4b5563;
+    padding: 2px 8px;
+    border-radius: 5px;
+    transition: background 0.2s, color 0.2s;
+    display: inline-block;
+}
+
+.symbol-link:hover {
+    color: #fff !important;
+    background-color: #111827;
+    text-decoration: none;
+}
+
+.rank {
+    font-weight: bold;
+    color: #1a1a1a;
+}
+
+.sort-controls {
+    margin-left: 6px;
+    font-size: 0.8em;
+}
+
+.sort-controls .arrow {
+    cursor: pointer;
+    padding: 2px 5px;
+    opacity: 0.6;
+    text-decoration: none;
+    transition: all 0.2s;
+    border-radius: 3px;
+}
+.sort-controls .arrow.active {
+    opacity: 1;
+    color: #ffffff !important;
+    font-weight: bold;
+    background-color: #4b5563;
+    padding: 2px 5px;
+}
+.sort-controls .arrow:hover {
+    opacity: 1;
+    background-color: #e5e7eb;
+}
+
+.no-data {
+    text-align: center;
+    padding: 40px;
+    color: #6b7280;
+    font-size: 1.2em;
+}
+
+/* Dark Mode */
+@media (prefers-color-scheme: dark) {
+    body {
+        background: linear-gradient(135deg, #262626 0%, #52525b 100%);
+    }
+    
+    .container {
+        background: #23272f;
+    }
+    
+    h1 {
+        color: #f3f4f6;
+    }
+    
+    .subtitle {
+        color: #9ca3af;
+    }
+    
+    .header-bar {
+        border-bottom: 3px solid #6b7280;
+    }
+    
+    .tabs .tab {
+        background: #2d2d33;
+        color: #d1d5db;
+    }
+    
+    .tabs .tab:hover {
+        background: #374151;
+    }
+    
+    .tabs .tab.active {
+        background: #6b7280;
+        color: #ffffff;
+    }
+    
+    .symbols-table {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
+    
+    .symbols-table thead {
+        background: #374151;
+        color: #f3f4f6;
+    }
+    
+    .symbols-table td {
+        border-bottom: 1px solid #374151;
+        color: #f3f4f6;
+    }
+    
+    .symbols-table tbody tr:hover {
+        background: #23272f;
+    }
+    
+    .symbol-link {
+        color: #fff !important;
+        background-color: #374151;
+    }
+    
+    .symbol-link:hover {
+        color: #fff !important;
+        background-color: #111827;
+    }
+    
+    .rank {
+        color: #f3f4f6;
+    }
+    
+    .sort-controls .arrow:hover {
+        background-color: #4b5563;
+    }
+    
+    .sort-controls .arrow.active {
+        color: #ffffff !important;
+        background-color: #6b7280;
+    }
+    
+    .no-data {
+        color: #9ca3af;
+    }
+}
+</style>
+
+<script>
+// Auto refresh page every 3 minutes (180000 milliseconds)
+setTimeout(function() {
+    window.location.reload();
+}, 180000);
+</script>
+
+</head>
+
+<body>
+<div class="container">
+    <div class="header-bar">
+        <h1>📊 Symbol Volume Portal | {{ count }} Symbols | Last refresh: {{ refresh_time }}</h1>
+        <span>
+            <form method="get" action="/" style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
+                <input 
+                    type="text" 
+                    name="filter" 
+                    value="{{ filter }}"
+                    placeholder="Filter symbols..." 
+                    style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1em;"
+                >
+                <!-- Preserve other query params (tf, sort, order) on submit -->
+                <input type="hidden" name="tf" value="{{ timeframe }}">
+                {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+                {% if order %}<input type="hidden" name="order" value="{{ order }}">{% endif %}
+                <button type="submit" style="padding: 8px 18px; border-radius: 6px; background:#222; color:#fff; border:none; cursor:pointer;">Filter</button>
+            </form>
+        </span>
+    </div>
+
+    <div class="tabs">
+        <a class="tab {% if timeframe == '3' %}active{% endif %}" href="/?tf=3{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}">3</a>
+        <a class="tab {% if timeframe == '15' %}active{% endif %}" href="/?tf=15{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}">15</a>
+        <a class="tab {% if timeframe == 'D' %}active{% endif %}" href="/?tf=D{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}">D</a>
+    </div>
+
+
+    {% if symbols and symbols|length > 1 %}
+    {% set headers = symbols[0] %}
+    {% set symbol_idx = headers.index('symbol') %}
+    {% set volume_slow_idx = headers.index('volume_slow') %}
+    {% set volume_fast_idx = headers.index('volume_fast') %}
+    {% set vol_surge_idx = headers.index('vol_surge') %}
+    {% set ltp_idx = headers.index('ltp') %}
+
+    {% set current_sort = sort if sort else 'vol_surge' %}
+    {% set current_order = order if order else 'desc' %}
+    
+    <table class="symbols-table">
+        <thead>
+        <tr>
+            <th>
+                Rank
+            </th>
+
+            <th data-type="string">
+                Symbol
+              </span>
+            </th>
+
+            <th data-type="number" style="text-align:right;">
+                VOL Slow MA
+                <span class="sort-controls">
+                    <a class="arrow{% if current_sort == 'volume_slow' and current_order == 'asc' %} active{% endif %}"
+                       href="?tf={{ timeframe }}&sort=volume_slow&order=asc" title="Sort by VOL Slow MA ↑">▲</a>
+                    <a class="arrow{% if current_sort == 'volume_slow' and current_order == 'desc' %} active{% endif %}"
+                       href="?tf={{ timeframe }}&sort=volume_slow&order=desc" title="Sort by VOL Slow MA ↓">▼</a>
+                </span>
+            </th>
+            <th data-type="number" style="text-align:right;">
+                VOL Fast MA
+                <span class="sort-controls">
+                    <a class="arrow{% if current_sort == 'volume_fast' and current_order == 'asc' %} active{% endif %}"
+                       href="?tf={{ timeframe }}&sort=volume_fast&order=asc" title="Sort by VOL Fast MA ↑">▲</a>
+                    <a class="arrow{% if current_sort == 'volume_fast' and current_order == 'desc' %} active{% endif %}"
+                       href="?tf={{ timeframe }}&sort=volume_fast&order=desc" title="Sort by VOL Fast MA ↓">▼</a>
+                </span>
+            </th>
+            <th data-type="number" style="text-align:right;">
+                VOL Surge
+                <span class="sort-controls">
+                    <a class="arrow{% if current_sort == 'vol_surge' and current_order == 'asc' %} active{% endif %}"
+                       href="?tf={{ timeframe }}&sort=vol_surge&order=asc" title="Sort by VOL Surge ↑">▲</a>
+                    <a class="arrow{% if current_sort == 'vol_surge' and current_order == 'desc' %} active{% endif %}"
+                       href="?tf={{ timeframe }}&sort=vol_surge&order=desc" title="Sort by VOL Surge ↓">▼</a>
+                </span>
+            </th>
+
+            <th data-type="number" style="text-align:right;">
+                LTP
+                <span class="sort-controls">
+                    <a class="arrow{% if current_sort == 'ltp' and current_order == 'asc' %} active{% endif %}"
+                       href="?tf={{ timeframe }}&sort=ltp&order=asc" title="Sort by LTP ↑">▲</a>
+                    <a class="arrow{% if current_sort == 'ltp' and current_order == 'desc' %} active{% endif %}"
+                       href="?tf={{ timeframe }}&sort=ltp&order=desc" title="Sort by LTP ↓">▼</a>
+                </span>
+            </th>
+        </tr>
+        </thead>
+
+        <tbody>
+        {% for row in symbols[1:] %}
+        <tr>
+            <td class="rank">{{ loop.index }}</td>
+            <td>
+                <a href="/symbol/{{ row[symbol_idx] }}?tf={{ timeframe }}" class="symbol-link">
+                    {{ row[symbol_idx] }}
+                </a>
+            </td>
+            <td style="text-align:right;">{{ "{:,.0f}".format(row[volume_slow_idx]) }}</td>
+            <td style="text-align:right;">{{ "{:,.0f}".format(row[volume_fast_idx]) }}</td>
+            <td style="text-align:right;">{{ "{:,.0f}".format(row[vol_surge_idx]) }}</td>
+            <td style="text-align:right;">{{ "{:,.2f}".format(row[ltp_idx]) }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="no-data">
+        No CSV files found.
+    </div>
+    {% endif %}
+
+</div>
+<!-- remove client-side table sort logic -->
+
+</body>
+</html>

@@ -1,21 +1,28 @@
 #!/usr/bin/env python3
 import requests
 from datetime import datetime
-import os, sys
+import os, argparse
 import glob
 import hashlib
-import pandas as pd
+import csv
+from io import StringIO
+from sync_data import sync_data_args, NSE_INTRADAY_DIR_PATH,REMOTE_INTRADAY_DIR_PATH
 
-PARENT_DIR='../'  # analysis dir
-OUT_DIR=f'{PARENT_DIR}/out'
-NSE_DATA = f'{PARENT_DIR}/nse_data'
-NSE_DAILY_DATA = f'{NSE_DATA}/daily'
-NSE_INDX_DATA = f'{NSE_DATA}/index'
-NSE_INTRA_DAY = f'{NSE_DATA}/intraday'
+sync = False
+
 
 start_session = '0915'
 end_session = '1530'
 
+
+column_map = [
+    ('Symbol', 'symbol'),
+    ('Volume (Contracts) - Futures', 'vol_cum'),
+    ('Value (₹ Lakhs) - Futures', 'vol_val_cum'),
+    ('Underlying', 'price'),
+]
+
+output_columns = [out for _, out in column_map]
 
 def calculate_intervals(tf=1, start_time_str=start_session, end_time_str=end_session):
     start = datetime.strptime(start_time_str, '%H%M')
@@ -92,16 +99,14 @@ def delete_duplicate_csv(data_dir):
 def download_nse_data():
 
     date_timestamp = datetime.now().strftime("%d%m%Y")
-    data_dir = f'{NSE_INTRA_DAY}/{date_timestamp}'
+    data_dir = f'{NSE_INTRADAY_DIR_PATH}/{date_timestamp}'
     timestamp = datetime.now().strftime("%H%M")
 
-
-    valid_flag , timestamp = check_valid_session(timestamp)
+    valid_flag, timestamp = check_valid_session(timestamp)
 
     if not valid_flag: 
         print(f'Not Valid timestamp {timestamp}. Ignore download')
         return
-
 
     os.makedirs(data_dir, exist_ok=True)
 
@@ -114,22 +119,57 @@ def download_nse_data():
     session = requests.Session()
     session.get(SESSION_URL, headers=headers)
     
-    
     filename = f"nse_data_{timestamp}.csv"
-    
     response = session.get(url, headers=headers, timeout=30)
 
-    
+ 
+    # Read CSV from response, filter and rename columns in map order
+    content_str = response.content.decode(encoding='utf-8-sig')
+    reader = csv.DictReader(StringIO(content_str))
+    filtered_rows = []
+    for row in reader:
+        filtered_row = {}
+        for src, out in column_map:
+            if src in row:
+                val = row[src]
+                if out == 'vol_val_cum':
+                    try:
+                        val = f"{float(val):.2f}"
+                    except Exception:
+                        pass
+                filtered_row[out] = val
+
+        if len(filtered_row) == len(column_map):
+            filtered_rows.append(filtered_row)
+        
+        
     file_path = f"{data_dir}/{filename}"
 
-    with open(file_path, 'wb') as f:
-        f.write(response.content)
+    # Write to CSV with output columns in required order
+    with open(file_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=output_columns)
+        writer.writeheader()
+        writer.writerows(filtered_rows)
     
     print(f"Downloaded: {file_path}")
 
     delete_duplicate_csv(data_dir)
 
+    if sync:
+        sync_data_args(NSE_INTRADAY_DIR_PATH,REMOTE_INTRADAY_DIR_PATH)
+
 
 if __name__ == "__main__":
-    
+    parser = argparse.ArgumentParser(description='NSE sync data')
+    parser.add_argument('-sy', '--sync', action='store_true', help='Sync to remote drive')
+
+
+    args, unknown = parser.parse_known_args()
+   
+    if args.sync:
+        print("Sync to remote drive")
+        sync = True
+
+
     download_nse_data()
+

@@ -1,0 +1,29 @@
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    RCLONE_CONFIG=/app/rclone.conf
+
+# Install rclone in a single layer, no apt cache left behind
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl unzip \
+    && curl -fsSL https://downloads.rclone.org/rclone-current-linux-amd64.zip -o /tmp/rclone.zip \
+    && unzip -q /tmp/rclone.zip -d /tmp \
+    && mv /tmp/rclone-*-linux-amd64/rclone /usr/local/bin/ \
+    && apt-get purge -y curl unzip \
+    && apt-get autoremove -y \
+    && rm -rf /tmp/rclone* /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Dependencies layer cached separately — only rebuilds if requirements.txt changes
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# Config and script copied last — changes here don't invalidate pip layer
+COPY rclone.conf .
+COPY nse_gcloud_downloader.py .
+
+CMD ["python", "nse_gcloud_downloader.py"]
