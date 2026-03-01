@@ -291,7 +291,11 @@ setTimeout(function() {
     {% set vol_surge_idx = headers.index('vol_surge') %}
     {% set ltp_idx = headers.index('ltp') %}
 
+<<<<<<< HEAD
     {% set current_sort = sort if sort else 'volume_fast' %}
+=======
+    {% set current_sort = sort if sort else 'vol_surge' %}
+>>>>>>> 46e41c9 (restruct dirs)
     {% set current_order = order if order else 'desc' %}
     
     <table class="symbols-table">
@@ -355,9 +359,15 @@ setTimeout(function() {
                     {{ row[symbol_idx] }}
                 </a>
             </td>
+<<<<<<< HEAD
             <td style="text-align:right;">{{ "{:,.2f}".format(row[volume_slow_idx]) }}</td>
             <td style="text-align:right;">{{ "{:,.2f}".format(row[volume_fast_idx]) }}</td>
             <td style="text-align:right;">{{ "{:,.2f}".format(row[vol_surge_idx]) }}</td>
+=======
+            <td style="text-align:right;">{{ "{:,.0f}".format(row[volume_slow_idx]) }}</td>
+            <td style="text-align:right;">{{ "{:,.0f}".format(row[volume_fast_idx]) }}</td>
+            <td style="text-align:right;">{{ "{:,.0f}".format(row[vol_surge_idx]) }}</td>
+>>>>>>> 46e41c9 (restruct dirs)
             <td style="text-align:right;">{{ "{:,.2f}".format(row[ltp_idx]) }}</td>
         </tr>
         {% endfor %}
