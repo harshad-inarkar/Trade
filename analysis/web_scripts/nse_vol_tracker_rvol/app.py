@@ -22,15 +22,7 @@ from web_scripts.data_scripts.sync_data import PARENT_DIR,REMOTE_DIR, OUT_DIR, N
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 
 RELOAD_INTERVAL_MINUTES = None
-<<<<<<< HEAD
-<<<<<<< HEAD
 remote_sync_flag=False
-=======
-gdrive_sync_flag=False
->>>>>>> d0ab7f1 (restruct dirs)
-=======
-remote_sync_flag=False
->>>>>>> a13ea64 (add rvol changes)
 
 REFRESH_DT_PAT = 'Date: %d  Time: %H:%M'
 
@@ -77,15 +69,10 @@ def dump_index(symbols_list, tf, ref_t, fut_flag=False):
         for sym_data in symbols_list[1:]:
             out.write(f"{sym_data[sym_idx]}{fut_str}\n")
     
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> a13ea64 (add rvol changes)
  
 def dump_merge(filt, sort_key, ref_t):
     import heapq
     fut_flag = bool(filt)
-<<<<<<< HEAD
     merge_tf_list = ('3', '15')
     top = 25
     sym_idx = INDEX_FIELDS.index('symbol')
@@ -116,61 +103,12 @@ def dump_merge(filt, sort_key, ref_t):
     with open(f'{OUT_DIR}/candidates_merge.txt', 'w') as out:
         out.write(f"Merge Timeframes: {merge_tf_list} | sorted by {sort_key} | Filter ltp {filt} | Refresh Time: {ref_t}\n")
         for sym, _ in sorted_symbols:
-=======
-
-def dump_merge(filt,sort_key,ref_t):
-    fut_flag=bool(filt)
-=======
->>>>>>> a13ea64 (add rvol changes)
-    merge_tf_list = ('3', '15')
-    top = 25
-    sym_idx = INDEX_FIELDS.index('symbol')
-    sidx = INDEX_FIELDS.index('volume_fast') if not sort_key else INDEX_FIELDS.index(sort_key)
-
-    # Use defaultdict for smarter max assignment, and avoid two-pass set logic
-    from collections import defaultdict
-
-    symbols_map = defaultdict(int)  # maps symbol -> max volume_fast (or sort_key val)
-
-    # Inline per-tf processing to minimise storage
-    for tf in merge_tf_list:
-        symbols_list = filter_list(CACHE.get_symbols_avg(tf), filt)
-        # Only operate on the top N after sorting (skips making a copy of entire [1:])
-        # Use heapq.nlargest for efficient top-N selection
-        top_syms = heapq.nlargest(top, symbols_list[1:], key=lambda x: x[sidx])
-        for sym_data in top_syms:
-            sy = sym_data[sym_idx]
-            val = sym_data[sidx]
-            # Only keep the maximum value per symbol
-            if val > symbols_map[sy]:
-                symbols_map[sy] = val
-            # No need to store all symbols, just propagate max in one dict
-
-    # Now collect and output, sort once
-    sorted_symbols = sorted(symbols_map.items(), key=lambda item: item[1], reverse=True)
-    fut_str = '1!' if fut_flag else ''
-    with open(f'{OUT_DIR}/candidates_merge.txt', 'w') as out:
-        out.write(f"Merge Timeframes: {merge_tf_list} | sorted by {sort_key} | Filter ltp {filt} | Refresh Time: {ref_t}\n")
-<<<<<<< HEAD
-        for sym in symbols_set:
->>>>>>> d0ab7f1 (restruct dirs)
-=======
-        for sym, _ in sorted_symbols:
->>>>>>> a13ea64 (add rvol changes)
             out.write(f"{sym}{fut_str}\n")
 
 
 def sync_data_from_remote():
 
-<<<<<<< HEAD
-<<<<<<< HEAD
     if not remote_sync_flag:
-=======
-    if not gdrive_sync_flag:
->>>>>>> d0ab7f1 (restruct dirs)
-=======
-    if not remote_sync_flag:
->>>>>>> a13ea64 (add rvol changes)
         return
 
     sync_data_args(REMOTE_INTRADAY_DIR_PATH,NSE_INTRADAY_DIR_PATH)
@@ -297,15 +235,7 @@ if __name__ == '__main__':
 
     if args.sync:
         print("remote sync enabled")
-<<<<<<< HEAD
-<<<<<<< HEAD
         remote_sync_flag = True
-=======
-        gdrive_sync_flag = True
->>>>>>> d0ab7f1 (restruct dirs)
-=======
-        remote_sync_flag = True
->>>>>>> a13ea64 (add rvol changes)
 
     if args.parent_dir:
         PARENT_DIR = os.path.abspath(args.parent_dir)
