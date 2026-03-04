@@ -78,6 +78,8 @@ rma_fast_len = 8
 rma_slow_len = 21
 rma_base_len = 89  # 55, 89, 144, 233
 
+new_symb_map = {'LTIM' : 'LTM'}
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def calculate_intervals(tf, start_time_str=START_SESSION, end_time_str=END_SESSION):
@@ -168,7 +170,8 @@ def read_csv_files_to_arrays(sorted_files, sorted_dates, tf, odi,
             with open(finfo['filename'], 'r', encoding='utf-8-sig') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    sym_set.add(row[SYMB_COL].strip('"'))
+                    sy = row[SYMB_COL].strip('"')
+                    sym_set.add(new_symb_map.get(sy,sy))
         sym_list   = sorted(sym_set)
         sym_to_idx = {s: i for i, s in enumerate(sym_list)}
 
@@ -182,7 +185,8 @@ def read_csv_files_to_arrays(sorted_files, sorted_dates, tf, odi,
         with open(finfo['filename'], 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                sym = row[SYMB_COL].strip('"')
+                sy = row[SYMB_COL].strip('"')
+                sym = new_symb_map.get(sy,sy)
                 si  = sym_to_idx.get(sym)
                 if si is None:
                     # new symbol seen in incremental mode
