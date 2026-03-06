@@ -1,58 +1,94 @@
 //@version=6
-indicator(title = 'StrategyNew', shorttitle = 'StrategyNew', overlay = true)
+indicator(title = 'VolStrat', shorttitle = 'VolStrat', overlay = false)
 
 
-source = close
-volsrc = volume
+india_tz = 'Asia/Kolkata'
 
 
-var india_tz = 'Asia/Kolkata'
-var use_vol_kst = input(false, 'Use Volume Indicator')
+source =volume
 
 
-var atr_length = 5
-var atr_mult = 1
-atr = ta.atr(atr_length)
+atr_length = 5
+atr_mult = 1
+lookback = 5
+entry_perc = 0.02
+atr = atr_length
 
 
-var len1 = 8
-var len2 = 21
-var len3 = 55
-var len4 = 233
-var rsilen = 8
-var rsiMAlen = 21
-var hl = 63
-var ml = 50
-var ll = 36
 
-var lineup_check = input.int(2, title = 'Lineup Check', options = [1, 2, 3, 4])
-var ma_filter = input.int(2, title = 'MA Filter', options = [1, 2, 3, 4])
-var strict_confirm_trade_check = input.int(1, title = 'Strict confirm trade check', options = [0, 1, 2, 3])
+len1 = 8
+len2 = 21
+len3 = 55
+len4 = 233
+rsilen = 8
+rsiMAlen = 21
+hl = 63
+ml = 50
+ll = 36
 
-var last_n_days = input.float(60, 'Days')
-var show_only_window = input(false, title = 'Show trades in window')
-var MILLISECONDS_IN_DAY = 24 * 60 * 60 * 1000
- 
-var start = show_only_window ? math.max(int(timenow - MILLISECONDS_IN_DAY * last_n_days),time[0]) : time[0]
+lineup_check = input.int(2, title = 'Lineup Check', options = [1, 2, 3, 4])
+ma_filter = input.int(2, title = 'MA Filter', options = [1, 2, 3, 4])
+strict_confirm_trade_check = input.int(1, title = 'Strict confirm trade check', options = [0, 1, 2, 3])
 
+last_n_days = input.float(100, 'Days')
+
+show_only_window = input(true, title = 'Show trades in window')
+
+MILLISECONDS_IN_DAY = 24 * 60 * 60 * 1000
+start = timenow - MILLISECONDS_IN_DAY * last_n_days
 window() => // create function "within window of time"
     time >= start
 
 
-var long_signal_flag = input(true, title = 'Long Signal')
-var short_signal_flag = input(true, title = 'Short Signal')
+long_signal_flag = true
+short_signal_flag = false
+
+force_intraday_check = false
+comm_timing = input('0900-2330', title = 'Comm Timing')
+eq_timing = input('0900-1530', title = 'Eq Timing')
 
 
 // OSc Constants
-var rad2degree = 180 / 3.14159265359
-var lookback_period = 1
-var smoothing = 3
-
-var RANGE_BACK_BARS = 20
-var osc_filter_range = 5.2
+rad2degree = 180 / 3.14159265359
+lookback_period = 1
+smoothing = 3
 
 
-valid_entry_period = window() 
+RANGE_BACK_BARS = 20
+osc_filter_range = 5.2
+adx_filter_range = 8.8
+erg_filter_range = 6
+
+
+
+comm_sym_list_str = input('COPPER1!|SILVER1!|GOLD1!|CRUDEOIL1!|NATURALGAS1!|', title = 'COMM List')
+
+is_comm_symb() =>
+    str.contains(comm_sym_list_str, syminfo.ticker + '|')
+
+intraday_check = force_intraday_check and (timeframe.isminutes and timeframe.multiplier < 15 or timeframe.isseconds) and (is_comm_symb() or syminfo.timezone == india_tz)
+
+
+get_entry_period_str(is_comm_symb) =>
+    is_comm_symb ? comm_timing : eq_timing
+
+
+get_timeframe_minutes_int() =>
+    num_back_bars = 1
+    timeframe.isminutes ? timeframe.multiplier * num_back_bars * 60 * 1000 : timeframe.isseconds ? timeframe.multiplier * num_back_bars * 1000 : 0
+
+
+entry_period_str = get_entry_period_str(is_comm_symb())
+
+check_if_exit_time() =>
+    time_close >= time_close('D', entry_period_str, india_tz) - get_timeframe_minutes_int()
+
+
+valid_entry_period = intraday_check and (na(time(timeframe.period, entry_period_str, india_tz)) or check_if_exit_time()) ? false : true
+valid_entry_period := valid_entry_period and (not show_only_window or window()) 
+
+exit_all_pos_period = intraday_check and (na(time(timeframe.period, entry_period_str, india_tz)) or check_if_exit_time())
+
 
 
 // ---------- EMAs --------------
@@ -66,9 +102,15 @@ out4 = ta.rma(source, len4)
 
 // OSc Code Consts
 
-var UP = 1
-var DOWN = 2
-var NEUTRAL = 0
+UP = 1
+DOWN = 2
+NEUTRAL = 0
+
+
+decodeMovementCode(st) =>
+    col = st == UP ? color.aqua : st == DOWN ? color.red : color.gray
+    txt = st == UP ? 'Up' : st == DOWN ? 'Down' : 'Neutral'
+    [txt, col]
 
 
 angle(_src, osc_avg_tr) =>
@@ -90,8 +132,10 @@ get_osc_trend_params(osc, osc_filter) =>
     trend
 
 
+
 get_osc_trend(osc) =>
     get_osc_trend_params(osc, osc_filter_range)
+
 
 // Calc EMAs Trend
 
@@ -99,30 +143,35 @@ out1_trend = get_osc_trend(out1)
 out2_trend = get_osc_trend(out2)
 out3_trend = get_osc_trend(out3)
 
+
+
 // ADX Code
 
-var STRAT_NEUTRAL = 0
-var STRAT_LONG = 1
-var STRAT_SHORT = 2
-var STRAT_ENTER_LONG = 3
-var STRAT_ENTER_SHORT = 4
-var STRAT_EXIT_LONG = 5
-var STRAT_EXIT_SHORT = 6
+STRAT_NEUTRAL = 0
+STRAT_LONG = 1
+STRAT_SHORT = 2
+STRAT_ENTER_LONG = 3
+STRAT_ENTER_SHORT = 4
+STRAT_EXIT_LONG = 5
+STRAT_EXIT_SHORT = 6
 
-var exitlong_col = color.new(color.yellow, transp = 70)
-var exitshort_col = color.new(color.blue, transp = 70)
-var enterlong_col = color.new(color.lime, transp = 70)
-var entershort_col = color.new(color.red, transp = 70)
-var longpos_col = color.new(color.aqua, transp = 80)
-var shortpos_col = color.new(color.orange, transp = 80)
-var neutral_col = color(na) 
-
+exitlong_col = color.new(color.yellow, transp = 70)
+exitshort_col = color.new(color.blue, transp = 70)
+enterlong_col = color.new(color.lime, transp = 70)
+entershort_col = color.new(color.red, transp = 70)
+longpos_col = color.new(color.aqua, transp = 80)
+shortpos_col = color.new(color.orange, transp = 80)
+neutral_col = color(na) 
 
 decodeStratCode(adx_code) =>
     adx_col = neutral_col
     adx_col := adx_code == STRAT_EXIT_LONG ? exitlong_col : adx_code == STRAT_EXIT_SHORT ? exitshort_col : adx_code == STRAT_ENTER_LONG ? enterlong_col : adx_code == STRAT_ENTER_SHORT ? entershort_col : adx_code == STRAT_LONG ? longpos_col : adx_code == STRAT_SHORT ? shortpos_col : neutral_col
+
+
     adx_txt = adx_code == STRAT_EXIT_LONG ? 'ExUp' : adx_code == STRAT_EXIT_SHORT ? 'ExDn' : adx_code == STRAT_ENTER_LONG ? 'EnUp' : adx_code == STRAT_ENTER_SHORT ? 'EnDn' : adx_code == STRAT_LONG ? 'Up' : adx_code == STRAT_SHORT ? 'Dn' : 'Na'
+
     [adx_txt, adx_col]
+
 
 
 calc_RSI() =>
@@ -155,8 +204,8 @@ calc_RSI() =>
     diNegative = current_trend == DOWN
 
 
-    validlongentry = rsi_bull_mom  and long_signal_flag
-    validshortentry = rsi_bear_mom and short_signal_flag
+    validlongentry = rsi_bull_mom
+    validshortentry = rsi_bear_mom
 
 
     exit_overbought = ta.crossunder(rsiMA, hl)
@@ -250,75 +299,21 @@ get_trend_num(trend_code) =>
 
 
 // KST code 
-smaroc(src,roclen, smalen) => ta.rma(ta.roc(src, roclen), smalen)
-var roclen1 = 8 
-var roclen2 = 13 
-var roclen3 = 21 
-var roclen4 = 34 
-var smalen1 = 8 
-var smalen2 = 8 
-var smalen3 = 8
-var smalen4 = 13 
-var siglen = 13
-
-
-calc_vol_KST() =>
-
-    kst = smaroc(volsrc,roclen1, smalen1) + 2 * smaroc(volsrc,roclen2, smalen2) + 3 * smaroc(volsrc,roclen3, smalen3) + 4 * smaroc(volsrc,roclen4, smalen4)
-    sig = ta.rma(kst, siglen)
-
-
-    kst_trend = get_osc_trend(kst)
-
-
-    kst_validlong = kst_trend == UP
-    kst_validshort = kst_trend == DOWN
-
-    kst_diPositive = kst > sig
-    kst_diNegative = not kst_diPositive
-
-
-    kst_di_crossover = kst_diNegative[1] and kst_diPositive or kst_diNegative and kst_diPositive[1]
-
-
-    kst_buyCond = kst_diPositive and kst >= 0
-    kst_sellCond = kst_diNegative and kst < 0
-
-
-    ergvalidtrend = kst_buyCond or kst_sellCond
-
-    kst_validlongentry = kst_buyCond and kst_validlong and long_signal_flag
-    kst_validshortentry = kst_sellCond and kst_validshort and short_signal_flag
-
-    kst_noTradeZone = not ergvalidtrend or kst_di_crossover
-
-
-    kst_active_position = false
-    kst_active_position := (kst_validlongentry or kst_validshortentry) and not kst_active_position[1] ? true : kst_noTradeZone ? false : kst_active_position[1]
-
-
-    kst_enterLong = kst_validlongentry and not kst_active_position[1]
-    kst_enterShort = kst_validshortentry and not kst_active_position[1]
-
-
-    kst_longpos = kst_buyCond and kst_active_position
-    kst_shortpos = kst_sellCond and kst_active_position
-
-
-    kst_exitLong = kst_noTradeZone and kst_longpos[1]
-    kst_exitShort = kst_noTradeZone and kst_shortpos[1]
-
-
-    kst_status_code = kst_exitLong ? STRAT_EXIT_LONG : kst_exitShort ? STRAT_EXIT_SHORT : kst_enterLong ? STRAT_ENTER_LONG : kst_enterShort ? STRAT_ENTER_SHORT : kst_longpos ? STRAT_LONG : kst_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
-
-    kst_status_code
-
-
+smaroc(roclen, smalen) => ta.rma(ta.roc(source, roclen), smalen)
+roclen1 = 8 
+roclen2 = 13 
+roclen3 = 21 
+roclen4 = 34 
+smalen1 = 8 
+smalen2 = 8 
+smalen3 = 8
+smalen4 = 13 
+siglen = 13
 
 
 calc_KST() =>
 
-    kst = smaroc(source,roclen1, smalen1) + 2 * smaroc(source,roclen2, smalen2) + 3 * smaroc(source,roclen3, smalen3) + 4 * smaroc(source,roclen4, smalen4)
+    kst = smaroc(roclen1, smalen1) + 2 * smaroc(roclen2, smalen2) + 3 * smaroc(roclen3, smalen3) + 4 * smaroc(roclen4, smalen4)
     sig = ta.rma(kst, siglen)
 
 
@@ -341,8 +336,8 @@ calc_KST() =>
 
     ergvalidtrend = kst_buyCond or kst_sellCond
 
-    kst_validlongentry = kst_buyCond and kst_validlong and long_signal_flag
-    kst_validshortentry = kst_sellCond and kst_validshort and short_signal_flag
+    kst_validlongentry = kst_buyCond and kst_validlong 
+    kst_validshortentry = kst_sellCond and kst_validshort
 
     kst_noTradeZone = not ergvalidtrend or kst_di_crossover
 
@@ -374,8 +369,7 @@ get_all_status_codes() =>
 
     rsi_code = calc_RSI()
     kst_code = calc_KST()
-    vol_kst_code = calc_vol_KST()
-    [rsi_code, kst_code, vol_kst_code]
+    [rsi_code, kst_code]
 
 
 
@@ -392,12 +386,12 @@ get_summary_trend_code(rsi_code, kst_code) =>
 
     st_num = rsi_num + kst_num
     summ_trend_code := st_num == 2? STRAT_ENTER_LONG : st_num == 1 ?  STRAT_LONG : st_num  == -2 ?  STRAT_ENTER_SHORT : st_num == -1 ? STRAT_SHORT : STRAT_NEUTRAL
-        
+
     summ_trend_code
 
 
 
-[rsi_code, kst_code,vol_kst_code] = get_all_status_codes()
+[rsi_code, kst_code] = get_all_status_codes()
 
 
 summ_trend_code = get_summary_trend_code(rsi_code, kst_code)
@@ -426,11 +420,8 @@ validlongentry = buyCond and summ_trend_code == STRAT_ENTER_LONG and checkEMA(tr
 validshortentry = sellCond and summ_trend_code == STRAT_ENTER_SHORT and checkEMA(false, false) and valid_entry_period
 
 
-vol_kst_active = vol_kst_code == STRAT_ENTER_LONG or vol_kst_code == STRAT_LONG
-check_vol_kst = not use_vol_kst ? true : vol_kst_active
-
-enterLong = validlongentry and not curr_active_pos and long_signal_flag and check_vol_kst
-enterShort = validshortentry and not curr_active_pos and short_signal_flag and check_vol_kst
+enterLong = validlongentry and not curr_active_pos and long_signal_flag
+enterShort = validshortentry and not curr_active_pos and short_signal_flag
 
 
 curr_active_pos := enterLong or enterShort ? true : curr_active_pos
@@ -440,7 +431,7 @@ shortpos := curr_active_pos and (sellCond or shortpos[1] and neutralCond)
 
 di_change = longpos[1] and sellCond or shortpos[1] and buyCond
 
-noTrade = di_change
+noTrade = di_change or exit_all_pos_period
 
 exitLong = noTrade and longpos[1] and curr_active_pos[1]
 exitShort = noTrade and shortpos[1] and curr_active_pos[1]
@@ -581,12 +572,8 @@ final_short_pos = fin_status_code == STRAT_SHORT or fin_status_code == STRAT_ENT
 final_open_pos = final_long_pos or final_short_pos
 
 
-
 plot(out1, title = 'RMA - 1', color = color.new(color.silver, transp = 0), linewidth = 2)
 plot(out2, title = 'RMA - 2', color = color.new(color.aqua, transp = 0), linewidth = 2)
-//plot(out3, title = 'RMA - 3', color = color.new(color.yellow, transp = 0), linewidth = 2)
-//plot(out4, title = 'RMA - 4', color = color.new(color.red, transp = 0), linewidth = 2)
-
 
 
 final_enterLong = fin_status_code == STRAT_ENTER_LONG
@@ -596,90 +583,8 @@ final_exitLong = fin_status_code == STRAT_EXIT_LONG
 final_exitShort = fin_status_code == STRAT_EXIT_SHORT
 
 
-var sep = ' : '
+sep = ' : '
 
-
-raise_alert(ord_type) =>
+raise_wh_alert(wh_txt, ord_type) =>
     alert(ord_type + sep + str.tostring(source), freq = alert.freq_once_per_bar_close)
 
-
-
-var trades= 0
-var win_trades = 0
-var total_maxp = 0.0
-
-var maxp = 0.0
-var entry_val = 0.0
-var curr_prof = 0.0
-
-
-is_neutral = fin_status_code == STRAT_NEUTRAL
-
-if barstate.isconfirmed and not is_neutral
-    sig_long = fin_status_code == STRAT_ENTER_LONG or fin_status_code == STRAT_LONG or fin_status_code == STRAT_EXIT_LONG
-    entry_val := final_enterLong or final_enterShort ? source : nz(entry_val[1])
-
-    bv = sig_long ? entry_val : source
-    sv = sig_long ? source : entry_val
-
-    curr_prof := (sv - bv) * 100 / bv
-    maxp := nz(maxp[1]) > curr_prof ? nz(maxp[1]) : curr_prof
-
-
-    if final_exitLong or final_exitShort
-        trades := trades + 1
-        total_maxp := total_maxp + maxp
-
-        if curr_prof >= 0
-            win_trades := win_trades +1
-
-
-        maxp := 0.0
-        entry_val := 0.0
-        curr_prof := 0.0
-
-
-
-if final_enterLong
-    raise_alert('U')
-
-if final_exitLong
-    raise_alert('XU')
-
-if final_enterShort
-    raise_alert('D')
-
-if final_exitShort
-    raise_alert('XD')
-
-
-convert_time_to_str (time_val)=>
-    str.tostring(dayofmonth(time_val, india_tz)) + '/' + str.tostring(month(time_val, india_tz)) + '_' + str.tostring(hour(time_val, india_tz)) + ':' + str.tostring(minute(time_val, india_tz))
-
-
-if barstate.islastconfirmedhistory
-    if not is_neutral and not (final_exitLong or final_exitShort)
-        trades := trades + 1
-        total_maxp := total_maxp + maxp
-
-        if curr_prof >= 0
-            win_trades := win_trades +1
-
-        maxp := 0.0
-        entry_val := 0.0
-        curr_prof := 0.0
-
-    // label.new(bar_index, high, text= str.tostring(math.round(maxrunup,2)) + " | "+  str.tostring(total_trades) + " | "+ str.tostring(max_run_avg))
-    var table tbl1 = table.new(position.top_right, 2, 6, frame_color = na, frame_width = 1, border_width = 2, border_color = na)
-    
-    table.cell(tbl1, 0, 0, 'From: '+convert_time_to_str(start), text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
-    table.cell(tbl1, 0, 1, 'Trades', text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
-    table.cell(tbl1, 0, 2, 'MaxPct', text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
-    table.cell(tbl1, 0, 3, 'MaxPCTAvg', text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
-    table.cell(tbl1, 0, 4, 'WinRate', text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
-
-    table.cell(tbl1, 1, 0, 'To: '+convert_time_to_str(time), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
-    table.cell(tbl1, 1, 1, str.tostring(trades), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
-    table.cell(tbl1, 1, 2, str.tostring(math.round(total_maxp, 2)), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
-    table.cell(tbl1, 1, 3, str.tostring(math.round(total_maxp/trades, 2)), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
-    table.cell(tbl1, 1, 4, str.tostring(math.round(win_trades/trades, 2)), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)

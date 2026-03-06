@@ -1,0 +1,132 @@
+// Generic UDT array sort — Pine Script v6
+//
+// PATTERN: array.sort_indices  +  in-place cyclic permutation
+// ─────────────────────────────────────────────────────────────────────────────
+// Goal: O(n log n) sort with NO extra UDT array allocation.
+//
+// How cyclic permutation works:
+//   sort_indices gives us the target permutation, e.g. [2, 0, 1]
+//   meaning: slot 0 should hold what is currently at index 2
+//            slot 1 should hold what is currently at index 0
+//            slot 2 should hold what is currently at index 1
+//
+//   Instead of building a new array, we follow each "cycle" in the
+//   permutation and rotate elements around it using ONE temp variable:
+//
+//     cycle starting at 0:  0 → needs idx[0]=2 → needs idx[2]=1 → needs idx[1]=0 (back to start)
+//     temp = udt[0]
+//     udt[0] = udt[2]
+//     udt[2] = udt[1]
+//     udt[1] = temp        ← full cycle done, only 1 temp used
+//
+// Extra space: O(n) for sort_indices output (array<int>, unavoidable since
+//              array.sort_indices always allocates) + O(n) visited flags.
+//              The UDT array itself is reordered fully in-place.
+// ─────────────────────────────────────────────────────────────────────────────
+
+//---------------------------------------------------------------------------
+// INPUTS
+//---------------------------------------------------------------------------
+sortby     = input.string('tot_maxp', 'Sort Stats By',
+             options=['tot_maxp', 'avg_maxp', 'win_rate'])
+sort_order = input.string('Desc', 'Order', options=['Asc', 'Desc'])
+
+//---------------------------------------------------------------------------
+// UDT DEFINITIONS
+//---------------------------------------------------------------------------
+type stats_row
+    string symbol
+    int    trades
+    float  total_maxp
+    int    win_trades
+
+type alert_row
+    string symbol
+    float  entry
+    float  ltp
+    float  prof
+    float  maxp
+    color  sig
+    int    time_alert
+
+//---------------------------------------------------------------------------
+// ARRAYS
+//---------------------------------------------------------------------------
+var array<alert_row> alerts_arr = array.new<alert_row>()
+var array<stats_row> stats_arr  = array.new<stats_row>()
+
+//---------------------------------------------------------------------------
+// STEP 1 — KEY BUILDERS  (only UDT-aware code in the whole file)
+//---------------------------------------------------------------------------
+
+build_alert_keys() =>
+    keys = array.new<float>()
+    for i = 0 to array.size(alerts_arr) - 1
+        alert_row r = array.get(alerts_arr, i)
+        array.push(keys, float(r.time_alert))
+    keys
+
+build_stats_keys() =>
+    keys = array.new<float>()
+    for i = 0 to array.size(stats_arr) - 1
+        stats_row r = array.get(stats_arr, i)
+        val = switch sortby
+            'tot_maxp' => r.total_maxp
+            'avg_maxp' => r.total_maxp / r.trades
+            =>            float(r.win_trades) / r.trades
+        array.push(keys, val)
+    keys
+
+//---------------------------------------------------------------------------
+// STEP 2 — SINGLE REUSABLE SORT ENGINE  (in-place, O(n log n))
+//
+//   Allocations:
+//     • sorted_idx  — array<int>  size n  (returned by sort_indices, unavoidable)
+//     • visited     — array<bool> size n  (cycle tracker)
+//     • ONE temp UDT reference per cycle  (single variable, not an array)
+//
+//   The UDT array is permuted in-place; no second UDT array is ever created.
+//---------------------------------------------------------------------------
+
+sort_udt_by_keys(udt_arr, array<float> keys, string ord = 'Asc') =>
+    n = array.size(udt_arr)
+    if n > 1
+        order      = ord == 'Asc' ? order.ascending : order.descending
+        sorted_idx = array.sort_indices(keys, order)   // array<int>, size n
+
+        // track which positions have already been placed correctly
+        visited = array.new<bool>(n, false)
+
+        for i = 0 to n - 1
+            // skip if already in correct place or already processed in a cycle
+            if not array.get(visited, i) and array.get(sorted_idx, i) != i
+                temp = array.get(udt_arr, i)   // single temp — not an array
+                cur  = i
+
+                // follow the cycle: cur → sorted_idx[cur] → ... → back to i
+                while array.get(sorted_idx, cur) != i
+                    nxt = array.get(sorted_idx, cur)
+                    array.set(udt_arr, cur, array.get(udt_arr, nxt))
+                    array.set(visited, cur, true)
+                    cur := nxt
+
+                // close the cycle — place temp at the last position
+                array.set(udt_arr, cur, temp)
+                array.set(visited, cur, true)
+
+//---------------------------------------------------------------------------
+// STEP 3 — TYPED WRAPPERS  (one-liners, unchanged)
+//---------------------------------------------------------------------------
+
+sort_alerts(string ord = 'Asc') =>
+    sort_udt_by_keys(alerts_arr, build_alert_keys(), ord)
+
+sort_stats(string ord = 'Desc') =>
+    sort_udt_by_keys(stats_arr, build_stats_keys(), ord)
+
+//---------------------------------------------------------------------------
+// USAGE
+//---------------------------------------------------------------------------
+if barstate.islast
+    sort_alerts('Asc')
+    sort_stats('Desc')
