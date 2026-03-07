@@ -68,27 +68,15 @@ var sep = ' : '
 var line_sep = '\n-----\n'
 var screener_sep = '----------------\n'
 
-var tfcount = 1
-
 //----------- Symbols List ------------------
-
 
 var symbolsInput = input.text_area("BANKNIFTY\nNIFTY_MID_SELECT\nNIFTY", "Symbols")
 var maxSymbols = 40
 
 
-//----Constants-------
-
-// OSc Constants
-var rad2degree = 180 / 3.14159265359
-var lookback_period = 1
-var smoothing = 3
 
 
-var RANGE_BACK_BARS = 20
-var osc_filter_range = 5.2
-var adx_filter_range = 8.8
-var erg_filter_range = 6
+
 
 
 // OSc Code Consts
@@ -98,15 +86,18 @@ var DOWN = 2
 var NEUTRAL = 0
 
 
-decodeMovementCode(st) =>
-    col = st == UP ? color.aqua : st == DOWN ? color.red : color.gray
-    txt = st == UP ? 'Up' : st == DOWN ? 'Down' : 'Neutral'
-    [txt, col]
+var rad2degree = 180 / 3.14159265359
+var lookback_period = 1
+var smoothing = 3
+
+var RANGE_BACK_BARS = 20
+var osc_filter_range = 5.2
 
 
 angle(_src, osc_avg_tr) =>
     ang = rad2degree * math.atan((_src - nz(_src[lookback_period])) / (lookback_period * osc_avg_tr))
     ang
+
 
 get_osc_trend_params(osc, osc_filter) =>
     osc_max = ta.highest(osc, RANGE_BACK_BARS)
@@ -163,38 +154,38 @@ decodeStratCode(adx_code) =>
     adx_txt = string(na)
     switch adx_code 
         STRAT_EXIT_LONG => 
-            adx_txt := 'XU'
-            adx_col := color.new(color.yellow, transp = 0)
-            adx_col
+    	    adx_txt := 'XU'
+    	    adx_col := color.new(color.yellow, transp = 0)
+    	    adx_col
         STRAT_EXIT_SHORT => 
 
-            adx_txt := 'XD'
-            adx_col := color.new(color.blue, transp = 0)
-            adx_col
+    	    adx_txt := 'XD'
+    	    adx_col := color.new(color.blue, transp = 0)
+    	    adx_col
         STRAT_ENTER_LONG => 
 
-            adx_txt := 'U'
-            adx_col := color.new(color.lime, transp = 0)
-            adx_col
+    	    adx_txt := 'U'
+    	    adx_col := color.new(color.lime, transp = 0)
+    	    adx_col
         STRAT_ENTER_SHORT => 
 
-            adx_txt := 'D'
-            adx_col := color.new(color.red, transp = 0)
-            adx_col
+    	    adx_txt := 'D'
+    	    adx_col := color.new(color.red, transp = 0)
+    	    adx_col
         STRAT_LONG => 
 
-            adx_txt := 'Up'
-            adx_col := color.new(color.aqua, transp = 60)
-            adx_col
+    	    adx_txt := 'Up'
+    	    adx_col := color.new(color.aqua, transp = 60)
+    	    adx_col
         STRAT_SHORT => 
 
-            adx_txt := 'Dn'
-            adx_col := color.new(color.orange, transp = 60)
-            adx_col
+    	    adx_txt := 'Dn'
+    	    adx_col := color.new(color.orange, transp = 60)
+    	    adx_col
         => 
-            adx_txt := 'Na'
-            adx_col := color.new(color.gray, transp = 60)
-            adx_col
+    	    adx_txt := 'Na'
+    	    adx_col := color.new(color.gray, transp = 60)
+    	    adx_col
 
     [adx_txt, adx_col]
 
@@ -315,7 +306,8 @@ calc_volKST() =>
 
 
     kst_active_position = false
-    kst_active_position := (kst_validlongentry or kst_validshortentry) and not kst_active_position[1] ? true : kst_noTradeZone ? false : kst_active_position[1]
+    kst_active_position := kst_active_position[1]
+    kst_active_position := (kst_validlongentry or kst_validshortentry) and not kst_active_position[1] ? true : kst_noTradeZone ? false : kst_active_position
 
 
     kst_enterLong = kst_validlongentry and not kst_active_position[1]
@@ -490,7 +482,7 @@ calc_final_summary(rsi_code, kst_code,vol_kst_code) =>
     validshortentry = sellCond and summ_trend_code == STRAT_ENTER_SHORT and checkEMA(false, false) and window()
 
     vol_kst_active = vol_kst_code == STRAT_ENTER_LONG or vol_kst_code == STRAT_LONG
-    check_vol_kst = not use_vol_kst ? true : vol_kst_active
+    check_vol_kst = not use_vol_kst or vol_kst_active
 
     enterLong = validlongentry and not curr_active_pos and long_signal_flag and check_vol_kst
     enterShort = validshortentry and not curr_active_pos and short_signal_flag and check_vol_kst
@@ -678,6 +670,7 @@ get_all_status_codes() =>
     total_maxp := nz(total_maxp[1])
     win_trades := nz(win_trades[1])
 
+  
     if not is_neutral
 
         sig_long = final_summary_status_code == STRAT_ENTER_LONG or final_summary_status_code == STRAT_LONG or final_summary_status_code == STRAT_EXIT_LONG
@@ -689,20 +682,16 @@ get_all_status_codes() =>
         maxp := nz(maxp[1]) > curr_prof ? nz(maxp[1]) : curr_prof
 
 
-        if not active_pos[1] and (is_long_entry or is_short_entry)
+        if not active_pos and (is_long_entry or is_short_entry)
             active_pos := true
             active_pos
 
-        if active_pos[1]  and (is_long_exit or is_short_exit)
+        if active_pos and (is_long_exit or is_short_exit)
             trades := trades +1
             total_maxp := total_maxp + maxp
 
             if curr_prof >= 0
                 win_trades := win_trades +1
-
-            curr_prof := 0.0
-            maxp := 0.0
-            entry_val := 0.0
 
             active_pos := false
             active_pos
@@ -712,10 +701,7 @@ get_all_status_codes() =>
                 trades := trades +1
                 total_maxp := total_maxp + maxp
                 if curr_prof >= 0
-                    win_trades := nz(win_trades[1]) +1
-
-
-
+                    win_trades := win_trades +1
 
 
     [lineup_status, entry_val, ltp, actual_close_time, final_summary_status_code, math.round(curr_prof, 2), math.round(maxp, 2), trades, total_maxp,win_trades]
@@ -769,15 +755,16 @@ var array<stats_row> stats_arr = array.new<stats_row>()
 var array<status_row> symbol_status_arr = array.new<status_row>()
 
 
-
+//alerts_arr sort key
 get_alert_sort_key_val(ao)=>
     ao.time_alert
 
+//stats_arr sort key
 get_stats_sort_key_val(so)=>
     switch sortby 
         'tot_maxp' => so.total_maxp
         'avg_maxp' => so.trades == 0 ? 0 : so.total_maxp/so.trades
-        => so.trades == 0 ? 0 : so.win_trades/so.trades // win_rate
+        => so.trades == 0 ? 0 : float(so.win_trades)/so.trades // win_rate
 
 
 build_udt_keys(UDTtype udtyp) =>
@@ -814,16 +801,18 @@ udt_compare_swap(udt_arr,keys,udt_sort_ord,indx1,indx2) =>
 // bubble sort
 
 sort_udt_arr(udt_arr,UDTtype udtyp,udt_sort_ord='Asc') =>
-    keys = build_udt_keys(udtyp)
     n = array.size(udt_arr)
-    for i = 0 to n - 2
-        swapped = false
-        for j = 0 to n - 2 - i
-            if udt_compare_swap(udt_arr,keys,udt_sort_ord,j,j+1)
-                swapped := true
-                 
-        if not swapped
-            break
+    if n > 1 
+        keys = build_udt_keys(udtyp)
+        if array.size(keys) > 1
+            for i = 0 to n - 2
+                swapped = false
+                for j = 0 to n - 2 - i
+                    if udt_compare_swap(udt_arr,keys,udt_sort_ord,j,j+1)
+                        swapped := true
+                        
+                if not swapped
+                    break
 
 
 
@@ -872,30 +861,26 @@ if barstate.isconfirmed
             updateStatusArr(cleanSym,lineup_st, entry_val, ltp, actual_close_time, final_summary_status_code, curr_prof, maxp,trades,total_maxp,win_trades)
 
 
-is_entry_alert(st, show_flag) =>
-    show_flag and (st == STRAT_ENTER_LONG or st == STRAT_ENTER_SHORT or st == STRAT_EXIT_LONG or st == STRAT_EXIT_SHORT)
+is_entry_exit_alert(st) =>
+    (st == STRAT_ENTER_LONG or st == STRAT_ENTER_SHORT or st == STRAT_EXIT_LONG or st == STRAT_EXIT_SHORT)
 
 
-get_alert_info(actual_close_time, st, show_flag, value, symb) =>
-    any_entry = false
+get_alert_info(actual_close_time, st, value, symb) =>
+    any_alert = false
 
     [dis_txt, dis_col] = decodeStratCode(st)
 
-    entry_alert = is_entry_alert(st, show_flag)
+    entry_alert = is_entry_exit_alert(st)
 
     if entry_alert
-        any_entry := true
-        any_entry
+        any_alert := true
+        any_alert
 
 
     symb_info = symb + sep + dis_txt + sep + str.tostring(value) + line_sep
 
-    if not tf1_alert
-        any_entry := false
-        any_entry
 
-
-    [any_entry, symb_info, dis_col]
+    [any_alert, symb_info, dis_col]
 
 
 
@@ -906,7 +891,7 @@ var redcol = color.new(color.red, transp = 80)
 
 //---------------- ARRAY ----------------
 add_alert_arr(symb, lineup_st, summ_trend_code, entry_val, ltp, curr_prof, maxp, summ_col,actual_close_time) =>
-    if tf1_alert and summ_trend_code != STRAT_NEUTRAL
+    if summ_trend_code != STRAT_NEUTRAL
         array.push(alerts_arr, alert_row.new( symb + sep + str.tostring(lineup_st),
                                                 entry_val,
                                                 ltp,
@@ -1016,23 +1001,16 @@ raise_order_alerts() =>
 
 
 
-if last_bar_update
+if last_bar_update and tf1_alert
 
     symb_arr_size = array.size(symbol_status_arr)
-    row_count = symb_arr_size / tfcount
      
-    tab_i = 0
-    tab_j = 0
-
     any_trade_alert := false
     scr_label := na
-
 
     array.clear(alerts_arr)
 
     for i = 0 to symb_arr_size - 1 by 1
-        tab_i := math.floor(i / tfcount)
-        tab_j := math.floor(i % tfcount)
 
         symb_status_row = array.get(symbol_status_arr,i)
         symb = symb_status_row.symbol
@@ -1046,7 +1024,7 @@ if last_bar_update
         maxp = symb_status_row.maxp
 
 
-        [trade_alert_flag, symb_info, summ_col] = get_alert_info(actual_close_time, summ_trend_code, tf1_alert, ltp, symb)
+        [trade_alert_flag, symb_info, summ_col] = get_alert_info(actual_close_time, summ_trend_code, ltp, symb)
 
         if trade_alert_flag
             any_trade_alert := trade_alert_flag
@@ -1056,8 +1034,7 @@ if last_bar_update
 
         add_alert_arr(symb, lineup_st, summ_trend_code, entry_val, ltp, curr_prof, maxp, summ_col, actual_close_time)
     
-    sort_udt_arr(alerts_arr,UDTtype.ALERT,udt_sort_ord='Asc')
-
+    
     //Send alert only if screener is not empty
     if not na(scr_label) and any_trade_alert
         final_msg = screener_sep + scr_label + screener_sep
@@ -1066,22 +1043,21 @@ if last_bar_update
             raise_order_alerts()
 
 
-if last_bar_update
+    // build alerts table
 
-    var table tbl1 = na
+    sort_udt_arr(alerts_arr,UDTtype.ALERT,udt_sort_ord='Asc')
     arr_size = array.size(alerts_arr)
-
-
+    
+    var table tbl1 = na
     if not na(tbl1)
         table.delete(tbl1)
         tbl1 := na  // Mark as deleted and not accessible
     
-    num_col = 6
+    var num_col = 6
     num_rows = arr_size + 1
 
     if arr_size > 0
-        tab_pos = position.middle_left
-        tbl1 := table.new(tab_pos, num_col, num_rows, frame_color = color(na), frame_width = 1, border_width = 2, border_color = color(na))
+        tbl1 := table.new(position.middle_left, num_col, num_rows, frame_color = color(na), frame_width = 1, border_width = 2, border_color = color(na))
 
         table.cell(tbl1, 0, 0, convert_time_to_str(time_close), text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
 
@@ -1091,8 +1067,7 @@ if last_bar_update
         table.cell(tbl1, 4, 0, 'MaxP', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
         table.cell(tbl1, 5, 0, 'Time', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
 
-        for i = 0 to arr_size - 1 by 1
-
+        for i = 0 to (arr_size - 1)
             ar = array.get(alerts_arr, i)
 
             if exclude_negatives and ar.prof <= negative_threshold
@@ -1105,7 +1080,7 @@ if last_bar_update
             table.cell(tbl1, 0, i + 1, ar.symbol, text_halign = text.align_left, bgcolor = sig_col, text_color = color.white, text_size = size.small)
             table.cell(tbl1, 1, i + 1, str.tostring(ar.entry), text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
             table.cell(tbl1, 2, i + 1, str.tostring(ar.ltp), text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
-            table.cell(tbl1, 3, i + 1, str.tostring(ar.prof), text_halign = text.align_left, bgcolor = ar.prof > 0 ? greencol : redcol, text_color = color.white, text_size = size.small)
+            table.cell(tbl1, 3, i + 1, str.tostring(ar.prof), text_halign = text.align_left, bgcolor = ar.prof > maxp_threshold ? greencol : ar.prof < negative_threshold ? redcol : color(na), text_color = color.white, text_size = size.small)
             table.cell(tbl1, 4, i + 1, str.tostring(ar.maxp), text_halign = text.align_left, bgcolor = ar.maxp > 0.1 ? greencol : color(na), text_color = color.white, text_size = size.small)
 
             time_val = ar.time_alert
@@ -1123,42 +1098,69 @@ if last_bar_update
 
 if show_stats_bar
 
-    var table tbl2 = na
     arr_size = array.size(stats_arr)
-
-    if not na(tbl2)
-        table.delete(tbl2)
-        tbl2 := na  // Mark as deleted and not accessible
-    
-    num_col = 5
-    num_rows = arr_size + 1
-
     if arr_size > 0
-
         sort_udt_arr(stats_arr,UDTtype.STATS,udt_sort_ord=sort_order)
 
-        tbl2 := table.new(position.middle_right, num_col, num_rows, frame_color = color(na), frame_width = 1, border_width = 2, border_color = color(na))
+        var tablecapsize = 20
+        var cur_num_col = 5
+        var table tbl2 = na
+        var table tbl3 = na
 
-        table.cell(tbl2, 0, 0, convert_datetime_to_str(start) + ' to ' + convert_time_to_str(time_close), text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+        tb_size = arr_size > tablecapsize ? 2 : 1
+        for i=0 to tb_size -1
 
-        table.cell(tbl2, 1, 0, 'Trades', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-        table.cell(tbl2, 2, 0, 'Maxp', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-        table.cell(tbl2, 3, 0, 'Maxp AVG', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-        table.cell(tbl2, 4, 0, 'Wintrades', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+            cur_num_rows = math.min(arr_size,tablecapsize) + 1
+            cur_table_pos = position.middle_center
+            table cur_tbl = na
+
+            if i == 0
+                if not na(tbl2)
+                    table.delete(tbl2)
+                    tbl2 := na  // Mark as deleted and not accessible
+
+                tbl2 := table.new(cur_table_pos, cur_num_col, cur_num_rows, frame_color = color(na), frame_width = 1, border_width = 2, border_color = color(na))
+                cur_tbl := tbl2
+            else
+                if not na(tbl3)
+                    table.delete(tbl3)
+                    tbl3 := na  // Mark as deleted and not accessible
+                cur_table_pos := position.middle_right
+                cur_num_rows := arr_size - tablecapsize +1
+                tbl3 := table.new(cur_table_pos, cur_num_col, cur_num_rows, frame_color = color(na), frame_width = 1, border_width = 2, border_color = color(na))
+                cur_tbl := tbl3
+                
+ 
+
+            table.cell(cur_tbl, 0, 0, convert_datetime_to_str(start) + ' to ' + convert_time_to_str(time_close), text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+            table.cell(cur_tbl, 1, 0, 'Trades', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+            table.cell(cur_tbl, 2, 0, 'Maxp', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+            table.cell(cur_tbl, 3, 0, 'Maxp AVG', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+            table.cell(cur_tbl, 4, 0, 'WinRate', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+
+ 
 
         for i = 0 to arr_size - 1 by 1
             sr = array.get(stats_arr,i)
-            table.cell(tbl2, 0, i + 1, sr.symbol, text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
+            cur_tbl = tbl2
+            row_indx = i
+
+            if i >= tablecapsize
+                cur_tbl := tbl3
+                row_indx := i-tablecapsize
+
+
+            table.cell(cur_tbl, 0, row_indx + 1, sr.symbol, text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
             
             tr = sr.trades
             mxp = sr.total_maxp
             wit = sr.win_trades
-            mxpavg = tr == 0 ? 0 : float(mxp/tr) 
-            wtavg = tr == 0? 0 : float(wit)/tr
-        
-            table.cell(tbl2, 1, i + 1, str.tostring(tr), text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
-            table.cell(tbl2, 2, i + 1, str.tostring(math.round(mxp,2)), text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
-            table.cell(tbl2, 3, i + 1, str.tostring(math.round(mxpavg,2)), text_halign = text.align_left, bgcolor =  color(na), text_color = color.white, text_size = size.small)
-            table.cell(tbl2, 4, i + 1, str.tostring(math.round(wtavg,2)), text_halign = text.align_left, bgcolor =  color(na), text_color = color.white, text_size = size.small)
+            mxpavg = tr == 0 ? 0 : mxp/tr
+            winrt = tr == 0? 0 : float(wit)/tr
+
+            table.cell(cur_tbl, 1, row_indx + 1, str.tostring(tr), text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
+            table.cell(cur_tbl, 2, row_indx + 1, str.tostring(math.round(mxp,2)), text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
+            table.cell(cur_tbl, 3, row_indx + 1, str.tostring(math.round(mxpavg,2)), text_halign = text.align_left, bgcolor =  color(na), text_color = color.white, text_size = size.small)
+            table.cell(cur_tbl, 4, row_indx + 1, str.tostring(math.round(winrt,2)), text_halign = text.align_left, bgcolor =  color(na), text_color = color.white, text_size = size.small)
 
   

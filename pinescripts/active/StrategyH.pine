@@ -43,18 +43,6 @@ var long_signal_flag = input(true, title = 'Long Signal')
 var short_signal_flag = input(true, title = 'Short Signal')
 
 
-// OSc Constants
-var rad2degree = 180 / 3.14159265359
-var lookback_period = 1
-var smoothing = 3
-
-var RANGE_BACK_BARS = 20
-var osc_filter_range = 5.2
-
-
-valid_entry_period = window() 
-
-
 // ---------- EMAs --------------
 
 out1 = ta.rma(source, len1)
@@ -69,6 +57,17 @@ out4 = ta.rma(source, len4)
 var UP = 1
 var DOWN = 2
 var NEUTRAL = 0
+
+
+
+
+// OSc Constants
+var rad2degree = 180 / 3.14159265359
+var lookback_period = 1
+var smoothing = 3
+
+var RANGE_BACK_BARS = 20
+var osc_filter_range = 5.2
 
 
 angle(_src, osc_avg_tr) =>
@@ -287,14 +286,15 @@ calc_vol_KST() =>
 
     ergvalidtrend = kst_buyCond or kst_sellCond
 
-    kst_validlongentry = kst_buyCond and kst_validlong and long_signal_flag
-    kst_validshortentry = kst_sellCond and kst_validshort and short_signal_flag
+    kst_validlongentry = kst_buyCond and kst_validlong
+    kst_validshortentry = kst_sellCond and kst_validshort and false
 
     kst_noTradeZone = not ergvalidtrend or kst_di_crossover
 
 
     kst_active_position = false
-    kst_active_position := (kst_validlongentry or kst_validshortentry) and not kst_active_position[1] ? true : kst_noTradeZone ? false : kst_active_position[1]
+    kst_active_position := kst_active_position[1]
+    kst_active_position := (kst_validlongentry or kst_validshortentry) and not kst_active_position[1] ? true : kst_noTradeZone ? false : kst_active_position
 
 
     kst_enterLong = kst_validlongentry and not kst_active_position[1]
@@ -422,12 +422,12 @@ sellCond = (summ_trend_code == STRAT_ENTER_SHORT or summ_trend_code == STRAT_SHO
 neutralCond = not buyCond and not sellCond
 
 
-validlongentry = buyCond and summ_trend_code == STRAT_ENTER_LONG and checkEMA(true, false) and valid_entry_period
-validshortentry = sellCond and summ_trend_code == STRAT_ENTER_SHORT and checkEMA(false, false) and valid_entry_period
+validlongentry = buyCond and summ_trend_code == STRAT_ENTER_LONG and checkEMA(true, false) and window()
+validshortentry = sellCond and summ_trend_code == STRAT_ENTER_SHORT and checkEMA(false, false) and window()
 
 
 vol_kst_active = vol_kst_code == STRAT_ENTER_LONG or vol_kst_code == STRAT_LONG
-check_vol_kst = not use_vol_kst ? true : vol_kst_active
+check_vol_kst = not use_vol_kst or vol_kst_active
 
 enterLong = validlongentry and not curr_active_pos and long_signal_flag and check_vol_kst
 enterShort = validshortentry and not curr_active_pos and short_signal_flag and check_vol_kst
@@ -616,6 +616,10 @@ var curr_prof = 0.0
 is_neutral = fin_status_code == STRAT_NEUTRAL
 
 if barstate.isconfirmed and not is_neutral
+    trades := nz(trades[1])
+    win_trades := nz(win_trades[1])
+    total_maxp := nz(total_maxp[1])
+    
     sig_long = fin_status_code == STRAT_ENTER_LONG or fin_status_code == STRAT_LONG or fin_status_code == STRAT_EXIT_LONG
     entry_val := final_enterLong or final_enterShort ? source : nz(entry_val[1])
 
@@ -662,12 +666,9 @@ if barstate.islastconfirmedhistory
         trades := trades + 1
         total_maxp := total_maxp + maxp
 
-        if curr_prof >= 0
+        if curr_prof >= 0.0
             win_trades := win_trades +1
 
-        maxp := 0.0
-        entry_val := 0.0
-        curr_prof := 0.0
 
     // label.new(bar_index, high, text= str.tostring(math.round(maxrunup,2)) + " | "+  str.tostring(total_trades) + " | "+ str.tostring(max_run_avg))
     var table tbl1 = table.new(position.top_right, 2, 6, frame_color = na, frame_width = 1, border_width = 2, border_color = na)
@@ -681,5 +682,9 @@ if barstate.islastconfirmedhistory
     table.cell(tbl1, 1, 0, 'To: '+convert_time_to_str(time), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
     table.cell(tbl1, 1, 1, str.tostring(trades), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
     table.cell(tbl1, 1, 2, str.tostring(math.round(total_maxp, 2)), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
-    table.cell(tbl1, 1, 3, str.tostring(math.round(total_maxp/trades, 2)), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
-    table.cell(tbl1, 1, 4, str.tostring(math.round(win_trades/trades, 2)), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
+    
+    mxpavg = trades == 0 ? 0 : total_maxp/trades
+    winrt = trades == 0? 0 : float(win_trades)/trades
+
+    table.cell(tbl1, 1, 3, str.tostring(math.round(mxpavg, 2)), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
+    table.cell(tbl1, 1, 4, str.tostring(math.round(winrt, 2)), text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
