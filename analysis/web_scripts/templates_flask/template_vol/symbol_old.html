@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ symbol }} Volume</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+
+<style>
+body {
+    margin: 0;
+    padding: 24px;
+    font-family: Segoe UI, Arial, sans-serif;
+    background: #f4f6fb;
+}
+
+
+.container {
+    max-width: 1400px;
+    margin: auto;
+    background: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+}
+
+h2 {
+    color: #1a1a1a;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.tab {
+    padding: 8px 16px;
+    background: #e5e7eb;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.tab.active {
+    background: #2563eb;
+    color: #ffffff;
+}
+
+/* Chart layout */
+.chart-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+}
+
+#yAxisChart {
+    flex: 0 0 auto;
+    margin-right: -4px; /* Reduce gap between Y axis and chart */
+    /* You may adjust this value further if needed */
+}
+
+.scroll-container {
+    flex: 1 1 auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+canvas {
+    display: block;
+}
+
+
+/* Table */
+.table-container {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+thead th {
+    position: sticky;
+    top: 0;
+    background: #f3f4f6;
+    color: #1a1a1a;
+}
+
+th, td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: right;
+    color: #1a1a1a;
+}
+
+th:first-child,
+td:first-child {
+    text-align: left;
+}
+
+/* Dark Mode */
+@media (prefers-color-scheme: dark) {
+    body {
+        background: #111827;
+    }
+    
+    .container {
+        background: #1f2937;
+    }
+    
+    h2 {
+        color: #f9fafb;
+    }
+    
+    .tab {
+        background: #374151;
+        color: #f9fafb;
+    }
+    
+    .tab:hover {
+        background: #4b5563;
+    }
+    
+    .tab.active {
+        background: #3b82f6;
+        color: #ffffff;
+    }
+    
+    .table-container {
+        border: 1px solid #374151;
+    }
+    
+    thead th {
+        background: #374151;
+        color: #f9fafb;
+    }
+    
+    th, td {
+        border-bottom: 1px solid #374151;
+        color: #f3f4f6;
+    }
+    
+    tbody tr:hover {
+        background: #374151;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>{{ symbol }} — Volume Moving Averages</h2>
+
+<!-- Tabs -->
+<div class="tabs">
+    <a class="tab {% if timeframe == '3' %}active{% endif %}" href="?tf=3">3</a>
+    <a class="tab {% if timeframe == '15' %}active{% endif %}" href="?tf=15">15</a>
+    <a class="tab {% if timeframe == 'D' %}active{% endif %}" href="?tf=D">D</a>
+</div>
+
+<!-- CHART -->
+<div class="chart-row">
+    <canvas id="yAxisChart" width="130" height="500"></canvas>
+    <div class="scroll-container" style="margin-left: -4px;"><!-- reduce gap: pull chart leftward -->
+        <canvas id="mainChart" height="500"></canvas>
+    </div>
+</div>
+
+
+<!-- TABLE -->
+<div class="table-container">
+<table>
+    <thead>
+        <tr>
+            <th>Timestamp</th>
+            <th>Volume Cumulative</th>
+            <th>Volume</th>
+            <th>Volume Slow</th>
+            <th>Volume Fast</th>
+            <th>LTP</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% set header = data[0] %}
+    {% set idx_timestamp_full = header.index('timestamp_full') %}
+    {% set idx_volume_slow = header.index('volume_slow') %}
+    {% set idx_volume_fast = header.index('volume_fast') %}
+    {% set idx_ltp = header.index('ltp') %}
+    {% set idx_vol = header.index('volume') %}
+    {% set idx_vol_cum = header.index('volume_cumulative') %}
+    {% for row in data[1:][-20:] %}
+        <tr>
+            <td>{{ row[idx_timestamp_full] }}</td>
+            <td>{{ row[idx_vol_cum] | round | int }}</td>
+            <td>{{ row[idx_vol] | round | int }}</td>
+            <td>{{ row[idx_volume_slow] | round | int }}</td>
+            <td>{{ row[idx_volume_fast] | round | int }}</td>
+            <td>{{ row[idx_ltp] | round(2) }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+
+</div>
+
+<script>
+/* ===== DATA ===== */
+const rawData = {{ data | tojson }};
+
+// Parse list-of-lists format: first row is headers, rest are values
+const headers = rawData[0];
+const rows = rawData.slice(1);
+
+// Find column indices
+const timestampIdx = headers.indexOf('timestamp');
+const timestampFullIdx = headers.indexOf('timestamp_full');
+const volumeSlowIdx = headers.indexOf('volume_slow');
+const volumeFastIdx = headers.indexOf('volume_fast');
+const ltpIdx = headers.indexOf('ltp');
+
+// Extract data arrays
+const labels = rows.map(row => row[timestampIdx]);
+const slow   = rows.map(row => Number(row[volumeSlowIdx]));
+const fast   = rows.map(row => Number(row[volumeFastIdx]));
+
+/* ===== CANVAS WIDTH (ADAPTIVE) ===== */
+const MIN_PX = 3;
+const MAX_PX = 8;
+const MAX_WIDTH = 20000;
+
+let pxPerPoint = MAX_PX;
+if (labels.length * pxPerPoint > MAX_WIDTH) {
+    pxPerPoint = Math.max(MIN_PX, Math.floor(MAX_WIDTH / labels.length));
+}
+
+const mainCanvas = document.getElementById('mainChart');
+mainCanvas.width = Math.max(labels.length * pxPerPoint, 1200);
+
+const scroller = document.querySelector('.scroll-container');
+
+/* ===== MAIN CHART (NO Y AXIS) ===== */
+const mainChart = new Chart(mainCanvas.getContext('2d'), {
+    type: 'line',
+    data: {
+        labels,
+        datasets: [
+            { data: slow, borderColor: 'red', pointRadius: 0 },
+            { data: fast, borderColor: 'cyan', pointRadius: 0 }
+        ]
+    },
+    options: {
+        responsive: false,
+        plugins: { legend: { display: false }},
+        scales: {
+            x: {
+                ticks: {
+                    autoSkip: false,
+                    callback(_, i) {
+                        const viewWidth = scroller.clientWidth;
+                        const pts = viewWidth / pxPerPoint;
+                        const step = Math.max(1, Math.floor(pts / 25));
+                        return i % step === 0 ? labels[i] : '';
+                    }
+                }
+            },
+            y: { display: false }
+        }
+    }
+});
+
+/* ===== FIXED Y AXIS CHART ===== */
+const yAxisChart = new Chart(
+    document.getElementById('yAxisChart').getContext('2d'),
+    {
+        type: 'line',
+        data: {
+            labels: [''],
+            datasets: [{ data: slow, pointRadius: 0, borderWidth: 0 }]
+        },
+        options: {
+            responsive: false,
+            plugins: { legend: { display: false }},
+            scales: {
+                x: { display: false },
+                y: {
+                    position: 'left',
+                    ticks: {
+                        padding: 10,
+                        mirror: false,
+                        callback: v => v.toLocaleString()
+                    },
+                    title: {
+                        display: true,
+                        text: 'Volume',
+                        padding: { bottom: 6 }
+                    }
+                }
+
+            }
+        }
+    }
+);
+
+/* ===== AUTO-RESCALE Y ON SCROLL ===== */
+function updateYScale() {
+    const start = Math.floor(scroller.scrollLeft / pxPerPoint);
+    const end = Math.min(
+        labels.length - 1,
+        Math.ceil((scroller.scrollLeft + scroller.clientWidth) / pxPerPoint)
+    );
+
+    let min = Infinity, max = -Infinity;
+    for (let i = start; i <= end; i++) {
+        min = Math.min(min, slow[i], fast[i]);
+        max = Math.max(max, slow[i], fast[i]);
+    }
+
+    const pad = (max - min) * 0.1 || 1;
+
+    mainChart.options.scales.y.min = min - pad;
+    mainChart.options.scales.y.max = max + pad;
+    yAxisChart.options.scales.y.min = min - pad;
+    yAxisChart.options.scales.y.max = max + pad;
+
+    mainChart.update('none');
+    yAxisChart.update('none');
+}
+
+scroller.addEventListener('scroll', () => {
+    requestAnimationFrame(updateYScale);
+});
+
+/* INIT */
+scroller.scrollLeft = scroller.scrollWidth;
+updateYScale();
+
+/* ===== AUTO REFRESH PAGE EVERY 3 MINUTES ===== */
+setTimeout(function() {
+    window.location.reload();
+}, 180000);
+</script>
+
+</body>
+</html>

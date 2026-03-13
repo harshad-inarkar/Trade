@@ -468,9 +468,9 @@ const rawData = {{ data | tojson }};
 const headers  = rawData[0];
 const rows     = rawData.slice(1);
 
-const tsIdx   = headers.indexOf('timestamp');
-const slowIdx = headers.indexOf('volume_slow');
-const fastIdx = headers.indexOf('volume_fast');
+const tsIdx    = headers.indexOf('timestamp');
+const slowIdx  = headers.indexOf('volume_slow');
+const fastIdx  = headers.indexOf('volume_fast');
 
 const labels = rows.map(r => r[tsIdx]);
 const slow   = rows.map(r => Number(r[slowIdx]));
@@ -487,160 +487,19 @@ mainCanvas.width = Math.max(labels.length * pxPerPoint, 1200);
 
 const scroller = document.querySelector('.scroll-container');
 
-/* ── COLOURS ─────────────────────────────────────────────────────────────── */
+/* ── CHART COLOURS (pull from CSS vars) ──────────────────────────────────── */
 const cs = getComputedStyle(document.documentElement);
-const COL_SLOW = cs.getPropertyValue('--slow-col').trim();
-const COL_FAST = cs.getPropertyValue('--fast-col').trim();
-const COL_GRID = cs.getPropertyValue('--border').trim();
-const COL_TEXT = cs.getPropertyValue('--muted').trim();
+const COL_SLOW   = cs.getPropertyValue('--slow-col').trim();
+const COL_FAST   = cs.getPropertyValue('--fast-col').trim();
+const COL_GRID   = cs.getPropertyValue('--border').trim();
+const COL_TEXT   = cs.getPropertyValue('--muted').trim();
+const COL_BG     = cs.getPropertyValue('--bg').trim();
+const COL_SURF   = cs.getPropertyValue('--surface').trim();
 
 Chart.defaults.color = COL_TEXT;
 Chart.defaults.borderColor = COL_GRID;
 
-/* ── SHARED CROSSHAIR STATE ──────────────────────────────────────────────── */
-// canvasX = pixel position on mainCanvas; dataIndex = resolved data point index
-const xhair = { canvasX: null, canvasY: null, dataIndex: null };
-
-/* ── HELPER: format volume label ─────────────────────────────────────────── */
-function fmtVol(v) {
-  if (v == null || isNaN(v)) return '';
-  if (v >= 1_000_000) return (v / 1_000_000).toFixed(2) + 'M';
-  if (v >= 1_000)     return (v / 1_000).toFixed(1) + 'K';
-  return Math.round(v).toLocaleString();
-}
-
-/* ── CANVAS BG PLUGIN ────────────────────────────────────────────────────── */
-const canvasBgPlugin = {
-  id: 'canvasBg',
-  beforeDraw({ ctx, width, height }) {
-    ctx.save();
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, width, height);
-    ctx.restore();
-  }
-};
-
-/* ── CROSSHAIR PLUGIN (main chart) ──────────────────────────────────────── */
-// Draws vertical + horizontal lines and an X-axis label pill
-const crosshairMainPlugin = {
-  id: 'crosshairMain',
-  afterDraw(chart) {
-    if (xhair.canvasX == null) return;
-    const { ctx, chartArea: { top, bottom, left, right }, scales } = chart;
-
-    const cx = xhair.canvasX;
-    const cy = xhair.canvasY;
-
-    // clamp to chartArea
-    if (cx < left || cx > right) return;
-
-    ctx.save();
-    ctx.setLineDash([4, 3]);
-    ctx.strokeStyle = 'rgba(200,216,232,0.45)';
-    ctx.lineWidth = 1;
-
-    // vertical line
-    ctx.beginPath();
-    ctx.moveTo(cx, top);
-    ctx.lineTo(cx, bottom);
-    ctx.stroke();
-
-    // horizontal line (only if Y is in chartArea)
-    if (cy != null && cy >= top && cy <= bottom) {
-      ctx.beginPath();
-      ctx.moveTo(left, cy);
-      ctx.lineTo(right, cy);
-      ctx.stroke();
-    }
-
-    ctx.setLineDash([]);
-
-    // ── X-axis label pill ────────────────────────────────────────────────
-    if (xhair.dataIndex != null && xhair.dataIndex < labels.length) {
-      const xLabel = labels[xhair.dataIndex];
-      const FONT = "10px 'IBM Plex Mono'";
-      ctx.font = FONT;
-      const tw = ctx.measureText(xLabel).width;
-      const ph = 16, pw = tw + 12, pr = 3;
-      let px = cx - pw / 2;
-      px = Math.max(left, Math.min(right - pw, px));
-      const py = bottom + 2;
-
-      ctx.fillStyle = 'rgba(200,216,232,0.92)';
-      ctx.beginPath();
-      ctx.roundRect(px, py, pw, ph, pr);
-      ctx.fill();
-      ctx.fillStyle = '#000';
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'center';
-      ctx.fillText(xLabel, px + pw / 2, py + ph / 2);
-    }
-
-    ctx.restore();
-  }
-};
-
-/* ── CROSSHAIR PLUGIN (Y-axis chart) ─────────────────────────────────────── */
-// Draws horizontal line + Y-value label pill on the yAxisChart canvas
-const crosshairYPlugin = {
-  id: 'crosshairY',
-  afterDraw(chart) {
-    if (xhair.canvasY == null) return;
-    const { ctx, chartArea: { top, bottom, left, right }, scales } = chart;
-
-    // Convert the Y pixel from mainChart into this chart's value domain
-    // Both charts share the same y min/max, so we can use yAxisChart's own scale
-    const yScale = scales.y;
-    if (!yScale) return;
-
-    // Map mainChart canvasY → value → yAxisChart pixel
-    // Since both charts are synced to same min/max, value is the same;
-    // just get value from mainChart's scale then convert to yAxisChart pixel
-    const mainYScale = mainChart.scales.y;
-    if (!mainYScale) return;
-    const yValue = mainYScale.getValueForPixel(xhair.canvasY);
-    const cy = yScale.getPixelForValue(yValue);
-
-    if (cy == null || cy < top || cy > bottom) return;
-
-    ctx.save();
-    ctx.setLineDash([4, 3]);
-    ctx.strokeStyle = 'rgba(200,216,232,0.45)';
-    ctx.lineWidth = 1;
-
-    // horizontal line across Y axis panel
-    ctx.beginPath();
-    ctx.moveTo(left, cy);
-    ctx.lineTo(right, cy);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // ── Y-axis label pill ─────────────────────────────────────────────────
-    const yLabel = fmtVol(yValue);
-    const FONT = "10px 'IBM Plex Mono'";
-    ctx.font = FONT;
-    const tw = ctx.measureText(yLabel).width;
-    const ph = 16, pw = tw + 12, pr = 3;
-    const px = right - pw - 2;           // right-align inside Y panel
-    let   py = cy - ph / 2;
-    py = Math.max(top, Math.min(bottom - ph, py));
-
-    ctx.fillStyle = 'rgba(200,216,232,0.92)';
-    ctx.beginPath();
-    ctx.roundRect(px, py, pw, ph, pr);
-    ctx.fill();
-    ctx.fillStyle = '#000';
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'center';
-    ctx.fillText(yLabel, px + pw / 2, py + ph / 2);
-
-    ctx.restore();
-  }
-};
-
-Chart.register(canvasBgPlugin, crosshairMainPlugin, crosshairYPlugin);
-
-/* ── MAIN CHART ──────────────────────────────────────────────────────────── */
+/* ── MAIN CHART (no Y axis) ──────────────────────────────────────────────── */
 const mainChart = new Chart(mainCanvas.getContext('2d'), {
   type: 'line',
   data: {
@@ -663,7 +522,7 @@ const mainChart = new Chart(mainCanvas.getContext('2d'), {
         pointRadius: 0,
         tension: 0.3,
         fill: {
-          target: 0,
+          target: 0,          /* fill between fast and slow */
           above: 'rgba(0,212,170,0.06)',
           below: 'rgba(224,85,85,0.06)',
         },
@@ -673,15 +532,23 @@ const mainChart = new Chart(mainCanvas.getContext('2d'), {
   options: {
     responsive: false,
     animation: false,
-    // KEY FIX: set left padding to 0 so chartArea starts flush at pixel 0
-    layout: { padding: { left: 0, right: 0, top: 4, bottom: 0 } },
     plugins: {
       legend: { display: false },
-      tooltip: { enabled: false },   // disabled — crosshair handles it
+      tooltip: {
+        mode: 'index',
+        intersect: false,
+        backgroundColor: 'rgba(19,25,32,.95)',
+        borderColor: COL_GRID,
+        borderWidth: 1,
+        titleFont: { family: "'IBM Plex Mono'", size: 11 },
+        bodyFont:  { family: "'IBM Plex Mono'", size: 11 },
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}`
+        }
+      }
     },
     scales: {
       x: {
-        offset: false,               // no half-bar offset at edges
         grid: { color: COL_GRID, lineWidth: 0.5 },
         ticks: {
           font: { family: "'IBM Plex Mono'", size: 10 },
@@ -695,12 +562,7 @@ const mainChart = new Chart(mainCanvas.getContext('2d'), {
           }
         }
       },
-      // Hidden Y axis — still needed for pixel↔value conversion in crosshair
-      y: {
-        display: false,
-        // grace: 0 ensures no padding above/below that could shift scale vs yAxisChart
-        grace: 0,
-      }
+      y: { display: false }
     }
   }
 });
@@ -716,19 +578,21 @@ const yAxisChart = new Chart(
     options: {
       responsive: false,
       animation: false,
-      layout: { padding: { left: 0, right: 0, top: 4, bottom: 0 } },
       plugins: { legend: { display: false }, tooltip: { enabled: false } },
       scales: {
         x: { display: false },
         y: {
           position: 'left',
-          grace: 0,
           grid: { color: COL_GRID, lineWidth: 0.5 },
           ticks: {
             font:    { family: "'IBM Plex Mono'", size: 10 },
             color:   COL_TEXT,
             padding: 8,
-            callback: v => fmtVol(v)
+            callback: v => {
+              if (v >= 1_000_000) return (v/1_000_000).toFixed(1) + 'M';
+              if (v >= 1_000)     return (v/1_000).toFixed(0) + 'K';
+              return v.toLocaleString();
+            }
           },
           title: {
             display: true,
@@ -742,33 +606,6 @@ const yAxisChart = new Chart(
     }
   }
 );
-
-/* ── MOUSE EVENTS → CROSSHAIR ────────────────────────────────────────────── */
-mainCanvas.addEventListener('mousemove', e => {
-  const rect   = mainCanvas.getBoundingClientRect();
-  const scaleX = mainCanvas.width  / rect.width;
-  const scaleY = mainCanvas.height / rect.height;
-
-  xhair.canvasX = (e.clientX - rect.left) * scaleX;
-  xhair.canvasY = (e.clientY - rect.top)  * scaleY;
-
-  // Resolve nearest data index from canvasX using chartArea
-  const ca = mainChart.chartArea;
-  if (ca) {
-    const frac = (xhair.canvasX - ca.left) / (ca.right - ca.left);
-    xhair.dataIndex = Math.round(frac * (labels.length - 1));
-    xhair.dataIndex = Math.max(0, Math.min(labels.length - 1, xhair.dataIndex));
-  }
-
-  mainChart.update('none');
-  yAxisChart.update('none');
-});
-
-mainCanvas.addEventListener('mouseleave', () => {
-  xhair.canvasX = xhair.canvasY = xhair.dataIndex = null;
-  mainChart.update('none');
-  yAxisChart.update('none');
-});
 
 /* ── SYNC Y SCALE ON SCROLL ──────────────────────────────────────────────── */
 function syncYScale() {
@@ -788,10 +625,10 @@ function syncYScale() {
   const yMin = min - pad;
   const yMax = max + pad;
 
-  mainChart.options.scales.y.min  = yMin;
-  mainChart.options.scales.y.max  = yMax;
-  yAxisChart.options.scales.y.min = yMin;
-  yAxisChart.options.scales.y.max = yMax;
+  mainChart.options.scales.y.min   = yMin;
+  mainChart.options.scales.y.max   = yMax;
+  yAxisChart.options.scales.y.min  = yMin;
+  yAxisChart.options.scales.y.max  = yMax;
 
   mainChart.update('none');
   yAxisChart.update('none');
@@ -799,11 +636,11 @@ function syncYScale() {
 
 scroller.addEventListener('scroll', () => requestAnimationFrame(syncYScale));
 
-/* ── INIT ────────────────────────────────────────────────────────────────── */
-scroller.scrollLeft = scroller.scrollWidth;
+/* ── INIT ─────────────────────────────────────────────────────────────────── */
+scroller.scrollLeft = scroller.scrollWidth;   // start at latest candle
 syncYScale();
 
-/* ── AUTO REFRESH ────────────────────────────────────────────────────────── */
+/* ── AUTO REFRESH ─────────────────────────────────────────────────────────── */
 setTimeout(() => location.reload(), 180_000);
 </script>
 

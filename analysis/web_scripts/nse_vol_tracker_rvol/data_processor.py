@@ -165,21 +165,33 @@ def read_csv_files_to_arrays(sorted_files, sorted_dates, tf, odi,
         sym_to_idx = {s: i for i, s in enumerate(sym_list)}
     else:
         # Two-pass: discover symbols first
+        # sym_set = set()
+        # for finfo in sorted_files:
+        #     with open(finfo['filename'], 'r', encoding='utf-8-sig') as f:
+        #         reader = csv.DictReader(f)
+        #         for row in reader:
+        #             sy = row[SYMB_COL].strip('"')
+        #             sym_set.add(new_symb_map.get(sy,sy))
+        # sym_list   = sorted(sym_set)
+        # sym_to_idx = {s: i for i, s in enumerate(sym_list)}
+
         sym_set = set()
-        for finfo in sorted_files:
-            with open(finfo['filename'], 'r', encoding='utf-8-sig') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    sy = row[SYMB_COL].strip('"')
-                    sym_set.add(new_symb_map.get(sy,sy))
+        with open(sorted_files[-1]['filename'], 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                sy = row[SYMB_COL].strip('"')
+                sym_set.add(new_symb_map.get(sy,sy))
+
         sym_list   = sorted(sym_set)
         sym_to_idx = {s: i for i, s in enumerate(sym_list)}
+
 
     n_syms   = len(sym_list)
 
     vcum_arr = np.full((n_syms, total_files + 1), np.nan)  # 1-indexed (col 0 unused)
     vltp_arr = np.full((n_syms, total_files + 1), np.nan)
 
+    excluded_sym_set = set()
     for finfo in sorted_files:
         n_file = get_index_from_dtobj(finfo['date_obj'], sorted_dates, tf, odi)
         with open(finfo['filename'], 'r', encoding='utf-8-sig') as f:
@@ -187,6 +199,11 @@ def read_csv_files_to_arrays(sorted_files, sorted_dates, tf, odi,
             for row in reader:
                 sy = row[SYMB_COL].strip('"')
                 sym = new_symb_map.get(sy,sy)
+                si  = sym_to_idx.get(sym)
+                if known_symbols is None and si is None:
+                    excluded_sym_set.add(sym)
+                    continue
+
                 si  = sym_to_idx.get(sym)
                 if si is None:
                     # new symbol seen in incremental mode
@@ -198,6 +215,11 @@ def read_csv_files_to_arrays(sorted_files, sorted_dates, tf, odi,
                     vltp_arr = np.vstack([vltp_arr, np.full((1, vltp_arr.shape[1]), np.nan)])
                 vcum_arr[si, n_file] = float(row[VALUE_COL])
                 vltp_arr[si, n_file] = float(row[LTP_COL].strip('"'))
+    
+
+ 
+    if excluded_sym_set:
+        print(f'Excluded symbols {excluded_sym_set}')
 
     return sym_list, vcum_arr, vltp_arr, total_files
 
@@ -440,9 +462,10 @@ def numpy_to_cache_rows(header, ts_list, tsf_list, num_matrix):
         row[CH_TS]    = ts_list[i]
         row[CH_VCUM]  = float(num_matrix[i, VOL_CUMUL])
         row[CH_VOL]   = float(num_matrix[i, VOL])
-        row[CH_VSLOW] = float(num_matrix[i, VOL_SLOW])
-        row[CH_VFAST] = float(num_matrix[i, VOL_FAST])
-        row[CH_VBASE] = float(num_matrix[i, VOL_BASE])
+        base = float(num_matrix[i, VOL_BASE])
+        row[CH_VBASE] = base
+        row[CH_VSLOW] = 0  if base == 0 else (float(num_matrix[i, VOL_SLOW])*100)/base
+        row[CH_VFAST] = 0  if base == 0 else (float(num_matrix[i, VOL_FAST])*100)/base
         row[CH_LTP]   = float(num_matrix[i, LTP_F])
         rows.append(row)
     return rows

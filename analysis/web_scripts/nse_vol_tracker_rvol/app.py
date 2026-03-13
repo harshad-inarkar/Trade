@@ -18,12 +18,18 @@ _syspath.append(os.path.abspath("../../")) # analysis dir
 from web_scripts.data_scripts.sync_data import PARENT_DIR,REMOTE_DIR, OUT_DIR, NSE_INTRADAY_DIR_PATH, REMOTE_INTRADAY_DIR_PATH,NSE_DATA_DIR, \
     INTRADAY_DIR,TEMPLATES_PARENT_DIR, sync_data_args
 
+from sector_loader import load_sector_symbols, UNIQ_CATEGORIES_CSV, CATEGORIES_CSV
+
+
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 
+# ── Session config ─────────────────────────────────────────────────────────────
+start_session = '0915'
+end_session   = '1530'
+
 RELOAD_INTERVAL_MINUTES = None
 remote_sync_flag=False
-
 REFRESH_DT_PAT = 'Date: %d  Time: %H:%M'
 
 # ── GLOBALS ───────────────────────────────────────────────────────────────────
@@ -122,7 +128,7 @@ def _load():
 # ── ROUTES ────────────────────────────────────────────────────────────────────
 
 @app.route('/')
-def index():
+def index(sector_list=None,sector_name=None):
     if not CACHE.is_ready:
         _load()
 
@@ -132,7 +138,8 @@ def index():
     desc     = request.args.get('order', '') != 'asc'
     order_by = 'desc' if desc else 'asc'
 
-    symbols_list = filter_list(CACHE.get_symbols_avg(tf), filt)
+    
+    symbols_list = filter_list(CACHE.get_symbols_avg(tf), filt) if not sector_list else sector_list
 
     if sort_key:
         sidx = INDEX_FIELDS.index(sort_key)
@@ -153,6 +160,7 @@ def index():
         sort=sort_key,
         order=order_by,
         filter=filt,
+        sector_name=sector_name
     )
 
 
@@ -188,6 +196,131 @@ def api_symbol(symbol_name):
     })
 
 
+
+@app.route('/sectors/<sector>')
+def sector_index(sector):
+    """
+    Sector-wise average volume_fast heatmap.
+    Reads all_categories.csv for sector -> symbol mapping, then looks up
+    each symbol's volume_fast from the cache for the requested timeframe.
+    """
+    if not CACHE.is_ready:
+        _load()
+
+    tf = _tf_safe(request.args.get('tf', MIN_TF))
+
+    # ── load sector -> symbol mapping from CSV ─────────────────────────────────
+    uniq_cat_flag = 'uniq_cat' in request.args
+    csv_path = CATEGORIES_CSV if  not uniq_cat_flag else UNIQ_CATEGORIES_CSV
+    sector_symbols = load_sector_symbols(csv_path=csv_path)
+
+
+    filt     = request.args.get('filter', '')
+    all_syms_data = filter_list(CACHE.get_symbols_avg(tf), filt)
+
+    sector_syms_set = set(sector_symbols.get(sector,[]))
+    sector_list = []
+    sector_list.append(all_syms_data[0])
+    sym_idx = INDEX_FIELDS.index('symbol')
+
+    for sym_data in all_syms_data[1:]:
+        if sym_data[sym_idx] in sector_syms_set:
+            sector_list.append(sym_data)
+    
+    return index(sector_list=sector_list,sector_name=sector)
+
+    
+
+
+
+
+@app.route('/sectors/')
+@app.route('/sectors')
+def sectors():
+    """
+    Sector-wise average volume_fast heatmap.
+    Reads all_categories.csv for sector -> symbol mapping, then looks up
+    each symbol's volume_fast from the cache for the requested timeframe.
+    """
+    if not CACHE.is_ready:
+        _load()
+
+    tf = _tf_safe(request.args.get('tf', MIN_TF))
+
+    # ── load sector -> symbol mapping from CSV ─────────────────────────────────
+    uniq_cat_flag = 'uniq_cat' in request.args
+    csv_path = CATEGORIES_CSV if  not uniq_cat_flag else UNIQ_CATEGORIES_CSV
+    sector_symbols = load_sector_symbols(csv_path=csv_path)
+
+    # Build a fast lookup dict: symbol -> volume_fast value
+    vf_idx  = INDEX_FIELDS.index('volume_fast')
+    sym_idx = INDEX_FIELDS.index('symbol')
+
+    filt     = request.args.get('filter', '')
+    avg_rows = filter_list(CACHE.get_symbols_avg(tf), filt)
+
+    vol_lookup: dict = {}
+    for row in avg_rows[1:]:        # skip header row
+        sym = row[sym_idx]
+        val = row[vf_idx]
+        if sym and val is not None:
+            vol_lookup[sym] = val
+
+    # ── compute per-sector stats ───────────────────────────────────────────────
+    sector_list = []
+    for sector_name, syms in sector_symbols.items():
+        if not syms:
+            continue
+        
+        syms = [s for s in syms if s in vol_lookup]
+
+        vols = [vol_lookup[s] for s in syms]
+        avg_vol = (sum(vols) / len(vols)) if vols else None
+
+        top_sym = None
+        
+        sorted_syms = sorted(syms, key=lambda s: vol_lookup[s], reverse=True)
+
+        if sorted_syms:
+            top_sym = sorted_syms[0]
+
+            
+
+        sector_list.append({
+            'name':              sector_name,
+            'symbols':           sorted_syms,
+            'symbol_count':      len(sorted_syms),
+            'avg_volume_fast':   round(avg_vol, 2) if avg_vol is not None else None,
+            'top_symbol':        top_sym,
+            'heat_pct':          0.0,   # normalised below
+        })
+
+    # ── normalise heat_pct to [0, 1] for CSS colouring ────────────────────────
+    valid_vols = [s['avg_volume_fast'] for s in sector_list if s['avg_volume_fast'] is not None]
+    if valid_vols:
+        min_v, max_v = min(valid_vols), max(valid_vols)
+        span = (max_v - min_v) or 1
+        for s in sector_list:
+            s['heat_pct'] = ((s['avg_volume_fast'] - min_v) / span) \
+                if s['avg_volume_fast'] is not None else 0.0
+
+    # Default sort: highest avg volume_fast first
+    sector_list.sort(key=lambda s: s['avg_volume_fast'] or 0, reverse=True)
+
+    refresh_dt_obj = CACHE.get_refresh_time()
+    ref_t = refresh_dt_obj.strftime(REFRESH_DT_PAT) if refresh_dt_obj else '-'
+
+    return render_template(
+        'sectoral_index.html',
+        sectors=sector_list,
+        timeframe=tf,
+        refresh_time=ref_t,
+        filter=filt
+    )
+
+
+
+
 # ── PERIODIC RELOAD ───────────────────────────────────────────────────────────
 
 def periodic_reload():
@@ -208,10 +341,16 @@ def periodic_reload():
             next_time += timedelta(minutes=interval)
             wait = (next_time - now).total_seconds()
 
-
         time.sleep(wait)
 
         t0 = time.time()
+        # Do not reload after 15:30
+        current_time = datetime.now().time()
+        start_session_time = datetime.strptime(start_session, "%H%M").time()
+        cutoff = datetime.strptime(end_session, "%H%M").time()
+        if current_time > cutoff or current_time < start_session_time:
+            print(f"⏹ Reload skipped: Session time {start_session} to {end_session}. Current time: {current_time.strftime('%H%M')}")
+            continue
         _load()
         print(f"⏱ Reload took {time.time()-t0:.2f}s")
 
@@ -222,9 +361,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='NSE Intraday Flask Web Portal')
     parser.add_argument('-ri', '--reload-interval', type=int, help='Reload interval in minutes')
-    parser.add_argument('-sy', '--sync', action='store_true', help='Enable gdrive sync')
+    parser.add_argument('-sy', '--sync', action='store_true', help='Enable remote sync')
     parser.add_argument('-pd', '--parent-dir', type=str, default=None, help='Parent dir of nse_data')
     parser.add_argument('-rd', '--remote-dir', type=str, default=None, help='Remote dir of nse_data')
+
 
 
     # Only parse args if running as main script (not under flask reloader)
@@ -248,6 +388,7 @@ if __name__ == '__main__':
     if RELOAD_INTERVAL_MINUTES:
         threading.Thread(target=periodic_reload, daemon=True).start()
 
+  
     t0 = time.time()
     _load()
     print(f"⏱ Loading data took {time.time()-t0:.2f}s")
