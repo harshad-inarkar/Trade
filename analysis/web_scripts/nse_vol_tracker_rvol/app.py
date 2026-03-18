@@ -76,7 +76,7 @@ def dump_index(symbols_list, tf, ref_t, fut_flag=False):
             out.write(f"{sym_data[sym_idx]}{fut_str}\n")
     
  
-def dump_merge(filt, sort_key, ref_t):
+def dump_merge(filt, sort_key, ref_t,order_by):
     import heapq
     fut_flag = bool(filt)
     merge_tf_list = ('3', '15')
@@ -104,10 +104,11 @@ def dump_merge(filt, sort_key, ref_t):
             # No need to store all symbols, just propagate max in one dict
 
     # Now collect and output, sort once
-    sorted_symbols = sorted(symbols_map.items(), key=lambda item: item[1], reverse=True)
+    desc     = request.args.get('order', '') != 'asc'
+    sorted_symbols = sorted(symbols_map.items(), key=lambda item: item[1], reverse=desc)
     fut_str = '1!' if fut_flag else ''
     with open(f'{OUT_DIR}/candidates_merge.txt', 'w') as out:
-        out.write(f"Merge Timeframes: {merge_tf_list} | sorted by {sort_key} | Filter ltp {filt} | Refresh Time: {ref_t}\n")
+        out.write(f"Merge Timeframes: {merge_tf_list} | sorted by {sort_key} {order_by}  | Filter ltp {filt} | Refresh Time: {ref_t}\n")
         for sym, _ in sorted_symbols:
             out.write(f"{sym}{fut_str}\n")
 
@@ -149,7 +150,7 @@ def index(sector_list=None,sector_name=None):
     ref_t = refresh_dt_obj.strftime(REFRESH_DT_PAT) if refresh_dt_obj else '-'
 
     dump_index(symbols_list, tf, ref_t, fut_flag=bool(filt))
-    dump_merge(filt,sort_key,ref_t)
+    dump_merge(filt,sort_key,ref_t,order_by)
 
     return render_template(
         'index.html',
@@ -198,6 +199,7 @@ def api_symbol(symbol_name):
 
 
 @app.route('/sectors/<sector>')
+@app.route('/sectors/<sector>/')
 def sector_index(sector):
     """
     Sector-wise average volume_fast heatmap.
@@ -253,7 +255,11 @@ def sectors():
     sector_symbols = load_sector_symbols(csv_path=csv_path)
 
     # Build a fast lookup dict: symbol -> volume_fast value
-    vf_idx  = INDEX_FIELDS.index('volume_fast')
+    sort_key = _sort_safe(request.args.get('sort', 'volume_fast'))
+    order_by = request.args.get('order', 'desc')
+    desc_flag     = order_by != 'asc'
+
+    sort_v_idx  = INDEX_FIELDS.index(sort_key)
     sym_idx = INDEX_FIELDS.index('symbol')
 
     filt     = request.args.get('filter', '')
@@ -262,7 +268,7 @@ def sectors():
     vol_lookup: dict = {}
     for row in avg_rows[1:]:        # skip header row
         sym = row[sym_idx]
-        val = row[vf_idx]
+        val = row[sort_v_idx]
         if sym and val is not None:
             vol_lookup[sym] = val
 
@@ -279,21 +285,21 @@ def sectors():
 
         top_sym = None
         
-        sorted_syms = sorted(syms, key=lambda s: vol_lookup[s], reverse=True)
+        sorted_syms = sorted(syms, key=lambda s: vol_lookup[s], reverse=desc_flag)
 
         if sorted_syms:
             top_sym = sorted_syms[0]
 
             
-
-        sector_list.append({
-            'name':              sector_name,
-            'symbols':           sorted_syms,
-            'symbol_count':      len(sorted_syms),
-            'avg_volume_fast':   round(avg_vol, 2) if avg_vol is not None else None,
-            'top_symbol':        top_sym,
-            'heat_pct':          0.0,   # normalised below
-        })
+        if len(sorted_syms) > 0:
+            sector_list.append({
+                'name':              sector_name,
+                'symbols':           sorted_syms,
+                'symbol_count':      len(sorted_syms),
+                'avg_volume_fast':   round(avg_vol, 2) if avg_vol is not None else None,
+                'top_symbol':        top_sym,
+                'heat_pct':          0.0,   # normalised below
+            })
 
     # ── normalise heat_pct to [0, 1] for CSS colouring ────────────────────────
     valid_vols = [s['avg_volume_fast'] for s in sector_list if s['avg_volume_fast'] is not None]
@@ -305,17 +311,21 @@ def sectors():
                 if s['avg_volume_fast'] is not None else 0.0
 
     # Default sort: highest avg volume_fast first
-    sector_list.sort(key=lambda s: s['avg_volume_fast'] or 0, reverse=True)
+    sector_list.sort(key=lambda s: s['avg_volume_fast'] or 0, reverse=desc_flag)
 
     refresh_dt_obj = CACHE.get_refresh_time()
     ref_t = refresh_dt_obj.strftime(REFRESH_DT_PAT) if refresh_dt_obj else '-'
 
+    
+ 
     return render_template(
         'sectoral_index.html',
         sectors=sector_list,
         timeframe=tf,
         refresh_time=ref_t,
-        filter=filt
+        filter=filt,
+        sort= sort_key,
+        order=order_by
     )
 
 

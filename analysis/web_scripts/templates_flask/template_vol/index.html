@@ -292,9 +292,7 @@ nav.header-nav a.active {
   to   { opacity: 1; transform: translateX(0); }
 }
 /* stagger first 50 rows */
-{% for i in range(50) %}
-.symbols-table tbody tr:nth-child({{ i + 1 }}) { animation-delay: {{ (i * 0.018)|round(3) }}s; }
-{% endfor %}
+.symbols-table tbody tr { animation-delay: 0s; }
 
 .symbols-table td {
   padding: 10px 16px;
@@ -387,6 +385,34 @@ nav.header-nav a.active {
 
 <!-- auto-refresh every 3 minutes -->
 <script>setTimeout(() => location.reload(), 180000);</script>
+<script>
+  // Stagger first 50 rows without relying on template-time CSS generation.
+  document.addEventListener('DOMContentLoaded', () => {
+    const rows = document.querySelectorAll('.symbols-table tbody tr');
+    const max = Math.min(rows.length, 50);
+    for (let i = 0; i < max; i++) {
+      rows[i].style.animationDelay = `${(i * 0.018).toFixed(3)}s`;
+    }
+
+    // Apply templated style values without embedding Jinja in CSS.
+    document.querySelectorAll('[data-width]').forEach((el) => {
+      const w = el.getAttribute('data-width');
+      if (w != null) el.style.width = w;
+    });
+    document.querySelectorAll('[data-bg]').forEach((el) => {
+      const bg = el.getAttribute('data-bg');
+      if (bg != null) el.style.background = bg;
+    });
+    document.querySelectorAll('[data-color]').forEach((el) => {
+      const c = el.getAttribute('data-color');
+      if (c != null) el.style.color = c;
+    });
+    document.querySelectorAll('[data-font-weight]').forEach((el) => {
+      const fw = el.getAttribute('data-font-weight');
+      if (fw != null) el.style.fontWeight = fw;
+    });
+  });
+</script>
 </head>
 
 <body>
@@ -401,16 +427,16 @@ nav.header-nav a.active {
   <div class="tf-bar">
     <span>TF:</span>
     <a href="?tf=3{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}"
-       class="{{ 'active' if timeframe == '3' else '' }}">3m</a>
+       class="{{ 'active' if timeframe == '3' else '' }}">3</a>
     <a href="?tf=15{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}"
-       class="{{ 'active' if timeframe == '15' else '' }}">15m</a>
+       class="{{ 'active' if timeframe == '15' else '' }}">15</a>
     <a href="?tf=D{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}"
        class="{{ 'active' if timeframe == 'D' else '' }}">D</a>
   </div>
 
   <nav class="header-nav">
-    <a href="/?tf={{ timeframe }}{% if filter %}&filter={{ filter }}{% endif %}" class="active">Index</a>
-    <a href="/sectors/?tf={{ timeframe }}{% if filter %}&filter={{ filter }}{% endif %}">Sectors</a>
+    <a href="/?tf={{ timeframe }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}" class="active">Index</a>
+    <a href="/sectors/?tf={{ timeframe }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}">Sectors</a>
   </nav>
 </header>
 
@@ -418,7 +444,7 @@ nav.header-nav a.active {
 <div class="meta-bar">
   <div class="meta-chips">
     {% if sector_name %}
-    <div class="chip""><span class="symbol-link">{{sector_name}}</span></div>
+    <div class="chip"><span class="symbol-link">{{sector_name}}</span></div>
     {% endif %}
     <div class="chip"><div class="dot"></div><strong>{{ refresh_time }}</strong></div>
     <div class="chip"><span>TF</span><strong>{{ timeframe }}{% if timeframe != 'D' %}m{% endif %}</strong></div>
@@ -551,8 +577,8 @@ nav.header-nav a.active {
       <div class="num-cell">
         <div class="spark">
           <div class="spark-fill"
-               style="width:{{ ((vs / max_vs) * 100)|round(1) if vs and max_vs else 0 }}%;
-                      background: var(--heat-2);"></div>
+               data-width="{{ ((vs / max_vs) * 100)|round(1) if vs and max_vs else 0 }}%"
+               data-bg="var(--heat-2)"></div>
         </div>
         {{ "{:,.0f}".format(vs) if vs is not none else '—' }}
       </div>
@@ -562,10 +588,10 @@ nav.header-nav a.active {
       <div class="num-cell">
         <div class="spark">
           <div class="spark-fill"
-               style="width:{{ (pct * 100)|round(1) }}%;
-                      background: {{ hcol }};"></div>
+               data-width="{{ (pct * 100)|round(1) }}%"
+               data-bg="{{ hcol }}"></div>
         </div>
-        <span style="color: {{ hcol }}; font-weight:600;">
+        <span data-color="{{ hcol }}" data-font-weight="600">
           {{ "{:,.0f}".format(vf) if vf is not none else '—' }}
         </span>
       </div>
@@ -575,10 +601,10 @@ nav.header-nav a.active {
       <div class="num-cell">
         <div class="spark">
           <div class="spark-fill"
-               style="width:{{ ((sur / max_sur) * 100)|round(1) if sur and max_sur else 0 }}%;
-                      background: {{ scol }};"></div>
+               data-width="{{ ((sur / max_sur) * 100)|round(1) if sur and max_sur else 0 }}%"
+               data-bg="{{ scol }}"></div>
         </div>
-        <span style="color: {{ scol }}; font-weight:600;">
+        <span data-color="{{ scol }}" data-font-weight="600">
           {{ "{:,.2f}".format(sur) if sur is not none else '—' }}
         </span>
       </div>

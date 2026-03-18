@@ -391,9 +391,6 @@ td.num-right { text-align: right; }
 {% set idx_ts     = header.index('timestamp_full') %}
 {% set idx_vs     = header.index('volume_slow') %}
 {% set idx_vf     = header.index('volume_fast') %}
-{% set idx_ltp    = header.index('ltp') %}
-{% set idx_vol    = header.index('volume') %}
-{% set idx_vc     = header.index('volume_cumulative') %}
 
 <div class="stat-strip">
   <div class="stat-item">
@@ -401,17 +398,12 @@ td.num-right { text-align: right; }
     <div class="value">{{ last_row[idx_ts] }}</div>
   </div>
   <div class="stat-item">
-    <div class="label">LTP</div>
-    <div class="value amber">{{ "{:,.2f}".format(last_row[idx_ltp]) if last_row[idx_ltp] is not none else '—' }}</div>
-  </div>
-  <div class="stat-item">
-    <div class="label">Vol Slow MA</div>
+    <div class="label">Slow MA</div>
     <div class="value slow-c">{{ "{:,.0f}".format(last_row[idx_vs]) if last_row[idx_vs] is not none else '—' }}</div>
   </div>
   <div class="stat-item">
-    <div class="label">Vol Fast MA</div>
+    <div class="label">Fast MA</div>
     <div class="value fast-c">{{ "{:,.0f}".format(last_row[idx_vf]) if last_row[idx_vf] is not none else '—' }}</div>
-  </div>
   </div>
 </div>
 
@@ -438,22 +430,16 @@ td.num-right { text-align: right; }
       <thead>
         <tr>
           <th>Timestamp</th>
-          <th>Vol Cumulative</th>
-          <th>Volume</th>
           <th>Vol Slow</th>
           <th>Vol Fast</th>
-          <th>LTP</th>
         </tr>
       </thead>
       <tbody>
       {% for row in data[1:][-20:] %}
         <tr>
           <td class="ts">{{ row[idx_ts] }}</td>
-          <td>{{ "{:,.0f}".format(row[idx_vc])  if row[idx_vc]  is not none else '—' }}</td>
-          <td>{{ "{:,.0f}".format(row[idx_vol]) if row[idx_vol] is not none else '—' }}</td>
           <td style="color:var(--slow-col)">{{ "{:,.0f}".format(row[idx_vs])  if row[idx_vs]  is not none else '—' }}</td>
           <td style="color:var(--fast-col)">{{ "{:,.0f}".format(row[idx_vf])  if row[idx_vf]  is not none else '—' }}</td>
-          <td style="color:var(--accent3)"> {{ "{:,.2f}".format(row[idx_ltp]) if row[idx_ltp] is not none else '—' }}</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -461,10 +447,11 @@ td.num-right { text-align: right; }
   </div>
 </div>
 
+<script id="rawData" type="application/json">{{ data | tojson }}</script>
 
 <script>
 /* ── DATA ────────────────────────────────────────────────────────────────── */
-const rawData = {{ data | tojson }};
+const rawData = JSON.parse(document.getElementById('rawData').textContent);
 const headers  = rawData[0];
 const rows     = rawData.slice(1);
 

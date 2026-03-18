@@ -291,8 +291,7 @@
       from { opacity: 0; transform: translateY(12px); }
       to   { opacity: 1; transform: translateY(0); }
     }
-    {% for i in range(44) %}.sector-card:nth-child({{ i+1 }}) { animation-delay: {{ (i * 0.025)|round(3) }}s; }
-    {% endfor %}
+    .sector-card { animation-delay: 0s; }
 
     .card-header {
       display: flex;
@@ -355,8 +354,8 @@
     .vol-value {
       font-family: var(--mono);
       font-size: .8rem;
-      font-weight: 600;
-      color: var(--heat-color, var(--accent));
+      font-weight: 100;
+      color: var(--text);
       white-space: nowrap;
       min-width: 56px;
       text-align: right;
@@ -481,13 +480,13 @@
   <div class="tf-bar">
     <span>TF:</span>
     {% for t in ['3','15','D'] %}
-    <a href="/sectors/?tf={{ t }}{% if filter %}&filter={{ filter }}{% endif %}" class="{{ 'active' if timeframe == t else '' }}">{{ t }}</a>
+    <a href="/sectors/?tf={{ t }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}" class="{{ 'active' if timeframe == t else '' }}">{{ t }}</a>
     {% endfor %}
   </div>
 
   <nav class="header-nav">
-    <a href="/?tf={{ timeframe }}{% if filter %}&filter={{ filter }}{% endif %}">Index</a>
-    <a href="/sectors/?tf={{ timeframe }}{% if filter %}&filter={{ filter }}{% endif %}" class="active">Sectors</a>
+    <a href="/?tf={{ timeframe }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}">Index</a>
+    <a href="/sectors/?tf={{ timeframe }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}" class="active">Sectors</a>
   </nav>
 </header>
 
@@ -497,7 +496,7 @@
     <div class="chip"><div class="dot"></div><strong>{{ refresh_time }}</strong></div>
     <div class="chip"><span class="label">TF</span><strong>{{ timeframe }}m</strong></div>
     <div class="chip"><span class="label">sectors</span><strong>{{ sectors|length }}</strong></div>
-    <div class="chip"><span class="label">metric</span><strong>avg volume_fast</strong></div>
+    <div class="chip"><span class="label">metric</span><strong>{{ sort }} {{ order }}</strong></div>
     {% if filter %}
     <div class="chip"><span>filter&nbsp;ltp</span><strong>{{ filter }}</strong></div>
     {% endif %}
@@ -555,7 +554,7 @@
     {% endif %}
 
     <div class="sector-card"
-         style="--heat-color: {{ hcol }};"
+         data-heat-color="{{ hcol }}"
          data-vol="{{ vol if vol else 0 }}"
          data-name="{{ s.name }}"
          data-count="{{ s.symbol_count }}">
@@ -563,7 +562,7 @@
       <div class="card-header">
         <!-- <div class="sector-name">{{ s.name }}</div> -->
         <div class="sector-name">
-          <a href="/sectors/{{s.name}}{% if filter %}?filter={{ filter }}{% endif %}" class="sector-link">
+          <a href="/sectors/{{s.name}}/?tf={{ timeframe }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}" class="sector-link">
             {{ s.name }}
           </a>
         </div>
@@ -572,7 +571,7 @@
 
       <div class="vol-row">
         <div class="vol-bar-wrap">
-          <div class="vol-bar-fill" style="width: {{ (pct * 100)|round(1) }}%;"></div>
+          <div class="vol-bar-fill" data-width="{{ (pct * 100)|round(1) }}%"></div>
         </div>
         <div class="vol-value">
           {% if vol %}
@@ -591,7 +590,7 @@
           {% endfor %}
         </div>
         {% if s.symbols|length > 12 %}
-        <button class="expand-btn" onclick="toggleChips({{ loop.index }}, this)">
+        <button class="expand-btn" data-idx="{{ loop.index }}">
           +{{ s.symbols|length - 12 }} more ▾
         </button>
         {% endif %}
@@ -606,7 +605,7 @@
     </div>
     {% endfor %}
   {% else %}
-    <div class="no-data">No sector data available for timeframe {{ timeframe }}m.</div>
+    <div class="no-data">No sector data available for timeframe {{ timeframe }}</div>
   {% endif %}
 </div>
 
@@ -618,6 +617,32 @@
     const open = el.classList.toggle('expanded');
     btn.textContent = open ? '▴ collapse' : btn.textContent;
   }
+
+  // Apply templated visual values without embedding Jinja in CSS.
+  document.addEventListener('DOMContentLoaded', () => {
+    // initial stagger for visible cards
+    document.querySelectorAll('.sector-card').forEach((c, i) => {
+      c.style.animationDelay = `${(i * 0.025).toFixed(3)}s`;
+    });
+
+    // apply data-driven styles
+    document.querySelectorAll('[data-heat-color]').forEach((el) => {
+      const hc = el.getAttribute('data-heat-color');
+      if (hc != null) el.style.setProperty('--heat-color', hc);
+    });
+    document.querySelectorAll('[data-width]').forEach((el) => {
+      const w = el.getAttribute('data-width');
+      if (w != null) el.style.width = w;
+    });
+
+    // wire up expand buttons without inline template JS
+    document.querySelectorAll('.expand-btn[data-idx]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = btn.getAttribute('data-idx');
+        if (idx != null) toggleChips(idx, btn);
+      });
+    });
+  });
 
   /* ── SORT ───────────────────────────────────────────────────────────── */
   let currentSort = 'vol';

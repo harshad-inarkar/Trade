@@ -69,13 +69,13 @@ START_SESSION = '0915'
 END_SESSION   = '1530'
 DATE_PATTERN  = r'.*(\d{2})(\d{2})(\d{4})/nse_data_(\d{2})(\d{2}).csv'
 DT_FRMT       = '%d%m%Y%H%M'
-DT_STR_FRMT   = '%d_%H%M'
+DT_STR_FRMT   = '%d/%m_%H%M'
 
 
 # --- RMA Len -----
 
 rma_fast_len = 8 
-rma_slow_len = 21
+rma_slow_len = 34
 rma_base_len = 89  # 55, 89, 144, 233
 
 new_symb_map = {'LTIM' : 'LTM'}
@@ -425,9 +425,13 @@ def build_symbols_avg(sym_list, num_data, last_col_idx):
     last  = num_data[:, last_col_idx, :]        # (N_SYMS, 6)
     vbase = last[:, VOL_BASE]
     # Use numpy.where to vectorize the division by vbase, defaulting to 1 when vbase == 0
-    vslow = np.where(vbase != 0, (last[:, VOL_SLOW] * 100)/ vbase, 100)
-    vfast = np.where(vbase != 0, (last[:, VOL_FAST] *100)/ vbase, 100)
-    surge = vfast - vslow
+    
+    vslow = np.where(vbase != 0, (last[:, VOL_SLOW] * 100)/ vbase, 0)
+    vfast = np.where(vbase != 0, (last[:, VOL_FAST] * 100)/ vbase, 0)
+    surge = 100 * (last[:, VOL_FAST] -last[:, VOL_SLOW])/last[:, VOL_SLOW]
+
+    
+
     ltp   = last[:, LTP_F]
     vol   = last[:, VOL]
 
@@ -464,8 +468,8 @@ def numpy_to_cache_rows(header, ts_list, tsf_list, num_matrix):
         row[CH_VOL]   = float(num_matrix[i, VOL])
         base = float(num_matrix[i, VOL_BASE])
         row[CH_VBASE] = base
-        row[CH_VSLOW] = 0  if base == 0 else (float(num_matrix[i, VOL_SLOW])*100)/base
-        row[CH_VFAST] = 0  if base == 0 else (float(num_matrix[i, VOL_FAST])*100)/base
+        row[CH_VSLOW] = 0  if base == 0 else (float(num_matrix[i, VOL_SLOW]) *100)/base
+        row[CH_VFAST] = 0  if base == 0 else (float(num_matrix[i, VOL_FAST]) *100)/base
         row[CH_LTP]   = float(num_matrix[i, LTP_F])
         rows.append(row)
     return rows
