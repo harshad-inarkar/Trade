@@ -1,5 +1,5 @@
 //@version=6
-indicator('SMCH', overlay = true, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
+indicator('SMCH', overlay = true)
 //---------------------------------------------------------------------------------------------------------------------}
 //CONSTANTS & STRINGS & INPUTS
 //---------------------------------------------------------------------------------------------------------------------{
@@ -10,6 +10,9 @@ source = close
 var plotma = input(true, title = 'Plot MAs')
 var rsimaflag = input(false, title = 'RSI MA')
 var kstflag = input(false, title = 'KST')
+var volkstflag = input(false, title = 'VolKST')
+var baselen = 89
+
 
 
 out1 = ta.rma(source, len1)
@@ -866,10 +869,6 @@ if barstate.islastconfirmedhistory or barstate.isrealtime and newBar
 
 src = close
 
-hl = input(63)
-ml = input(50)
-ll = input(36)
-
 // END ###
 
 STRAT_NEUTRAL = 0
@@ -900,153 +899,152 @@ get_osc_trend(osc) =>
 
 
 
-len =  8
-smmaLen = 21
+calc_generic_osc(fastma, sigma, center_level=0, short_entry_flag=true) => 
+
+    osc_trend = get_osc_trend(fastma)
+
+    osc_validlong = osc_trend == UP
+    osc_validshort = osc_trend == DOWN
+
+    osc_diPositive = fastma > sigma
+    osc_diNegative = not osc_diPositive
+
+
+    osc_di_crossover = osc_diNegative[1] and osc_diPositive or osc_diNegative and osc_diPositive[1]
+
+
+    osc_buyCond = osc_diPositive and fastma >= center_level
+    osc_sellCond = osc_diNegative and fastma < center_level
+
+
+    osc_validtrend = osc_buyCond or osc_sellCond
+
+    osc_validlongentry = osc_buyCond and osc_validlong 
+    osc_validshortentry = osc_sellCond and osc_validshort and short_entry_flag
+
+    osc_noTradeZone = not osc_validtrend or osc_di_crossover
+
+
+    osc_active_position = false
+    osc_active_position := (osc_validlongentry or osc_validshortentry) and not osc_active_position[1] ? true : osc_noTradeZone ? false : osc_active_position[1]
+
+
+    osc_enterLong = osc_validlongentry and not osc_active_position[1]
+    osc_enterShort = osc_validshortentry and not osc_active_position[1]
+
+
+    osc_longpos = osc_buyCond and osc_active_position
+    osc_shortpos = osc_sellCond and osc_active_position
+
+
+    osc_exitLong = osc_noTradeZone and osc_longpos[1]
+    osc_exitShort = osc_noTradeZone and osc_shortpos[1]
+
+
+    osc_status_code = osc_exitLong ? STRAT_EXIT_LONG : osc_exitShort ? STRAT_EXIT_SHORT : osc_enterLong ? STRAT_ENTER_LONG : osc_enterShort ? STRAT_ENTER_SHORT : osc_longpos ? STRAT_LONG : osc_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+
+    osc_status_code
+
+
+
+
+
+var rsi_len =  8
+var rsi_smmaLen = 21
+var sig_rsi_len = 13
+var hl = 66
+var ml = 50
+var ll = 34
+
+
 calc_RSI() =>
-    rsi = ta.rsi(src, len)
-    rsiMA = ta.rma(rsi, smmaLen)
+    rsi = ta.rsi(src, rsi_len)
+    rsiMA = ta.rma(rsi, rsi_smmaLen)
+    sig_rsiMA = ta.rma(rsiMA, sig_rsi_len)
 
-    rsi_trend = get_osc_trend(rsiMA)
-    rsi_bull_mom =  (ta.crossover(rsiMA, ml)  or ta.crossover(rsiMA[1], ml) ) and rsiMA >= ml // and rsi_trend == UP 
-    rsi_bear_mom =  (ta.crossunder(rsiMA, ml) or ta.crossunder(rsiMA[1], ml) ) and rsiMA < ml  //and rsi_trend == DOWN 
-
-
-    current_trend = NEUTRAL
-    active_position = false
-    longpos = false
-    shortpos = false
-
-
-    buyCond = rsiMA >= ml 
-    sellCond = rsiMA < ml
-
-
-    current_trend := buyCond ? UP : sellCond ? DOWN : current_trend[1]
-
-
-    diPositive = current_trend == UP
-    diNegative = current_trend == DOWN
-
-
-    validlongentry = rsi_bull_mom 
-    validshortentry = rsi_bear_mom 
-
-
-    exit_overbought = ta.crossunder(rsiMA, hl)
-    exit_oversold  = ta.crossover(rsiMA, ll)
-
-    di_crossover = diNegative[1] and diPositive or diNegative and diPositive[1]
-
-    validtrend = buyCond or sellCond
-
-    closetrend = shortpos[1] and (rsi_bull_mom or exit_oversold) or longpos[1] and (rsi_bear_mom or exit_overbought)
-
-
-    noTradeZone = not validtrend or di_crossover or closetrend or exit_overbought or exit_oversold
-
-    current_trend := closetrend ? NEUTRAL : current_trend
-
-    active_position := (validlongentry or validshortentry) and not active_position[1] ? true : noTradeZone ? false : active_position[1]
-
-
-    enterLong = validlongentry and not active_position[1]
-    enterShort = validshortentry and not active_position[1]
-
-
-    longpos := buyCond and active_position
-    shortpos := sellCond and active_position
-
-
-    exitLong = noTradeZone and longpos[1]
-    exitShort = noTradeZone and shortpos[1]
-
-
-    status_code = exitLong ? STRAT_EXIT_LONG : exitShort ? STRAT_EXIT_SHORT : enterLong ? STRAT_ENTER_LONG : enterShort ? STRAT_ENTER_SHORT : longpos ? STRAT_LONG : shortpos ? STRAT_SHORT : STRAT_NEUTRAL
+    status_code = calc_generic_osc(rsiMA, sig_rsiMA,center_level=ml)
     [txt, col] = decodeStratCode(status_code)
 
-    col
+    [rsiMA,col]
 
 
 //KST code 
-smaroc(roclen, smalen) => ta.rma(ta.roc(source, roclen), smalen)
-roclen1 = 8 
-roclen2 = 13 
-roclen3 = 21 
-roclen4 = 34 
-smalen1 = 8 
-smalen2 = 8 
-smalen3 = 8
-smalen4 = 13 
-siglen = 13
+var roclen1 = 8 
+var roclen2 = 13 
+var roclen3 = 21 
+var roclen4 = 34 
+var smalen1 = 8 
+var smalen2 = 8 
+var smalen3 = 8
+var smalen4 = 13 
+var siglen = 13
+
+
+smaroc(cust_source,roclen, smalen) => ta.rma(ta.roc(cust_source, roclen), smalen)
+calc_custom_kst(cust_source) => smaroc(cust_source,roclen1, smalen1) + 2 * smaroc(cust_source,roclen2, smalen2) + 3 * smaroc(cust_source,roclen3, smalen3) + 4 * smaroc(cust_source,roclen4, smalen4)
+
+volsrc = volume
+calc_vol_KST() =>
+
+    kst_orig = calc_custom_kst(volsrc)
+    kst_base_ma = ta.rma(kst_orig,baselen)
+
+    kst = 10*kst_orig/kst_base_ma
+    sig = ta.rma(kst, siglen)
+
+    kst_status_code = calc_generic_osc(kst, sig, short_entry_flag=false)
+    [txt, col] = decodeStratCode(kst_status_code)
+
+    [kst,col]
 
 
 calc_KST() =>
-
-    kst = smaroc(roclen1, smalen1) + 2 * smaroc(roclen2, smalen2) + 3 * smaroc(roclen3, smalen3) + 4 * smaroc(roclen4, smalen4)
+    kst = calc_custom_kst(source)
     sig = ta.rma(kst, siglen)
 
-
-    kst_trend = get_osc_trend(kst)
-
-
-    kst_validlong = kst_trend == UP
-    kst_validshort = kst_trend == DOWN
-
-    kst_diPositive = kst > sig
-    kst_diNegative = not kst_diPositive
-
-
-    kst_di_crossover = kst_diNegative[1] and kst_diPositive or kst_diNegative and kst_diPositive[1]
-
-
-    kst_buyCond = kst_diPositive and kst >= 0
-    kst_sellCond = kst_diNegative and kst < 0
-
-
-    ergvalidtrend = kst_buyCond or kst_sellCond
-
-    kst_validlongentry = kst_buyCond and kst_validlong
-    kst_validshortentry = kst_sellCond and kst_validshort
-
-    kst_noTradeZone = not ergvalidtrend or kst_di_crossover
-
-
-    kst_active_position = false
-    kst_active_position := (kst_validlongentry or kst_validshortentry) and not kst_active_position[1] ? true : kst_noTradeZone ? false : kst_active_position[1]
-
-
-    kst_enterLong = kst_validlongentry and not kst_active_position[1]
-    kst_enterShort = kst_validshortentry and not kst_active_position[1]
-
-
-    kst_longpos = kst_buyCond and kst_active_position
-    kst_shortpos = kst_sellCond and kst_active_position
-
-
-    kst_exitLong = kst_noTradeZone and kst_longpos[1]
-    kst_exitShort = kst_noTradeZone and kst_shortpos[1]
-
-
-    kst_status_code = kst_exitLong ? STRAT_EXIT_LONG : kst_exitShort ? STRAT_EXIT_SHORT : kst_enterLong ? STRAT_ENTER_LONG : kst_enterShort ? STRAT_ENTER_SHORT : kst_longpos ? STRAT_LONG : kst_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
-
+    kst_status_code = calc_generic_osc(kst, sig)
     [txt, col] = decodeStratCode(kst_status_code)
 
-    col
+    [kst,col]
+
+
+var rsibgcol = color(na)
+var kstbgcol = color(na)
+var volkstbgcol = color(na)
+
+
+    
+if barstate.isconfirmed
+    [rsiMA, rsicol] = calc_RSI()
+    [kst,kstcol] = calc_KST() 
+    [volkst,volkstcol] = calc_vol_KST() 
+
+    
+    if rsimaflag
+        rsibgcol := rsicol
+
+
+    if kstflag
+        kstbgcol := kstcol
+    
+    if volkstflag
+        volkstbgcol := volkstcol
+
+
+    var table tbl1 = table.new(position.top_right, 2, 3, frame_color = na, frame_width = 1, border_width = 2, border_color = na)
+    
+    table.cell(tbl1, 0, 0, 'RSI', text_halign = text.align_center, bgcolor = rsicol, text_color = color.white, text_size = size.small)
+    table.cell(tbl1, 0, 1, 'KST', text_halign = text.align_center, bgcolor = kstcol, text_color = color.white, text_size = size.small)
+    table.cell(tbl1, 0, 2, 'VolKST', text_halign = text.align_center, bgcolor = volkstcol, text_color = color.white, text_size = size.small)
+
+  
+    table.cell(tbl1, 1, 0, str.tostring(math.round(rsiMA)), text_halign = text.align_left, bgcolor = rsicol, text_color = color.white, text_size = size.small)
+    table.cell(tbl1, 1, 1, str.tostring(math.round(kst)), text_halign = text.align_left, bgcolor = kstcol, text_color = color.white, text_size = size.small)
+    table.cell(tbl1, 1, 2, str.tostring(math.round(volkst)), text_halign = text.align_left, bgcolor = volkstcol, text_color = color.white, text_size = size.small)
 
 
 
-rsicol = color(na)
-if rsimaflag
-    rsicol := calc_RSI()
-bgcolor(rsicol)
 
-
-kstcol = color(na) 
-if kstflag
-    kstcol := calc_KST() 
-bgcolor(kstcol)
-
-
-
-
-
+bgcolor(rsibgcol)
+bgcolor(kstbgcol)
+bgcolor(volkstbgcol)
