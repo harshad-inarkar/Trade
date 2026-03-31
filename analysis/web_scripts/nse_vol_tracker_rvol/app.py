@@ -51,19 +51,35 @@ def _sort_safe(sort):
 
 
 def filter_list(symbols_list, filt):
-    if not filt:
-        return symbols_list
-    try:
-        start, end = [int(x) for x in filt.split('-')]
-    except Exception:
-        return symbols_list
+    start, end = 0, float('inf')
+    pos_count = 0
+    neg_count = 0
+    neut_count = 0 
+
+    if filt:
+        try:
+            start, end = [int(x) for x in filt.split('-')]
+        except Exception:
+            return symbols_list, pos_count, neg_count, neut_count
+    
     ltp_idx = INDEX_FIELDS.index('ltp')
+    pma_idx = INDEX_FIELDS.index('price_ma_action')
+
     filtered = [symbols_list[0]]
+ 
     for sym_data in symbols_list[1:]:
         val = sym_data[ltp_idx]
         if val is not None and start <= val <= end:
+            pma = sym_data[pma_idx]
+            if pma == 1:
+                pos_count+=1
+            elif pma == -1:
+                neg_count +=1
+            else:
+                neut_count+=1
             filtered.append(sym_data)
-    return filtered
+
+    return filtered, pos_count, neg_count, neut_count
 
 
 def dump_index(symbols_list, tf, ref_t, fut_flag=False):
@@ -91,7 +107,7 @@ def dump_merge(filt, sort_key, ref_t,order_by):
 
     # Inline per-tf processing to minimise storage
     for tf in merge_tf_list:
-        symbols_list = filter_list(CACHE.get_symbols_avg(tf), filt)
+        symbols_list,_,_,_ = filter_list(CACHE.get_symbols_avg(tf), filt)
         # Only operate on the top N after sorting (skips making a copy of entire [1:])
         # Use heapq.nlargest for efficient top-N selection
         top_syms = heapq.nlargest(top, symbols_list[1:], key=lambda x: x[sidx])
@@ -140,7 +156,7 @@ def index(sector_list=None,sector_name=None):
     order_by = 'desc' if desc else 'asc'
 
     
-    symbols_list = filter_list(CACHE.get_symbols_avg(tf), filt) if not sector_list else sector_list
+    symbols_list,pos,neg,neut = filter_list(CACHE.get_symbols_avg(tf), filt) if not sector_list else filter_list(sector_list, filt)
 
     if sort_key:
         sidx = INDEX_FIELDS.index(sort_key)
@@ -161,6 +177,9 @@ def index(sector_list=None,sector_name=None):
         sort=sort_key,
         order=order_by,
         filter=filt,
+        pos_count=pos,
+        neg_count=neg,
+        neut_count=neut,
         sector_name=sector_name
     )
 
@@ -217,8 +236,7 @@ def sector_index(sector):
     sector_symbols = load_sector_symbols(csv_path=csv_path)
 
 
-    filt     = request.args.get('filter', '')
-    all_syms_data = filter_list(CACHE.get_symbols_avg(tf), filt)
+    all_syms_data = CACHE.get_symbols_avg(tf)
 
     sector_syms_set = set(sector_symbols.get(sector,[]))
     sector_list = []
@@ -263,7 +281,7 @@ def sectors():
     sym_idx = INDEX_FIELDS.index('symbol')
 
     filt     = request.args.get('filter', '')
-    avg_rows = filter_list(CACHE.get_symbols_avg(tf), filt)
+    avg_rows,_,_,_ = filter_list(CACHE.get_symbols_avg(tf), filt)
 
     vol_lookup: dict = {}
     for row in avg_rows[1:]:        # skip header row
@@ -334,7 +352,7 @@ def sectors():
 # ── PERIODIC RELOAD ───────────────────────────────────────────────────────────
 
 def periodic_reload():
-    buffertime = 5
+    buffertime = 15
     print(f"🔁 Reloads every {RELOAD_INTERVAL_MINUTES} minutes: Bufferime: {buffertime} seconds")
 
     while True:

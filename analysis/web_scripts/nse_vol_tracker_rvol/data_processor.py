@@ -30,6 +30,7 @@ import math
 import os
 import re
 from datetime import datetime, timedelta
+from socket import PF_SYSTEM
 
 import numpy as np
 
@@ -39,23 +40,28 @@ import numpy as np
 
 # ── field schemas ─────────────────────────────────────────────────────────────
 
-VOL_CUMUL = 0   # index into per-interval row
-LTP_F     = 1
-VOL       = 2
-VOL_SLOW  = 3
-VOL_FAST  = 4
-VOL_BASE  = 5
-NFIELDS   = 6
+VOL_CUMUL    = 0   # index into per-interval row
+PRICE        = 1
+VOL          = 2
+VOL_SLOW     = 3
+VOL_FAST     = 4
+VOL_BASE     = 5
+PRICE_FAST = 6   # price RMA (fast period, same as rma_fast_len)
+PRICE_SLOW = 7   # price RMA (slow period, same as rma_slow_len)
+NFIELDS      = 8
 
 # Cache / output field orders
 CACHE_FIELDS = ['timestamp_full', 'timestamp', 'volume_cumulative', 'volume',
-                'volume_slow', 'volume_fast', 'volume_base', 'ltp']
-CH_TSF, CH_TS, CH_VCUM, CH_VOL, CH_VSLOW, CH_VFAST, CH_VBASE, CH_LTP = 0, 1, 2, 3, 4, 5, 6, 7
-N_CACHE = 8
+                'volume_slow', 'volume_fast', 'volume_base', 'ltp',
+                'ltp_rma_fast', 'ltp_rma_slow']
+CH_TSF, CH_TS, CH_VCUM, CH_VOL, CH_VSLOW, CH_VFAST, CH_VBASE, CH_PRICE = 0, 1, 2, 3, 4, 5, 6, 7
+CH_PRICE_FAST, CH_PRICE_SLOW = 8, 9
+N_CACHE = len(CACHE_FIELDS)
 
 
-INDEX_FIELDS = ['symbol', 'volume_slow', 'volume_fast', 'volume_base', 'vol_surge', 'ltp', 'volume']
-IX_SYM, IX_VSLOW, IX_VFAST, IX_VBASE, IX_SURGE, IX_LTP, IX_VOL = 0, 1, 2, 3, 4, 5, 6
+INDEX_FIELDS = ['symbol', 'volume_fast', 'vol_surge', 'ltp','price_surge','price_ma_action']   # price_ma_action -1, 0 ,1
+IX_SYM, IX_VFAST, IX_SURGE, IX_LTP, IX_PS, IX_PMA  = 0, 1, 2, 3, 4, 5
+N_INDEX = len(INDEX_FIELDS)
 
 # ── CSV column names ──────────────────────────────────────────────────────────
 
@@ -75,7 +81,7 @@ DT_STR_FRMT   = '%d/%m_%H%M'
 # --- RMA Len -----
 
 rma_fast_len = 8 
-rma_slow_len = 34
+rma_slow_len = 21
 rma_base_len = 89  # 55, 89, 144, 233
 
 new_symb_map = {'LTIM' : 'LTM'}
@@ -164,17 +170,6 @@ def read_csv_files_to_arrays(sorted_files, sorted_dates, tf, odi,
         sym_list   = list(known_symbols)
         sym_to_idx = {s: i for i, s in enumerate(sym_list)}
     else:
-        # Two-pass: discover symbols first
-        # sym_set = set()
-        # for finfo in sorted_files:
-        #     with open(finfo['filename'], 'r', encoding='utf-8-sig') as f:
-        #         reader = csv.DictReader(f)
-        #         for row in reader:
-        #             sy = row[SYMB_COL].strip('"')
-        #             sym_set.add(new_symb_map.get(sy,sy))
-        # sym_list   = sorted(sym_set)
-        # sym_to_idx = {s: i for i, s in enumerate(sym_list)}
-
         sym_set = set()
         with open(sorted_files[-1]['filename'], 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
@@ -366,36 +361,85 @@ def compute_rma(vol_1indexed, from_index, total_files, period, rma_seed=None):
 
 # ── post-process ──────────────────────────────────────────────────────────────
 
-def post_process(vcum_1indexed, from_index, total_files, odi,
-                 seed_rma_fast=None, seed_rma_slow=None, seed_rma_base=None, seed_slot=1):
+def compute_price_rma(vltp_1indexed, from_index, total_files, period, rma_seed=None):
     """
-    Given filled vcum, return (vol, rma_fast, rma_slow, rma_base) arrays (1-indexed).
+    RMA (Wilder MA) over price (ltp).  Mirrors compute_rma but seeds from ltp
+    instead of vol so the warm-start carries correctly across session boundaries.
 
-    For incremental calls, pass seed_rma_fast/slow/base ((N,2) arrays saved from the
-    last two committed cols) and seed_slot (0 = second-to-last, 1 = last).
-    Seeds are planted at from_index-1 so compute_rma warm-starts correctly.
+    Full load  (from_index == 1): seed col 1 with ltp[:, 1], accumulate from 2.
+    Incremental: rma_seed is a pre-allocated array with the warm-start value
+                 already planted at from_index-1; accumulate from from_index.
+    """
+    alpha = 1.0 / period
+
+    if rma_seed is not None:
+        rma   = rma_seed          # seed already planted at from_index-1
+        start = from_index
+    elif from_index == 1:
+        rma        = np.zeros_like(vltp_1indexed)
+        rma[:, 1]  = vltp_1indexed[:, 1]
+        start      = 2
+    else:
+        rma                     = np.zeros_like(vltp_1indexed)
+        rma[:, from_index - 1]  = vltp_1indexed[:, from_index - 1]
+        start                   = from_index
+
+    for i in range(start, total_files + 1):
+        rma[:, i] = alpha * vltp_1indexed[:, i] + (1 - alpha) * rma[:, i - 1]
+    return rma
+
+
+def post_process(vcum_1indexed, from_index, total_files, odi,
+                 seed_rma_fast=None, seed_rma_slow=None, seed_rma_base=None,
+                 seed_price_rma_fast=None, seed_price_rma_slow=None,
+                 vltp_1indexed=None, seed_slot=1):
+    """
+    Given filled vcum (and optionally vltp), return:
+        (vol, rma_fast, rma_slow, rma_base, price_rma_fast, price_rma_slow)
+
+    Price RMAs are computed when vltp_1indexed is provided; otherwise they are
+    returned as zero arrays so callers that don't need them pay no cost.
+
+    For incremental calls pass the corresponding seed_* ((N,2) arrays) and
+    seed_slot (0 = second-to-last, 1 = last).  Seeds are planted at
+    from_index-1 so compute_rma / compute_price_rma warm-start correctly.
     """
     vol = compute_volume_delta(vcum_1indexed, from_index, total_files, odi)
 
     if seed_rma_fast is not None and from_index > 1:
         n = min(seed_rma_fast.shape[0], vol.shape[0])
-        # Pre-allocate rma arrays and plant seed at from_index-1
         rma_fast = np.zeros_like(vol)
         rma_slow = np.zeros_like(vol)
         rma_base = np.zeros_like(vol)
         rma_fast[:n, from_index - 1] = seed_rma_fast[:n, seed_slot]
         rma_slow[:n, from_index - 1] = seed_rma_slow[:n, seed_slot]
         rma_base[:n, from_index - 1] = seed_rma_base[:n, seed_slot]
-        # compute_rma will read from_index-1 as its warm-start
-        rma_fast = compute_rma(vol, from_index, total_files, rma_fast_len,   rma_seed=rma_fast)
-        rma_slow = compute_rma(vol, from_index, total_files, rma_slow_len,  rma_seed=rma_slow)
+        rma_fast = compute_rma(vol, from_index, total_files, rma_fast_len, rma_seed=rma_fast)
+        rma_slow = compute_rma(vol, from_index, total_files, rma_slow_len, rma_seed=rma_slow)
         rma_base = compute_rma(vol, from_index, total_files, rma_base_len, rma_seed=rma_base)
     else:
         rma_fast = compute_rma(vol, from_index, total_files, rma_fast_len)
         rma_slow = compute_rma(vol, from_index, total_files, rma_slow_len)
         rma_base = compute_rma(vol, from_index, total_files, rma_base_len)
 
-    return vol, rma_fast, rma_slow, rma_base
+    # ── price RMAs ────────────────────────────────────────────────────────────
+    if vltp_1indexed is not None:
+        if seed_price_rma_fast is not None and from_index > 1:
+            n = min(seed_price_rma_fast.shape[0], vltp_1indexed.shape[0])
+            prf = np.zeros_like(vltp_1indexed)
+            prs = np.zeros_like(vltp_1indexed)
+            prf[:n, from_index - 1] = seed_price_rma_fast[:n, seed_slot]
+            prs[:n, from_index - 1] = seed_price_rma_slow[:n, seed_slot]
+            price_rma_fast = compute_price_rma(vltp_1indexed, from_index, total_files, rma_fast_len, rma_seed=prf)
+            price_rma_slow = compute_price_rma(vltp_1indexed, from_index, total_files, rma_slow_len, rma_seed=prs)
+        else:
+            price_rma_fast = compute_price_rma(vltp_1indexed, from_index, total_files, rma_fast_len)
+            price_rma_slow = compute_price_rma(vltp_1indexed, from_index, total_files, rma_slow_len)
+    else:
+        price_rma_fast = np.zeros_like(vol)
+        price_rma_slow = np.zeros_like(vol)
+
+    return vol, rma_fast, rma_slow, rma_base, price_rma_fast, price_rma_slow
 
 
 # ── timestamp generation ──────────────────────────────────────────────────────
@@ -416,37 +460,90 @@ def build_timestamps(from_index, total_files, sorted_dates, tf, odi):
 
 # ── symbols_avg builder ───────────────────────────────────────────────────────
 
+
+def rma(arr, length):
+    """
+    Computes the Running Moving Average (RMA) of a 1D numpy array.
+    If input is 2D, computes along axis=1.
+    """
+    arr = np.asarray(arr)
+    if arr.ndim == 1:
+        out = np.zeros_like(arr, dtype=np.float64)
+        n = arr.shape[0]
+        if n == 0:
+            return out
+        out[0] = arr[0]
+        alpha = 1.0 / length
+        for i in range(1, n):
+            out[i] = (1 - alpha) * out[i - 1] + alpha * arr[i]
+        return out
+    elif arr.ndim == 2:
+        out = np.zeros_like(arr, dtype=np.float64)
+        for row in range(arr.shape[0]):
+            out[row] = rma(arr[row], length)
+        return out
+    else:
+        raise ValueError("Input array must be 1D or 2D.")
+
+
+
+def calc_pma(ps, fa, sig):
+    pma = 0
+
+    if ps > 0 and fa > sig:
+        pma = 1
+    elif ps < 0 and fa < sig:
+        pma = -1
+
+    return pma
+
+
 def build_symbols_avg(sym_list, num_data, last_col_idx):
     """
     Build symbols_avg list-of-lists from last interval of num_data.
-    num_data shape: (N_SYMS, N_INTERVALS, 6)  cols: VCUM, LTP, VOL, VSLOW, VFAST, VBASE
+    num_data shape: (N_SYMS, N_INTERVALS, 8)
+      cols: VCUM, LTP, VOL, VSLOW, VFAST, VBASE, LTP_RMA_FAST, LTP_RMA_SLOW
     last_col_idx: 0-based index into axis 1 for the last valid interval.
     """
-    last  = num_data[:, last_col_idx, :]        # (N_SYMS, 6)
-    vbase = last[:, VOL_BASE]
-    # Use numpy.where to vectorize the division by vbase, defaulting to 1 when vbase == 0
-    
-    vslow = np.where(vbase != 0, (last[:, VOL_SLOW] * 100)/ vbase, 0)
-    vfast = np.where(vbase != 0, (last[:, VOL_FAST] * 100)/ vbase, 0)
-    surge = 100 * (last[:, VOL_FAST] -last[:, VOL_SLOW])/last[:, VOL_SLOW]
+ 
 
-    
+    last  = num_data[:, last_col_idx, :]
+          # (N_SYMS, 8)
+    vbase_last = last[:, VOL_BASE]
+    vslow_last = last[:, VOL_SLOW] # (N_SYMS,)
+    vfast_last = last[:, VOL_FAST]   # (N_SYMS,)
+    ltp = last[:, PRICE]
+  
+    pfast_last = last[:, PRICE_FAST]
+    pslow_last = last[:, PRICE_SLOW]
 
-    ltp   = last[:, LTP_F]
-    vol   = last[:, VOL]
+
+    # Safe division: pre-fill result with 0 then overwrite only where denominator != 0.
+    # This avoids the RuntimeWarning that np.where triggers because both branches
+    # are evaluated eagerly even when the condition is False.
+    vslow = np.zeros(len(sym_list), dtype=np.float64)
+    vfast = np.zeros(len(sym_list), dtype=np.float64)
+    nonzero_base = vbase_last != 0
+    vslow[nonzero_base] = ((vslow_last[nonzero_base]-vbase_last[nonzero_base]) * 100) / vbase_last[nonzero_base]
+    vfast[nonzero_base] = ((vfast_last[nonzero_base] -vbase_last[nonzero_base]) * 100) / vbase_last[nonzero_base]
+
+
+    vol_surge = 1000 * (vfast_last - vslow_last) / vslow_last
+    price_surge = 1000 * (pfast_last - pslow_last) / pslow_last
+
 
     order = np.argsort(-vfast)
     result = [INDEX_FIELDS]
     for si in order:
-        result.append([
-            sym_list[si],
-            float(vslow[si]),
-            float(vfast[si]),
-            float(vbase[si]),
-            float(surge[si]),
-            float(ltp[si]),
-            float(vol[si]),
-        ])
+        row = [None] * N_INDEX
+        row[IX_SYM]   = sym_list[si]
+        row[IX_VFAST] = float(vfast[si])                        # already 1-D scalar
+        row[IX_SURGE] = float(vol_surge[si])             # last interval of smooth series
+        row[IX_LTP]   = float(ltp[si])
+        ps            = float(price_surge[si])       # last interval
+        row[IX_PS]    = ps
+        row[IX_PMA]   = calc_pma(ps, pfast_last[si], pslow_last[si])
+        result.append(row)
     return result
 
 
@@ -454,22 +551,25 @@ def build_symbols_avg(sym_list, num_data, last_col_idx):
 
 def numpy_to_cache_rows(header, ts_list, tsf_list, num_matrix):
     """
-    Convert a (TOTAL, 6) numpy matrix + timestamp lists to list-of-lists
-    in CACHE_FIELDS order: [tsf, ts, vcum, vol, vslow, vfast, vbase, ltp].
+    Convert a (TOTAL, 8) numpy matrix + timestamp lists to list-of-lists
+    in CACHE_FIELDS order:
+        [tsf, ts, vcum, vol, vslow, vfast, vbase, ltp, ltp_rma_fast, ltp_rma_slow].
     Called lazily on the symbol detail route.
     """
     rows = [header]
-    # num_matrix columns: [VCUM, LTP, VOL, VSLOW, VFAST, VBASE]
+    # num_matrix columns: [VCUM, LTP, VOL, VSLOW, VFAST, VBASE, LTP_RMA_FAST, LTP_RMA_SLOW]
     for i in range(num_matrix.shape[0]):
         row = [None] * N_CACHE
-        row[CH_TSF]   = tsf_list[i]
-        row[CH_TS]    = ts_list[i]
-        row[CH_VCUM]  = float(num_matrix[i, VOL_CUMUL])
-        row[CH_VOL]   = float(num_matrix[i, VOL])
+        row[CH_TSF]          = tsf_list[i]
+        row[CH_TS]           = ts_list[i]
+        row[CH_VCUM]         = float(num_matrix[i, VOL_CUMUL])
+        row[CH_VOL]          = float(num_matrix[i, VOL])
         base = float(num_matrix[i, VOL_BASE])
-        row[CH_VBASE] = base
-        row[CH_VSLOW] = 0  if base == 0 else (float(num_matrix[i, VOL_SLOW]) *100)/base
-        row[CH_VFAST] = 0  if base == 0 else (float(num_matrix[i, VOL_FAST]) *100)/base
-        row[CH_LTP]   = float(num_matrix[i, LTP_F])
+        row[CH_VBASE]        = base
+        row[CH_VSLOW]        = 0 if base == 0 else (float(num_matrix[i, VOL_SLOW]) * 100) / base
+        row[CH_VFAST]        = 0 if base == 0 else (float(num_matrix[i, VOL_FAST]) * 100) / base
+        row[CH_PRICE]          = float(num_matrix[i, PRICE])
+        row[CH_PRICE_FAST] = float(num_matrix[i, PRICE_FAST])
+        row[CH_PRICE_SLOW] = float(num_matrix[i, PRICE_SLOW])
         rows.append(row)
     return rows

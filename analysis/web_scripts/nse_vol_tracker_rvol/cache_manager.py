@@ -28,7 +28,8 @@ import numpy as np
 
 from data_processor import (
     CACHE_FIELDS,
-    VOL_CUMUL, LTP_F, VOL, VOL_SLOW, VOL_FAST, VOL_BASE, NFIELDS,
+    VOL_CUMUL, PRICE, VOL, VOL_SLOW, VOL_FAST, VOL_BASE,
+    PRICE_FAST, PRICE_SLOW, NFIELDS,
     get_one_day_intervals, get_index_from_dtobj,
     discover_files, read_csv_files_to_arrays,
     fill_gaps_numpy, post_process,
@@ -99,11 +100,13 @@ class CacheManager:
         # seeds[0] = second-to-last col, seeds[1] = last col.
         # When from_index == last_committed (same-interval re-read),
         # seed from slot [0] (last_committed-1) instead of slot [1].
-        self._seed_vcum     = {tf: None for tf in TF_KEYS}
-        self._seed_vltp     = {tf: None for tf in TF_KEYS}
-        self._seed_rma_fast = {tf: None for tf in TF_KEYS}
-        self._seed_rma_slow = {tf: None for tf in TF_KEYS}
-        self._seed_rma_base = {tf: None for tf in TF_KEYS}
+        self._seed_vcum          = {tf: None for tf in TF_KEYS}
+        self._seed_vltp          = {tf: None for tf in TF_KEYS}
+        self._seed_rma_fast      = {tf: None for tf in TF_KEYS}
+        self._seed_rma_slow      = {tf: None for tf in TF_KEYS}
+        self._seed_rma_base      = {tf: None for tf in TF_KEYS}
+        self._seed_price_rma_fast = {tf: None for tf in TF_KEYS}
+        self._seed_price_rma_slow = {tf: None for tf in TF_KEYS}
 
     # ── public read API ───────────────────────────────────────────────────────
 
@@ -224,28 +227,34 @@ class CacheManager:
         sv_rf = self._seed_rma_fast[MIN_TF] if (incremental and from_index > 1) else None
         sv_rs = self._seed_rma_slow[MIN_TF] if (incremental and from_index > 1) else None
         sv_rb = self._seed_rma_base[MIN_TF] if (incremental and from_index > 1) else None
-        vol, rma_fast, rma_slow, rma_base = post_process(
+        sv_prf = self._seed_price_rma_fast[MIN_TF] if (incremental and from_index > 1) else None
+        sv_prs = self._seed_price_rma_slow[MIN_TF] if (incremental and from_index > 1) else None
+        vol, rma_fast, rma_slow, rma_base, price_rma_fast, price_rma_slow = post_process(
             vcum, from_index, total, odi_min,
-            seed_rma_fast=sv_rf, seed_rma_slow=sv_rs, seed_rma_base=sv_rb, seed_slot=slot)
+            seed_rma_fast=sv_rf, seed_rma_slow=sv_rs, seed_rma_base=sv_rb,
+            seed_price_rma_fast=sv_prf, seed_price_rma_slow=sv_prs,
+            vltp_1indexed=vltp, seed_slot=slot)
 
         ts_list, tsf_list = build_timestamps(from_index, total, sorted_dates, tf_min, odi_min)
 
         result = {
             MIN_TF: {
-                'sym_list':     sym_list,
-                'vcum':         vcum,
-                'vltp':         vltp,
-                'vol':          vol,
-                'rma_fast':     rma_fast,
-                'rma_slow':     rma_slow,
-                'rma_base':     rma_base,
-                'from_index':   from_index,
-                'total':        total,
-                'ts_list':      ts_list,
-                'tsf_list':     tsf_list,
-                'sorted_dates': sorted_dates,
-                'refresh_time': last_file_dt,
-                'odi':          odi_min,
+                'sym_list':       sym_list,
+                'vcum':           vcum,
+                'vltp':           vltp,
+                'vol':            vol,
+                'rma_fast':       rma_fast,
+                'rma_slow':       rma_slow,
+                'rma_base':       rma_base,
+                'price_rma_fast': price_rma_fast,
+                'price_rma_slow': price_rma_slow,
+                'from_index':     from_index,
+                'total':          total,
+                'ts_list':        ts_list,
+                'tsf_list':       tsf_list,
+                'sorted_dates':   sorted_dates,
+                'refresh_time':   last_file_dt,
+                'odi':            odi_min,
             }
         }
 
@@ -283,6 +292,7 @@ class CacheManager:
             if total < from_idx:
                 return {'sym_list': sym_list, 'vcum': None, 'vltp': None,
                         'vol': None, 'rma_fast': None, 'rma_slow': None, 'rma_base': None,
+                        'price_rma_fast': None, 'price_rma_slow': None,
                         'from_index': from_idx, 'total': total,
                         'ts_list': [], 'tsf_list': [], 'odi': odi}
         else:
@@ -313,28 +323,34 @@ class CacheManager:
         _fill_from = fill_from_idx if incremental else from_idx
         fill_gaps_numpy(vcum_d, vltp_d, _fill_from, total, odi)
 
-        sv_rf = self._seed_rma_fast.get(tf_str) if (incremental and from_idx > 1) else None
-        sv_rs = self._seed_rma_slow.get(tf_str) if (incremental and from_idx > 1) else None
-        sv_rb = self._seed_rma_base.get(tf_str) if (incremental and from_idx > 1) else None
-        vol_d, rf_d, rs_d, rb_d = post_process(
+        sv_rf  = self._seed_rma_fast.get(tf_str)  if (incremental and from_idx > 1) else None
+        sv_rs  = self._seed_rma_slow.get(tf_str)  if (incremental and from_idx > 1) else None
+        sv_rb  = self._seed_rma_base.get(tf_str)  if (incremental and from_idx > 1) else None
+        sv_prf = self._seed_price_rma_fast.get(tf_str) if (incremental and from_idx > 1) else None
+        sv_prs = self._seed_price_rma_slow.get(tf_str) if (incremental and from_idx > 1) else None
+        vol_d, rf_d, rs_d, rb_d, prf_d, prs_d = post_process(
             vcum_d, _fill_from, total, odi,
-            seed_rma_fast=sv_rf, seed_rma_slow=sv_rs, seed_rma_base=sv_rb, seed_slot=slot)
+            seed_rma_fast=sv_rf, seed_rma_slow=sv_rs, seed_rma_base=sv_rb,
+            seed_price_rma_fast=sv_prf, seed_price_rma_slow=sv_prs,
+            vltp_1indexed=vltp_d, seed_slot=slot)
 
         ts_list, tsf_list = build_timestamps(from_idx, total, sorted_dates, tf, odi)
 
         return {
-            'sym_list':   sym_list,
-            'vcum':       vcum_d,
-            'vltp':       vltp_d,
-            'vol':        vol_d,
-            'rma_fast':   rf_d,
-            'rma_slow':   rs_d,
-            'rma_base':   rb_d,
-            'from_index': from_idx,
-            'total':      total,
-            'ts_list':    ts_list,
-            'tsf_list':   tsf_list,
-            'odi':        odi,
+            'sym_list':       sym_list,
+            'vcum':           vcum_d,
+            'vltp':           vltp_d,
+            'vol':            vol_d,
+            'rma_fast':       rf_d,
+            'rma_slow':       rs_d,
+            'rma_base':       rb_d,
+            'price_rma_fast': prf_d,
+            'price_rma_slow': prs_d,
+            'from_index':     from_idx,
+            'total':          total,
+            'ts_list':        ts_list,
+            'tsf_list':       tsf_list,
+            'odi':            odi,
         }
 
     # ── apply result (called under lock) ──────────────────────────────────────
@@ -361,6 +377,8 @@ class CacheManager:
             rf_1idx    = res['rma_fast']
             rs_1idx    = res['rma_slow']
             rb_1idx    = res['rma_base']
+            prf_1idx   = res['price_rma_fast']
+            prs_1idx   = res['price_rma_slow']
             from_index = res['from_index']
             total      = res['total']
             ts_list    = res['ts_list']
@@ -404,12 +422,14 @@ class CacheManager:
 
             # Copy columns from 1-indexed result arrays into 0-indexed buffer
             for c, fi in enumerate(range(from_index, total + 1)):
-                nd[:n_syms, wptr_start + c, VOL_CUMUL] = vcum_1idx[:n_syms, fi]
-                nd[:n_syms, wptr_start + c, LTP_F]     = vltp_1idx[:n_syms, fi]
-                nd[:n_syms, wptr_start + c, VOL]       = vol_1idx[:n_syms,  fi]
-                nd[:n_syms, wptr_start + c, VOL_SLOW]  = rs_1idx[:n_syms,   fi]
-                nd[:n_syms, wptr_start + c, VOL_FAST]  = rf_1idx[:n_syms,   fi]
-                nd[:n_syms, wptr_start + c, VOL_BASE]  = rb_1idx[:n_syms,   fi]
+                nd[:n_syms, wptr_start + c, VOL_CUMUL]    = vcum_1idx[:n_syms, fi]
+                nd[:n_syms, wptr_start + c, PRICE]        = vltp_1idx[:n_syms, fi]
+                nd[:n_syms, wptr_start + c, VOL]          = vol_1idx[:n_syms,  fi]
+                nd[:n_syms, wptr_start + c, VOL_SLOW]     = rs_1idx[:n_syms,   fi]
+                nd[:n_syms, wptr_start + c, VOL_FAST]     = rf_1idx[:n_syms,   fi]
+                nd[:n_syms, wptr_start + c, VOL_BASE]     = rb_1idx[:n_syms,   fi]
+                nd[:n_syms, wptr_start + c, PRICE_FAST] = prf_1idx[:n_syms,  fi]
+                nd[:n_syms, wptr_start + c, PRICE_SLOW] = prs_1idx[:n_syms,  fi]
 
             new_wptr = wptr_start + n_new
 
@@ -435,10 +455,12 @@ class CacheManager:
             # Slot 1 is the normal seed; slot 0 is used when from_index == last_committed.
             p1 = max(new_wptr - 2, 0)   # second-to-last (clamped to 0)
             p2 = new_wptr - 1            # last
-            self._seed_vcum[tf_str]     = nd[:n_syms, [p1, p2], VOL_CUMUL].copy()
-            self._seed_vltp[tf_str]     = nd[:n_syms, [p1, p2], LTP_F].copy()
-            self._seed_rma_fast[tf_str] = nd[:n_syms, [p1, p2], VOL_FAST].copy()
-            self._seed_rma_slow[tf_str] = nd[:n_syms, [p1, p2], VOL_SLOW].copy()
-            self._seed_rma_base[tf_str] = nd[:n_syms, [p1, p2], VOL_BASE].copy()
+            self._seed_vcum[tf_str]           = nd[:n_syms, [p1, p2], VOL_CUMUL].copy()
+            self._seed_vltp[tf_str]           = nd[:n_syms, [p1, p2], PRICE].copy()
+            self._seed_rma_fast[tf_str]       = nd[:n_syms, [p1, p2], VOL_FAST].copy()
+            self._seed_rma_slow[tf_str]       = nd[:n_syms, [p1, p2], VOL_SLOW].copy()
+            self._seed_rma_base[tf_str]       = nd[:n_syms, [p1, p2], VOL_BASE].copy()
+            self._seed_price_rma_fast[tf_str] = nd[:n_syms, [p1, p2], PRICE_FAST].copy()
+            self._seed_price_rma_slow[tf_str] = nd[:n_syms, [p1, p2], PRICE_SLOW].copy()
 
         self._ready = True
