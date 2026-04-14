@@ -524,17 +524,17 @@ def build_symbols_avg(sym_list, num_data, last_col_idx):
     vslow = np.zeros(len(sym_list), dtype=np.float64)
     vfast = np.zeros(len(sym_list), dtype=np.float64)
     nonzero_base = vbase_last != 0
-    vslow[nonzero_base] = ((vslow_last[nonzero_base]-vbase_last[nonzero_base]) * 100) / vbase_last[nonzero_base]
-    vfast[nonzero_base] = ((vfast_last[nonzero_base] -vbase_last[nonzero_base]) * 100) / vbase_last[nonzero_base]
+    vslow[nonzero_base] = (vslow_last[nonzero_base] * 100) / vbase_last[nonzero_base]
+    vfast[nonzero_base] = (vfast_last[nonzero_base] * 100) / vbase_last[nonzero_base]
+
 
 
     vol_surge = 1000 * (vfast_last - vslow_last) / vslow_last
     price_surge = 1000 * (pfast_last - pslow_last) / pslow_last
 
 
-    order = np.argsort(-vfast)
     result = [INDEX_FIELDS]
-    for si in order:
+    for si in range(len(sym_list)):
         row = [None] * N_INDEX
         row[IX_SYM]   = sym_list[si]
         row[IX_VFAST] = float(vfast[si])                        # already 1-D scalar

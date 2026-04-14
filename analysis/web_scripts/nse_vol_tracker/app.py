@@ -47,7 +47,7 @@ def _tf_safe(tf):
 
 
 def _sort_safe(sort):
-    return sort if sort in INDEX_FIELDS else ''
+    return sort if sort in INDEX_FIELDS else 'volume_fast'
 
 
 def filter_list(symbols_list, filt):
@@ -96,7 +96,7 @@ def dump_merge(filt, sort_key, ref_t,order_by):
     import heapq
     fut_flag = bool(filt)
     merge_tf_list = ('3', '15')
-    top = 25
+    top = 30
     sym_idx = INDEX_FIELDS.index('symbol')
     sidx = INDEX_FIELDS.index('volume_fast') if not sort_key else INDEX_FIELDS.index(sort_key)
 
@@ -273,7 +273,7 @@ def sectors():
     sector_symbols = load_sector_symbols(csv_path=csv_path)
 
     # Build a fast lookup dict: symbol -> volume_fast value
-    sort_key = _sort_safe(request.args.get('sort', 'volume_fast'))
+    sort_key = _sort_safe(request.args.get('sort', ''))
     order_by = request.args.get('order', 'desc')
     desc_flag     = order_by != 'asc'
 
