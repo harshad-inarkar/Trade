@@ -8,13 +8,15 @@ indicator(title = 'ScannerVolH', shorttitle = 'ScanVolH', overlay = true)
 import harshad_inarkar/TradeHLib/13 as THL
 
 // ── Sources ───────────────────────────────────────────────────────────────────
-source = volume
+source = close
+volsrc = volume
 
 
 var symbolsInput = input.text_area("BANKNIFTY\nNIFTY_MID_SELECT\nNIFTY", "Symbols")
 const int maxSymbols   = 40
 var int top_symb             = input(40,    title = 'Top Symb')
-var sortby     = input.string('VOSC', title = 'Sort by',    options = ['VOSC','Time'])
+var sortby     = input.string('Time', title = 'Sort by',    options = ['VOSC','POSC','Time'])
+var bool filter_vol = input(false, title = 'Filter Volume')
 
 
 // ── Bar-state helpers ─────────────────────────────────────────────────────────
@@ -27,17 +29,21 @@ last_bar_update = barstate.isconfirmed and (barstate.islast or barstate.islastco
 // ─────────────────────────────────────────────────────────────────────────────
 get_all_status_codes() =>
     
-    [vosc, sig, st_code] = THL.calc_ROC_osc(source, short_entry_flag = false) 
+    [vosc, _, vosc_st_code] = THL.calc_ROC_osc(volsrc, short_entry_flag = false)
+    [posc, _, posc_st_code] = THL.calc_ROC_osc(source) 
+
 
     actual_close_time = 0
-    actual_close_time := THL.is_entry_exit(st_code) ? time_close : actual_close_time[1]
+    actual_close_time := THL.is_entry_exit(posc_st_code) ? time_close : actual_close_time[1]
     
-    [vosc, actual_close_time, st_code]
+    [vosc, posc,actual_close_time, vosc_st_code, posc_st_code]
 
 
 type vol_alert
     string symbol
     float  vosc
+    float  posc
+    color  vosc_sig
     color  sig
     int    time_alert
 
@@ -47,8 +53,9 @@ var array<vol_alert>  alerts_arr        = array.new<vol_alert>()
 get_alert_sort_key_val(ao) => 
     switch sortby
         'VOSC'  => ao.vosc
+        'POSC'  => ao.time_alert
         'Time'  => ao.time_alert
-        =>   ao.vosc         
+        =>   ao.time_alert        
     
 build_udt_keys() =>
     keys = array.new<float>()
@@ -101,13 +108,16 @@ if barstate.isconfirmed
 
     for i = 0 to actualCount - 1
         cleanSym = array.get(symbolsset, i)
-        [vosc, actual_close_time, final_st] = request.security(cleanSym, timeframe.period,
+        [vosc, posc,actual_close_time, vosc_st_code, posc_st_code] = request.security(cleanSym, timeframe.period,
                                                      get_all_status_codes(), ignore_invalid_symbol = true)
 
-        if last_bar_update and not na(final_st)
-            if final_st != THL.STRAT_NEUTRAL
-                [_, dis_col] = THL.decodeStratCode(final_st)
-                array.push(alerts_arr, vol_alert.new(cleanSym, vosc, dis_col, actual_close_time))
+        if last_bar_update and not na(posc_st_code)
+            if posc_st_code != THL.STRAT_NEUTRAL
+                [_, dis_col] = THL.decodeStratCode(posc_st_code)
+                vosc_active = vosc_st_code != THL.STRAT_NEUTRAL
+                vosc_col =  vosc_active ? dis_col : color(na)
+                if not filter_vol or vosc_active
+                    array.push(alerts_arr, vol_alert.new(cleanSym, vosc, posc, vosc_col, dis_col, actual_close_time))
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Main alert + table block
@@ -118,17 +128,18 @@ if last_bar_update
 
     arr_size = array.size(alerts_arr)
 
-    var int num_col  = 3
+    var int num_col  = 4
     var int max_rows = math.min(actualCount, top_symb) + 1
 
-    var table tbl1 = table.new(position.middle_left, num_col, max_rows,
+    var table tbl1 = table.new(position.middle_center, num_col, max_rows,
                            frame_color = color(na), frame_width = 1,
                            border_width = 2, border_color = color(na))
 
     if arr_size > 0
         table.cell(tbl1, 0, 0, THL.format_time(time_close),  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
         table.cell(tbl1, 1, 0, 'VOSC',   text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-        table.cell(tbl1, 2, 0, 'Time',  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 2, 0, 'POSC',   text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 3, 0, 'Time',  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
 
         cur_tb_row = 0
         for i = 0 to arr_size - 1
@@ -139,16 +150,19 @@ if last_bar_update
 
             cur_tb_row += 1
             sig_col     = color.new(ar.sig, transp = 80)
+            vosc_sig_col     = color.new(ar.vosc_sig, transp = 80)
+
             row_idx     = cur_tb_row
 
             table.cell(tbl1, 0, row_idx, ar.symbol,                   text_halign = text.align_left, bgcolor = sig_col,  text_color = color.white, text_size = size.small)
-            table.cell(tbl1, 1, row_idx, str.tostring(math.round(ar.vosc,2)),        text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
+            table.cell(tbl1, 1, row_idx, str.tostring(math.round(ar.vosc,2)),        text_halign = text.align_left, bgcolor = vosc_sig_col, text_color = color.white, text_size = size.small)
+            table.cell(tbl1, 2, row_idx, str.tostring(math.round(ar.posc,2)),        text_halign = text.align_left, bgcolor = sig_col, text_color = color.white, text_size = size.small)
 
             time_val = ar.time_alert
             time_str = dayofmonth(time_val,THL.india_tz) != dayofmonth(time_close,THL.india_tz) ?
                            THL.format_datetime(time_val) : THL.format_time(time_val)
 
-            table.cell(tbl1, 2, row_idx, time_str, text_halign = text.align_left,
+            table.cell(tbl1, 3, row_idx, time_str, text_halign = text.align_left,
                         bgcolor = sig_col, text_color = color.white, text_size = size.small)
 
         if cur_tb_row < max_rows - 1
