@@ -1,0 +1,159 @@
+//@version=6
+// ─────────────────────────────────────────────────────────────────────────────
+//  Scanner  —  multi-symbol signal scanner
+//  Shared engine imported from StrategyLib.
+// ─────────────────────────────────────────────────────────────────────────────
+indicator(title = 'ScannerVolH', shorttitle = 'ScanVolH', overlay = true)
+
+import harshad_inarkar/TradeHLib/13 as THL
+
+// ── Sources ───────────────────────────────────────────────────────────────────
+source = volume
+
+
+var symbolsInput = input.text_area("BANKNIFTY\nNIFTY_MID_SELECT\nNIFTY", "Symbols")
+const int maxSymbols   = 40
+var int top_symb             = input(40,    title = 'Top Symb')
+var sortby     = input.string('VOSC', title = 'Sort by',    options = ['VOSC','Time'])
+
+
+// ── Bar-state helpers ─────────────────────────────────────────────────────────
+last_bar_update = barstate.isconfirmed and (barstate.islast or barstate.islastconfirmedhistory)
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Security-context screener function
+//  Runs inside request.security — uses library for all signal computation
+// ─────────────────────────────────────────────────────────────────────────────
+get_all_status_codes() =>
+    
+    [vosc, sig, st_code] = THL.calc_ROC_osc(source, short_entry_flag = false) 
+
+    actual_close_time = 0
+    actual_close_time := THL.is_entry_exit(st_code) ? time_close : actual_close_time[1]
+    
+    [vosc, actual_close_time, st_code]
+
+
+type vol_alert
+    string symbol
+    float  vosc
+    color  sig
+    int    time_alert
+
+var array<vol_alert>  alerts_arr        = array.new<vol_alert>()
+
+// ── Insertion sort ────────────────────────────────────────────────────────────
+get_alert_sort_key_val(ao) => 
+    switch sortby
+        'VOSC'  => ao.vosc
+        'Time'  => ao.time_alert
+        =>   ao.vosc         
+    
+build_udt_keys() =>
+    keys = array.new<float>()
+
+    for i = 0 to array.size(alerts_arr) - 1
+        array.push(keys, get_alert_sort_key_val(array.get(alerts_arr, i)))
+   
+    keys
+
+
+sort_udt_arr(udt_arr, udt_sort_ord = 'Asc') =>
+    n = array.size(udt_arr)
+    if n > 1
+        keys = build_udt_keys()
+        for i = 1 to n - 1
+            key_i = array.get(keys,    i)
+            val_i = array.get(udt_arr, i)
+            j     = i - 1
+            while j >= 0
+                key_j        = array.get(keys, j)
+                should_shift = udt_sort_ord == 'Desc' ? key_j < key_i : key_j > key_i
+                if not should_shift
+                    break
+                array.set(keys,    j + 1, key_j)
+                array.set(udt_arr, j + 1, array.get(udt_arr, j))
+                j := j - 1
+            array.set(keys,    j + 1, key_i)
+            array.set(udt_arr, j + 1, val_i)
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Symbol list initialisation
+// ─────────────────────────────────────────────────────────────────────────────
+var symbolArray = str.split(symbolsInput, "\n")
+var symbolsset  = array.new_string()
+var actualCount = 0
+
+if barstate.isconfirmed and barstate.isfirst
+    for i = 0 to array.size(symbolArray) - 1
+        cleanSym = str.trim(str.replace(array.get(symbolArray, i), "\r", ""))
+        if cleanSym != '' and array.indexof(symbolsset, cleanSym) == -1
+            array.push(symbolsset, cleanSym)
+    actualCount := math.min(array.size(symbolsset), maxSymbols)
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Security calls
+// ─────────────────────────────────────────────────────────────────────────────
+if barstate.isconfirmed
+    if last_bar_update
+        array.clear(alerts_arr)
+
+    for i = 0 to actualCount - 1
+        cleanSym = array.get(symbolsset, i)
+        [vosc, actual_close_time, final_st] = request.security(cleanSym, timeframe.period,
+                                                     get_all_status_codes(), ignore_invalid_symbol = true)
+
+        if last_bar_update and not na(final_st)
+            if final_st != THL.STRAT_NEUTRAL
+                [_, dis_col] = THL.decodeStratCode(final_st)
+                array.push(alerts_arr, vol_alert.new(cleanSym, vosc, dis_col, actual_close_time))
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Main alert + table block
+// ─────────────────────────────────────────────────────────────────────────────
+if last_bar_update
+ 
+    sort_udt_arr(alerts_arr, udt_sort_ord = 'Desc')
+
+    arr_size = array.size(alerts_arr)
+
+    var int num_col  = 3
+    var int max_rows = math.min(actualCount, top_symb) + 1
+
+    var table tbl1 = table.new(position.middle_left, num_col, max_rows,
+                           frame_color = color(na), frame_width = 1,
+                           border_width = 2, border_color = color(na))
+
+    if arr_size > 0
+        table.cell(tbl1, 0, 0, THL.format_time(time_close),  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 1, 0, 'VOSC',   text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 2, 0, 'Time',  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+
+        cur_tb_row = 0
+        for i = 0 to arr_size - 1
+            ar = array.get(alerts_arr, i)
+
+            if cur_tb_row >= top_symb
+                break
+
+            cur_tb_row += 1
+            sig_col     = color.new(ar.sig, transp = 80)
+            row_idx     = cur_tb_row
+
+            table.cell(tbl1, 0, row_idx, ar.symbol,                   text_halign = text.align_left, bgcolor = sig_col,  text_color = color.white, text_size = size.small)
+            table.cell(tbl1, 1, row_idx, str.tostring(math.round(ar.vosc,2)),        text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
+
+            time_val = ar.time_alert
+            time_str = dayofmonth(time_val,THL.india_tz) != dayofmonth(time_close,THL.india_tz) ?
+                           THL.format_datetime(time_val) : THL.format_time(time_val)
+
+            table.cell(tbl1, 2, row_idx, time_str, text_halign = text.align_left,
+                        bgcolor = sig_col, text_color = color.white, text_size = size.small)
+
+        if cur_tb_row < max_rows - 1
+            table.clear(tbl1, 0, cur_tb_row + 1, num_col - 1, max_rows - 1)
+
+    else
+        table.clear(tbl1, 0, 0, num_col - 1, max_rows - 1)
+

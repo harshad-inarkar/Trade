@@ -26,7 +26,7 @@ var ma_filter                  = input.int(2, title = 'MA Filter',            op
 var strict_confirm_trade_check = input.int(0, title = 'Strict confirm trade', options = [0,1,2,3])
 var long_signal_flag           = input(true,  title = 'Long Signal')
 var short_signal_flag          = input(true,  title = 'Short Signal')
-var tf1_alert                  = input(true,  title = 'tf1 Alert')
+var show_alert_flag                  = input(true,  title = 'Show Alert')
 
 const float negative_threshold       = -0.1
 const float maxp_threshold           = 0.1
@@ -120,23 +120,12 @@ type alert_row
     color  sig
     int    time_alert
 
-type status_row
-    string symbol
-    int    status
-    float  ltp
-    int    t_close
-    int    lineup_st
-    float  entry
-    float  prof
-    float  maxp
-
 enum UDTtype
     ALERT
     STATS
 
 var array<alert_row>  alerts_arr        = array.new<alert_row>()
 var array<stats_row>  stats_arr         = array.new<stats_row>()
-var array<status_row> symbol_status_arr = array.new<status_row>()
 
 // ── Insertion sort ────────────────────────────────────────────────────────────
 get_alert_sort_key_val(ao) => ao.time_alert
@@ -185,6 +174,9 @@ sort_udt_arr(udt_arr, UDTtype udtyp, udt_sort_ord = 'Asc') =>
 var symbolArray = str.split(symbolsInput, "\n")
 var symbolsset  = array.new_string()
 var actualCount = 0
+var any_trade_alert = false
+var string scr_label = na
+
 
 if barstate.isconfirmed and barstate.isfirst
     for i = 0 to array.size(symbolArray) - 1
@@ -193,30 +185,6 @@ if barstate.isconfirmed and barstate.isfirst
             array.push(symbolsset, cleanSym)
     actualCount := math.min(array.size(symbolsset), maxSymbols)
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Security calls
-// ─────────────────────────────────────────────────────────────────────────────
-if barstate.isconfirmed
-    if show_stats_bar
-        array.clear(stats_arr)
-    if last_bar_update
-        array.clear(symbol_status_arr)
-        array.clear(alerts_arr)
-
-    for i = 0 to actualCount - 1
-        cleanSym = array.get(symbolsset, i)
-
-        [lineup_st, entry_val, ltp, actual_close_time, final_st, curr_prof, maxp, trades, total_maxp, win_trades] =
-                 request.security(cleanSym, timeframe.period,
-                                     get_all_status_codes(), ignore_invalid_symbol = true)
-
-        if last_bar_update and not na(final_st)
-            array.push(symbol_status_arr,
-                        status_row.new(cleanSym, final_st, ltp, actual_close_time,
-                                       lineup_st, entry_val, curr_prof, maxp))
-            if show_stats_bar
-                array.push(stats_arr,
-                            stats_row.new(cleanSym, trades, total_maxp, win_trades))
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Alert helpers
@@ -268,11 +236,6 @@ get_deltaexch_ids(s_name) =>
                 break
     [ticker_id, qty]
 
-
-any_trade_alert = false
-string scr_label = na
-
-
 raise_order_alerts() =>
     symb_ele_arr = str.split(scr_label, THL.line_sep)
     if array.size(symb_ele_arr) > 0
@@ -312,166 +275,193 @@ raise_order_alerts() =>
 // ─────────────────────────────────────────────────────────────────────────────
 //  Main alert + table block
 // ─────────────────────────────────────────────────────────────────────────────
-if last_bar_update and tf1_alert
 
-    symb_arr_size   = array.size(symbol_status_arr)
-    any_trade_alert := false
-    scr_label       := na
+process_alert_table(sym, final_st, ltp, actual_close_time,lineup_st, entry_val, curr_prof, maxp) =>
+    [trade_alert_flag, symb_info, summ_col] = get_alert_info(actual_close_time, final_st, ltp, sym)
 
-    for i = 0 to symb_arr_size - 1
-        row = array.get(symbol_status_arr, i)
-        [trade_alert_flag, symb_info, summ_col] =
-             get_alert_info(row.t_close, row.status, row.ltp, row.symbol)
+    add_alert_arr(sym, lineup_st, final_st,
+                    entry_val,  ltp,       curr_prof,
+                    maxp,   summ_col,       actual_close_time)
+    
+    [trade_alert_flag,symb_info]
 
-        if trade_alert_flag
-            any_trade_alert := true
-            scr_label       := scr_label + symb_info
-
-        add_alert_arr(row.symbol, row.lineup_st, row.status,
-                      row.entry,  row.ltp,       row.prof,
-                      row.maxp,   summ_col,       row.t_close)
-
-    if not na(scr_label) and any_trade_alert
-        alert(THL.screener_sep + scr_label + THL.screener_sep, freq = alert.freq_once_per_bar_close)
-        if alert_type != 'no_order'
-            raise_order_alerts()
-
-    sort_udt_arr(alerts_arr, UDTtype.ALERT, udt_sort_ord = 'Desc')
-    arr_size = array.size(alerts_arr)
-
-    var int num_col  = 6
-    var int max_rows = math.min(actualCount, top_symb) + 1
-
-    var table tbl1 = table.new(position.middle_left, num_col, max_rows,
-                           frame_color = color(na), frame_width = 1,
-                           border_width = 2, border_color = color(na))
-
-    if arr_size > 0
-        table.cell(tbl1, 0, 0, THL.format_time(time_close),  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-        table.cell(tbl1, 1, 0, 'Entry', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-        table.cell(tbl1, 2, 0, 'LTP',   text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-        table.cell(tbl1, 3, 0, 'Cur',   text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-        table.cell(tbl1, 4, 0, 'MaxP',  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-        table.cell(tbl1, 5, 0, 'Time',  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-
-        cur_tb_row = 0
-        for i = 0 to arr_size - 1
-            ar = array.get(alerts_arr, i)
-
-            if cur_tb_row >= top_symb
-                break
-
-            prof_strength = ar.maxp == 0 ? 100 :
-                                     math.max(0, math.round((1 - (ar.maxp - ar.prof) / ar.maxp) * 100))
-            if (exclude_negatives        and ar.prof <= negative_threshold)           or
-               (exclude_low_strength     and prof_strength <= prof_strength_threshold) or
-               (show_only_maxp_threshold and ar.maxp <= maxp_threshold)
-                continue
-
-            cur_tb_row += 1
-            sig_col     = color.new(ar.sig, transp = 80)
-            row_idx     = cur_tb_row
-
-            table.cell(tbl1, 0, row_idx, ar.symbol,                   text_halign = text.align_left, bgcolor = sig_col,  text_color = color.white, text_size = size.small)
-            table.cell(tbl1, 1, row_idx, str.tostring(ar.entry),      text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
-            table.cell(tbl1, 2, row_idx, str.tostring(ar.ltp),        text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
-            table.cell(tbl1, 3, row_idx, str.tostring(prof_strength), text_halign = text.align_left,
-                        bgcolor = color.new(ar.sig, transp = 100 - prof_strength),
-                        text_color = color.white, text_size = size.small)
-            table.cell(tbl1, 4, row_idx, str.tostring(ar.maxp),       text_halign = text.align_left,
-                        bgcolor = ar.maxp > 0.1 ? THL.greencol : color(na),
-                        text_color = color.white, text_size = size.small)
-
-            time_val = ar.time_alert
-            time_str = dayofmonth(time_val,THL.india_tz) != dayofmonth(time_close,THL.india_tz) ?
-                           THL.format_datetime(time_val) : THL.format_time(time_val)
-
-            table.cell(tbl1, 5, row_idx, time_str, text_halign = text.align_left,
-                        bgcolor = sig_col, text_color = color.white, text_size = size.small)
-
-        if cur_tb_row < max_rows - 1
-            table.clear(tbl1, 0, cur_tb_row + 1, num_col - 1, max_rows - 1)
-
-    else
-        table.clear(tbl1, 0, 0, num_col - 1, max_rows - 1)
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Stats table
+//  Security calls
 // ─────────────────────────────────────────────────────────────────────────────
-if show_stats_bar
 
-    arr_size = array.size(stats_arr)
-    if arr_size > 0
-        sort_udt_arr(stats_arr, UDTtype.STATS, udt_sort_ord = sort_order)
+if barstate.isconfirmed
+    if show_stats_bar
+        array.clear(stats_arr)
+    if last_bar_update
+        array.clear(alerts_arr)
 
-        var tablecapsize = 20
-        var cur_num_col  = 5
-        var table tbl2   = na
-        var table tbl3   = na
+    for i = 0 to actualCount - 1
+        cleanSym = array.get(symbolsset, i)
 
-        tb_size = arr_size > tablecapsize ? 2 : 1
-        for i = 0 to tb_size - 1
-            cur_num_rows  = math.min(arr_size, tablecapsize) + 2
-            cur_table_pos = position.middle_center
-            table cur_tbl = na
+        [lineup_st, entry_val, ltp, actual_close_time, final_st, curr_prof, maxp, trades, total_maxp, win_trades] =
+                 request.security(cleanSym, timeframe.period,
+                                     get_all_status_codes(), ignore_invalid_symbol = true)
 
-            if i == 0
-                if not na(tbl2)
-                    table.delete(tbl2)
-                    tbl2 := na
-                tbl2    := table.new(cur_table_pos, cur_num_col, cur_num_rows,
-                                     frame_color = color(na), frame_width = 1,
-                                     border_width = 2, border_color = color(na))
-                cur_tbl := tbl2
-            else
-                if not na(tbl3)
-                    table.delete(tbl3)
-                    tbl3 := na
-                cur_table_pos := position.middle_right
-                cur_num_rows  := arr_size - tablecapsize + 2
-                tbl3    := table.new(cur_table_pos, cur_num_col, cur_num_rows,
-                                     frame_color = color(na), frame_width = 1,
-                                     border_width = 2, border_color = color(na))
-                cur_tbl := tbl3
+        if last_bar_update and not na(final_st)
+            if show_alert_flag
+                any_trade_alert := false
+                scr_label       := na
+                [trade_alert_flag,symb_info] = process_alert_table(cleanSym, final_st, ltp, actual_close_time,lineup_st, entry_val, curr_prof, maxp)
+                if trade_alert_flag
+                    any_trade_alert := true
+                    scr_label       := scr_label + symb_info
+                    
 
-            hdr = THL.format_datetime(start) + ' to ' + THL.format_time(time_close)
-            table.cell(cur_tbl, 0, 0, hdr,        text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-            table.cell(cur_tbl, 1, 0, 'Trades',   text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-            table.cell(cur_tbl, 2, 0, 'Maxp',     text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-            table.cell(cur_tbl, 3, 0, 'Maxp AVG', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
-            table.cell(cur_tbl, 4, 0, 'WinRate',  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+            if show_stats_bar
+                array.push(stats_arr,
+                            stats_row.new(cleanSym, trades, total_maxp, win_trades))
 
-        allsymb_tr = 0, allsymb_mxp = 0.0, allsymb_wintr = 0
 
-        for i = 0 to arr_size - 1
-            sr       = array.get(stats_arr, i)
-            cur_tbl  = tbl2
-            row_indx = i
-            if i >= tablecapsize
-                cur_tbl  := tbl3
-                row_indx := i - tablecapsize
 
-            tr  = sr.trades
-            mxp = sr.total_maxp
-            wit = sr.win_trades
-            allsymb_tr    += tr
-            allsymb_mxp   += mxp
-            allsymb_wintr += wit
+    if last_bar_update and show_alert_flag
 
-            mxpavg = tr == 0 ? 0.0 : mxp / tr
-            winrt  = tr == 0 ? 0.0 : float(wit) / tr
+        if not na(scr_label) and any_trade_alert
+            alert(THL.screener_sep + scr_label + THL.screener_sep, freq = alert.freq_once_per_bar_close)
+            if alert_type != 'no_order'
+                raise_order_alerts()
 
-            table.cell(cur_tbl, 0, row_indx+1, sr.symbol,                           text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-            table.cell(cur_tbl, 1, row_indx+1, str.tostring(tr),                    text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-            table.cell(cur_tbl, 2, row_indx+1, str.tostring(math.round(mxp,    2)), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-            table.cell(cur_tbl, 3, row_indx+1, str.tostring(math.round(mxpavg, 2)), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
-            table.cell(cur_tbl, 4, row_indx+1, str.tostring(math.round(winrt,  2)), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
+        sort_udt_arr(alerts_arr, UDTtype.ALERT, udt_sort_ord = 'Desc')
+        arr_size = array.size(alerts_arr)
 
-            if i == arr_size - 1
-                all_mxpavg = allsymb_tr == 0 ? 0.0 : allsymb_mxp / allsymb_tr
-                all_winrt  = allsymb_tr == 0 ? 0.0 : float(allsymb_wintr) / allsymb_tr
-                table.cell(cur_tbl, 0, row_indx+2, 'Total',                                    text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(cur_tbl, 1, row_indx+2, str.tostring(allsymb_tr),                   text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(cur_tbl, 2, row_indx+2, str.tostring(math.round(allsymb_mxp,  2)), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(cur_tbl, 3, row_indx+2, str.tostring(math.round(all_mxpavg,   2)), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
-                table.cell(cur_tbl, 4, row_indx+2, str.tostring(math.round(all_winrt,    2)), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        var int num_col  = 6
+        var int max_rows = math.min(actualCount, top_symb) + 1
+
+        var table tbl1 = table.new(position.middle_left, num_col, max_rows,
+                            frame_color = color(na), frame_width = 1,
+                            border_width = 2, border_color = color(na))
+
+        if arr_size > 0
+            table.cell(tbl1, 0, 0, THL.format_time(time_close),  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+            table.cell(tbl1, 1, 0, 'Entry', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+            table.cell(tbl1, 2, 0, 'LTP',   text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+            table.cell(tbl1, 3, 0, 'Cur',   text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+            table.cell(tbl1, 4, 0, 'MaxP',  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+            table.cell(tbl1, 5, 0, 'Time',  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+
+            cur_tb_row = 0
+            for i = 0 to arr_size - 1
+                ar = array.get(alerts_arr, i)
+
+                if cur_tb_row >= top_symb
+                    break
+
+                prof_strength = ar.maxp == 0 ? 100 :
+                                         math.max(0, math.round((1 - (ar.maxp - ar.prof) / ar.maxp) * 100))
+                if (exclude_negatives        and ar.prof <= negative_threshold)           or
+                     (exclude_low_strength     and prof_strength <= prof_strength_threshold) or
+                     (show_only_maxp_threshold and ar.maxp <= maxp_threshold)
+                    continue
+
+                cur_tb_row += 1
+                sig_col     = color.new(ar.sig, transp = 80)
+                row_idx     = cur_tb_row
+
+                table.cell(tbl1, 0, row_idx, ar.symbol,                   text_halign = text.align_left, bgcolor = sig_col,  text_color = color.white, text_size = size.small)
+                table.cell(tbl1, 1, row_idx, str.tostring(ar.entry),      text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
+                table.cell(tbl1, 2, row_idx, str.tostring(ar.ltp),        text_halign = text.align_left, bgcolor = color(na), text_color = color.white, text_size = size.small)
+                table.cell(tbl1, 3, row_idx, str.tostring(prof_strength), text_halign = text.align_left,
+                            bgcolor = color.new(ar.sig, transp = 100 - prof_strength),
+                            text_color = color.white, text_size = size.small)
+                table.cell(tbl1, 4, row_idx, str.tostring(ar.maxp),       text_halign = text.align_left,
+                            bgcolor = ar.maxp > 0.1 ? THL.greencol : color(na),
+                            text_color = color.white, text_size = size.small)
+
+                time_val = ar.time_alert
+                time_str = dayofmonth(time_val,THL.india_tz) != dayofmonth(time_close,THL.india_tz) ?
+                                     THL.format_datetime(time_val) : THL.format_time(time_val)
+
+                table.cell(tbl1, 5, row_idx, time_str, text_halign = text.align_left,
+                            bgcolor = sig_col, text_color = color.white, text_size = size.small)
+
+            if cur_tb_row < max_rows - 1
+                table.clear(tbl1, 0, cur_tb_row + 1, num_col - 1, max_rows - 1)
+
+        else
+            table.clear(tbl1, 0, 0, num_col - 1, max_rows - 1)
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    //  Stats table
+    // ─────────────────────────────────────────────────────────────────────────────
+    if show_stats_bar
+
+        arr_size = array.size(stats_arr)
+        if arr_size > 0
+            sort_udt_arr(stats_arr, UDTtype.STATS, udt_sort_ord = sort_order)
+
+            var tablecapsize = 20
+            var cur_num_col  = 5
+            var table tbl2   = na
+            var table tbl3   = na
+
+            tb_size = arr_size > tablecapsize ? 2 : 1
+            for i = 0 to tb_size - 1
+                cur_num_rows  = math.min(arr_size, tablecapsize) + 2
+                cur_table_pos = position.middle_center
+                table cur_tbl = na
+
+                if i == 0
+                    if not na(tbl2)
+                        table.delete(tbl2)
+                        tbl2 := na
+                    tbl2    := table.new(cur_table_pos, cur_num_col, cur_num_rows,
+                                        frame_color = color(na), frame_width = 1,
+                                        border_width = 2, border_color = color(na))
+                    cur_tbl := tbl2
+                else
+                    if not na(tbl3)
+                        table.delete(tbl3)
+                        tbl3 := na
+                    cur_table_pos := position.middle_right
+                    cur_num_rows  := arr_size - tablecapsize + 2
+                    tbl3    := table.new(cur_table_pos, cur_num_col, cur_num_rows,
+                                        frame_color = color(na), frame_width = 1,
+                                        border_width = 2, border_color = color(na))
+                    cur_tbl := tbl3
+
+                hdr = THL.format_datetime(start) + ' to ' + THL.format_time(time_close)
+                table.cell(cur_tbl, 0, 0, hdr,        text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+                table.cell(cur_tbl, 1, 0, 'Trades',   text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+                table.cell(cur_tbl, 2, 0, 'Maxp',     text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+                table.cell(cur_tbl, 3, 0, 'Maxp AVG', text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+                table.cell(cur_tbl, 4, 0, 'WinRate',  text_halign = text.align_center, bgcolor = color.gray, text_color = color.white, text_size = size.small)
+
+            allsymb_tr = 0, allsymb_mxp = 0.0, allsymb_wintr = 0
+
+            for i = 0 to arr_size - 1
+                sr       = array.get(stats_arr, i)
+                cur_tbl  = tbl2
+                row_indx = i
+                if i >= tablecapsize
+                    cur_tbl  := tbl3
+                    row_indx := i - tablecapsize
+
+                tr  = sr.trades
+                mxp = sr.total_maxp
+                wit = sr.win_trades
+                allsymb_tr    += tr
+                allsymb_mxp   += mxp
+                allsymb_wintr += wit
+
+                mxpavg = tr == 0 ? 0.0 : mxp / tr
+                winrt  = tr == 0 ? 0.0 : float(wit) / tr
+
+                table.cell(cur_tbl, 0, row_indx+1, sr.symbol,                           text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
+                table.cell(cur_tbl, 1, row_indx+1, str.tostring(tr),                    text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
+                table.cell(cur_tbl, 2, row_indx+1, str.tostring(math.round(mxp,    2)), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
+                table.cell(cur_tbl, 3, row_indx+1, str.tostring(math.round(mxpavg, 2)), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
+                table.cell(cur_tbl, 4, row_indx+1, str.tostring(math.round(winrt,  2)), text_halign=text.align_left, bgcolor=color(na), text_color=color.white, text_size=size.small)
+
+                if i == arr_size - 1
+                    all_mxpavg = allsymb_tr == 0 ? 0.0 : allsymb_mxp / allsymb_tr
+                    all_winrt  = allsymb_tr == 0 ? 0.0 : float(allsymb_wintr) / allsymb_tr
+                    table.cell(cur_tbl, 0, row_indx+2, 'Total',                                    text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+                    table.cell(cur_tbl, 1, row_indx+2, str.tostring(allsymb_tr),                   text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+                    table.cell(cur_tbl, 2, row_indx+2, str.tostring(math.round(allsymb_mxp,  2)), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+                    table.cell(cur_tbl, 3, row_indx+2, str.tostring(math.round(all_mxpavg,   2)), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+                    table.cell(cur_tbl, 4, row_indx+2, str.tostring(math.round(all_winrt,    2)), text_halign=text.align_left, bgcolor=color.gray, text_color=color.white, text_size=size.small)
