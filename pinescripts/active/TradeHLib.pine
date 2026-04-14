@@ -1,0 +1,651 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// © harshad_inarkar
+//@version=6
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  TradeHLib  —  shared oscillator / signal engine
+//
+//  Exported Constants:
+//    UP, DOWN, NEUTRAL
+//    STRAT_NEUTRAL, STRAT_LONG, STRAT_SHORT,
+//    STRAT_ENTER_LONG, STRAT_ENTER_SHORT,
+//    STRAT_EXIT_LONG, STRAT_EXIT_SHORT
+//    exitlong_col, exitshort_col, enterlong_col, entershort_col,
+//    longpos_col, shortpos_col, neutral_col
+//
+//  Exported Functions:
+//    Signal engine  : angle(), get_osc_trend_params(), get_osc_trend()
+//                     calc_generic_osc(), calc_RSI()
+//                     smaroc(), calc_custom_kst(), calc_generic_KST()
+//                     get_status_code_trend_num(), get_summary_trend_code()
+//    MA filter      : calc_ema_filters()  ← single-pass long+short (preferred)
+//                     checkEMA()          ← single-direction with isPriceEMA fallback
+//    Summary signal : calc_final_summary(), calc_trigger_entry()
+//    Stats tracking : calc_trade_stats()
+//    Utilities      : decodeStratCode()
+//                     is_entry_exit()
+//                     format_time(), format_datetime()
+//                     calc_lineup_status()
+//
+//  USAGE:
+//    import harshad_inarkar/TradeHLib/6 as THL
+// ─────────────────────────────────────────────────────────────────────────────
+
+library("TradeHLib", overlay = false)
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Exported Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const int MILLISECONDS_IN_HOUR = 60 * 60 * 1000
+export const int MILLISECONDS_IN_DAY  = 24 * MILLISECONDS_IN_HOUR
+
+export const string sep = ' : '
+
+export const string line_sep     = '\n-----\n'
+export const string screener_sep = '----------------\n'
+
+export const color greencol = color.new(color.green, transp = 80)
+
+
+// Oscillator trend direction codes
+export const int UP      = 1
+export const int DOWN    = 2
+export const int NEUTRAL = 0
+
+// Strategy position/signal codes
+export const int STRAT_NEUTRAL     = 0
+export const int STRAT_LONG        = 1
+export const int STRAT_SHORT       = 2
+export const int STRAT_ENTER_LONG  = 3
+export const int STRAT_ENTER_SHORT = 4
+export const int STRAT_EXIT_LONG   = 5
+export const int STRAT_EXIT_SHORT  = 6
+
+// Colours — exported so callers don't duplicate color.new() allocations
+export const color exitlong_col   = color.new(color.yellow, transp = 70)
+export const color exitshort_col  = color.new(color.blue,   transp = 70)
+export const color enterlong_col  = color.new(color.lime,   transp = 70)
+export const color entershort_col = color.new(color.red,    transp = 70)
+export const color longpos_col    = color.new(color.aqua,   transp = 80)
+export const color shortpos_col   = color.new(color.orange, transp = 80)
+export const color neutral_col    = color(na)
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Internal constants (not exported — used only inside library functions)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const string india_tz    = 'Asia/Kolkata'
+
+const float _rad2degree      = 180.0 / 3.14159265359
+const int   _lookback_period = 1
+const int   _smoothing       = 3
+const int   _RANGE_BACK_BARS = 20
+const float _osc_filter_range = 5.2
+
+const int   _ml           = 50
+const int   _rsilen       = 8
+const int   _rsiMAlen     = 13
+
+const int   _roclen1 = 8
+const int   _roclen2 = 13
+const int   _roclen3 = 21
+const int   _roclen4 = 34
+const int   _smalen1 = 8
+const int   _smalen2 = 8
+const int   _smalen3 = 8
+const int   _smalen4 = 13
+
+const int _len1 = 8
+const int _len2 = 21
+const int _len3 = 55
+const int _len4 = 233
+
+const int _atr_length = 5
+const int _atr_mult   = 1
+
+
+// Roc Osc
+const int    _fastLen = 8
+const int    _slowLen = 21
+
+const int   _baselen = 89
+const int   _siglen  = 13
+const int   _smoothlen = 3
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Oscillator trend engine
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+export calc_window_start(simple bool show_only_window,
+                          simple float  last_n_days,simple float last_hrs) =>
+
+    backtime             = MILLISECONDS_IN_DAY * last_n_days + MILLISECONDS_IN_HOUR * last_hrs
+    show_only_window ? math.max(int(timenow - backtime), time[0]) : time[0]
+
+
+export get_all_mas(series float _src) =>
+    out1 = ta.rma(_src, _len1)
+    out2 = ta.rma(_src, _len2)
+    out3 = ta.rma(_src, _len3)
+    out4 = ta.rma(_src, _len4)
+
+    [out1,out2,out3,out4]
+
+
+
+
+// Returns angle of oscillator slope in degrees, scaled by range
+export angle(series float _src, float osc_avg_tr) =>
+    _rad2degree * math.atan((_src - nz(_src[_lookback_period])) /
+                             (_lookback_period * osc_avg_tr))
+
+
+// Returns UP / DOWN / NEUTRAL based on slope and boundary checks
+export get_osc_trend_params(series float osc, simple float osc_filter) =>
+    osc_max    = ta.highest(osc, _RANGE_BACK_BARS)
+    osc_min    = ta.lowest(osc,  _RANGE_BACK_BARS)
+    osc_avg_tr = osc_max - osc_min
+    osc_slope  = ta.linreg(angle(osc, osc_avg_tr), _smoothing, 0)
+    osc_slope >= osc_filter or osc >= osc_max ? UP :
+     osc_slope <= -osc_filter or osc <= osc_min ? DOWN : NEUTRAL
+
+
+// Convenience wrapper using default filter range
+export get_osc_trend(series float osc) =>
+    get_osc_trend_params(osc, _osc_filter_range)
+
+
+export decodeStratCode(series int adx_code) =>
+    adx_col = color(na)
+    adx_txt = string(na)
+    switch adx_code
+        STRAT_EXIT_LONG   => adx_txt := 'XU', adx_col := exitlong_col
+        STRAT_EXIT_SHORT  => adx_txt := 'XD', adx_col := exitshort_col
+        STRAT_ENTER_LONG  => adx_txt := 'U' , adx_col := enterlong_col
+        STRAT_ENTER_SHORT => adx_txt := 'D' , adx_col := entershort_col
+        STRAT_LONG        => adx_txt := 'Up', adx_col := longpos_col
+        STRAT_SHORT       => adx_txt := 'Dn', adx_col := shortpos_col
+        =>                      adx_txt := 'Na', adx_col := neutral_col
+    [adx_txt, adx_col]
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Generic oscillator signal engine
+//  Returns a STRAT_* code based on crossover, trend and position state
+// ─────────────────────────────────────────────────────────────────────────────
+export calc_generic_osc(series float fastma, series float sigma,
+                         simple float center_level = 0,
+                         simple bool short_entry_flag = true,simple bool use_center_level = true) =>
+    osc_trend    = get_osc_trend(fastma)
+    osc_diPos    = fastma >= sigma
+    osc_diNeg    = not osc_diPos
+    osc_crossover = ta.crossover(fastma,sigma)
+    osc_crossunder = ta.crossunder(fastma,sigma)
+    osc_cross    =  osc_crossover or osc_crossunder //osc_diNeg[1] and osc_diPos or osc_diNeg and osc_diPos[1]
+    osc_buyCond  = osc_diPos and (not use_center_level or fastma >= center_level)
+    osc_sellCond = osc_diNeg and (not use_center_level or fastma <  center_level)
+    osc_validtr  = osc_buyCond or osc_sellCond
+
+    osc_validlongentry  = osc_buyCond  and osc_trend == UP
+    osc_validshortentry = osc_sellCond and osc_trend == DOWN and short_entry_flag
+    osc_noTradeZone     = not osc_validtr or osc_cross
+
+    osc_active_pos = false
+    osc_active_pos :=
+         (osc_validlongentry or osc_validshortentry) and not osc_active_pos[1] ?
+         true : osc_noTradeZone ? false : osc_active_pos[1]
+
+    osc_enterLong  = osc_validlongentry  and not osc_active_pos[1]
+    osc_enterShort = osc_validshortentry and not osc_active_pos[1]
+    osc_longpos    = osc_buyCond  and osc_active_pos
+    osc_shortpos   = osc_sellCond and osc_active_pos
+    osc_exitLong   = osc_noTradeZone and osc_longpos[1]
+    osc_exitShort  = osc_noTradeZone and osc_shortpos[1]
+
+    osc_exitLong   ? STRAT_EXIT_LONG   :
+     osc_exitShort  ? STRAT_EXIT_SHORT  :
+     osc_enterLong  ? STRAT_ENTER_LONG  :
+     osc_enterShort ? STRAT_ENTER_SHORT :
+     osc_longpos    ? STRAT_LONG        :
+     osc_shortpos   ? STRAT_SHORT       : STRAT_NEUTRAL
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  RSI-based oscillator signal
+//  src : price series (typically close)
+// ─────────────────────────────────────────────────────────────────────────────
+export calc_RSI(series float src) =>
+    rsi       = ta.rsi(src, _rsilen)
+    rsi_orig  = ta.rma(rsi,      _rsiMAlen)
+    smoothrsi = ta.rma(rsi_orig, _smoothlen)
+    sig_rsiMA = ta.rma(smoothrsi, _siglen)
+    st_code = calc_generic_osc(smoothrsi, sig_rsiMA, center_level = _ml)
+    [smoothrsi,sig_rsiMA,st_code]
+
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  ROC oscillator signal
+//  src : price series (typically close)
+// ─────────────────────────────────────────────────────────────────────────────
+export calc_ROC_osc(series float src, simple bool short_entry_flag = true) =>
+    maFast = ta.rma(src, _fastLen)
+    maSlow = ta.rma(src, _slowLen)
+
+
+    rocfast = (100.0 * (maFast-maSlow))/maSlow
+    std_dev = ta.stdev(rocfast,_baselen)
+    smoothroc = 100*ta.rma(rocfast,_smoothlen)/(3*std_dev)
+
+    pmo = smoothroc
+    sig = ta.rma(pmo, _siglen)
+
+    st_code = calc_generic_osc(pmo, sig,short_entry_flag=short_entry_flag)
+
+    [pmo,sig,st_code]
+
+
+
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  KST oscillator signal
+// ─────────────────────────────────────────────────────────────────────────────
+smaroc(series float cust_src, simple int roclen, simple int smalen) =>
+    ta.rma(ta.roc(cust_src, roclen), smalen)
+
+
+calc_custom_kst(series float cust_src) =>
+    smaroc(cust_src, _roclen1, _smalen1) +
+     2 * smaroc(cust_src, _roclen2, _smalen2) +
+     3 * smaroc(cust_src, _roclen3, _smalen3) +
+     4 * smaroc(cust_src, _roclen4, _smalen4)
+
+
+export calc_generic_KST(series float cust_src, simple bool short_entry = true) =>
+    kst_orig  = calc_custom_kst(cust_src)
+    std_dev   = ta.stdev(kst_orig, _baselen)
+    smoothkst = 100 * ta.rma(kst_orig, _smoothlen) / (3 * std_dev)
+    sig       = ta.rma(smoothkst, _siglen)
+    st_code = calc_generic_osc(smoothkst, sig, short_entry_flag = short_entry)
+    [smoothkst,sig,st_code]
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Summary trend logic
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Maps a single STRAT_* code to a numeric direction (+1 / -1 / 0)
+get_status_code_trend_num(series int st) =>
+    st == STRAT_ENTER_LONG or st == STRAT_LONG or st == STRAT_EXIT_SHORT ? 1 :
+     st == STRAT_ENTER_SHORT or st == STRAT_SHORT or st == STRAT_EXIT_LONG ? -1 : 0
+
+
+// Combines RSI + KST codes into a single consensus STRAT_* code
+get_summary_trend_code(series int rsi_code, series int kst_code) =>
+    st_num = get_status_code_trend_num(rsi_code) +
+             get_status_code_trend_num(kst_code)
+    st_num == 2  ? STRAT_ENTER_LONG  :
+     st_num == 1  ? STRAT_LONG        :
+     st_num == -2 ? STRAT_ENTER_SHORT :
+     st_num == -1 ? STRAT_SHORT       : STRAT_NEUTRAL
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  MA trend + lineup filter
+//
+//  calc_ema_filters — single-pass version returning both long and short results.
+//  Replaces two separate checkEMA calls in calc_final_summary, halving the work.
+//
+//  Parameters (all must be passed explicitly — no implicit globals in library):
+//    src           : price series
+//    out1..out4    : pre-computed RMA series
+//    out1_trend    : get_osc_trend(out1) result
+//    out2_trend    : get_osc_trend(out2) result
+//    lineup_check  : 0/2/3/4
+//    ma_filter     : 1/2/3/4
+//
+//  Returns: [long_ok, short_ok]
+// ─────────────────────────────────────────────────────────────────────────────
+calc_ema_filters(series float src,
+                         series float out1, series float out2,
+                         series float out3, series float out4,
+                         series int   out1_trend, series int out2_trend,
+                         simple int   lineup_check, simple int ma_filter) =>
+
+    long_filter  = switch ma_filter
+        4 => src >= out4
+        3 => src >= out3
+        2 => src >= out2
+        1 => src >= out1
+
+    short_filter = switch ma_filter
+        4 => src <= out4
+        3 => src <= out3
+        2 => src <= out2
+        1 => src <= out1
+
+    long_check  = out1_trend == UP   and long_filter
+    short_check = out1_trend == DOWN and short_filter
+
+    if lineup_check >= 2
+        long_check  := long_check  and out2_trend == UP   and out1 >= out2
+        short_check := short_check and out2_trend == DOWN and out1 <= out2
+
+    if lineup_check >= 3
+        slm_l = src >= out3 and out1 >= out2 and out2 >= out3
+        slm_s = src <= out3 and out1 <= out2 and out2 <= out3
+        if lineup_check == 4
+            slm_l := src >= out4 and out3 >= out4 and slm_l
+            slm_s := src <= out4 and out3 <= out4 and slm_s
+        long_check  := long_check  and slm_l
+        short_check := short_check and slm_s
+
+    [long_check, short_check]
+
+
+// checkEMA — kept for single-direction use cases (isPriceEMA fallback path)
+checkEMA(series float src,
+                series float out1, series float out2,
+                series float out3, series float out4,
+                series int   out1_trend, series int out2_trend,
+                simple int   lineup_check, simple int ma_filter,
+                simple bool  isLong, simple bool isPriceEMA) =>
+
+    [long_check, short_check] = calc_ema_filters(src, out1, out2, out3, out4,
+                                                  out1_trend, out2_trend,
+                                                  lineup_check, ma_filter)
+    isLong ? (long_check  or isPriceEMA and src >= out2) :
+             (short_check or isPriceEMA and src <= out2)
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Final summary signal — combines RSI, KST, vol-KST with EMA and window filter
+//
+//  Parameters:
+//    src, volsrc         : price and volume series
+//    out1..out4          : pre-computed RMA series
+//    out1_trend          : int trend code of out1
+//    out2_trend          : int trend code of out2
+//    use_vol_kst         : bool — include volume KST filter
+//    long_signal_flag    : bool — allow long entries
+//    short_signal_flag   : bool — allow short entries
+//    lineup_check        : int
+//    ma_filter           : int
+//    in_window           : bool — result of window() in caller
+//
+//  Returns: STRAT_* int code
+// ─────────────────────────────────────────────────────────────────────────────
+export calc_final_summary(series float src, series float volsrc,
+                           series float out1, series float out2,
+                           series float out3, series float out4,
+                           series int   out1_trend, series int out2_trend,
+                           simple bool  use_vol_kst,
+                           simple bool  long_signal_flag,
+                           simple bool  short_signal_flag,
+                           simple int   lineup_check,
+                           simple int   ma_filter,
+                           series bool  in_window) =>
+
+    [_,_,rsi_code]     = calc_RSI(src)
+    [_,_,kst_code]     = calc_generic_KST(src)
+    [_,_,vol_kst_code] = calc_generic_KST(volsrc, short_entry = false)
+
+    summ_trend_code = get_summary_trend_code(rsi_code, kst_code)
+
+    curr_active_pos = false
+    longpos         = false
+    shortpos        = false
+    curr_active_pos := curr_active_pos[1]
+
+    buyCond    = summ_trend_code == STRAT_ENTER_LONG  or summ_trend_code == STRAT_LONG
+    sellCond   = summ_trend_code == STRAT_ENTER_SHORT or summ_trend_code == STRAT_SHORT
+    neutralCnd = not buyCond and not sellCond
+
+    vol_kst_active = vol_kst_code == STRAT_ENTER_LONG or vol_kst_code == STRAT_LONG
+    check_vol_kst  = not use_vol_kst or vol_kst_active
+
+    // Single-pass EMA filter — replaces two checkEMA calls
+    [ema_long, ema_short] = calc_ema_filters(src, out1, out2, out3, out4,
+                                              out1_trend, out2_trend,
+                                              lineup_check, ma_filter)
+
+    validlongentry  = buyCond  and summ_trend_code == STRAT_ENTER_LONG  and
+                      ema_long  and in_window
+    validshortentry = sellCond and summ_trend_code == STRAT_ENTER_SHORT and
+                      ema_short and in_window
+
+    enterLong  = validlongentry  and not curr_active_pos and long_signal_flag  and check_vol_kst
+    enterShort = validshortentry and not curr_active_pos and short_signal_flag and check_vol_kst
+
+    curr_active_pos := enterLong or enterShort ? true : curr_active_pos
+
+    longpos  := curr_active_pos and (buyCond  or longpos[1]  and neutralCnd)
+    shortpos := curr_active_pos and (sellCond or shortpos[1] and neutralCnd)
+
+    di_change = longpos[1] and sellCond or shortpos[1] and buyCond
+    exitLong  = di_change and longpos[1]  and curr_active_pos[1]
+    exitShort = di_change and shortpos[1] and curr_active_pos[1]
+
+    curr_active_pos := exitLong or exitShort ? false : curr_active_pos
+
+    exitLong   ? STRAT_EXIT_LONG   :
+     exitShort  ? STRAT_EXIT_SHORT  :
+     enterLong  ? STRAT_ENTER_LONG  :
+     enterShort ? STRAT_ENTER_SHORT :
+     longpos    ? STRAT_LONG        :
+     shortpos   ? STRAT_SHORT       : STRAT_NEUTRAL
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Trigger / confirm entry (strict_confirm_trade_check support)
+//
+//  Parameters:
+//    f_st                    : STRAT_* code from calc_final_summary
+//    src                     : price series (close)
+//    strict_confirm_check    : 0=off, 1=first, 2=second, 3=third confirmation
+//    confirmed               : barstate.isconfirmed from caller
+//
+//  Returns: STRAT_* int code
+// ─────────────────────────────────────────────────────────────────────────────
+export calc_trigger_entry(series int f_st,
+                           series float src,
+                           simple int   strict_confirm_check,
+                           series bool  confirmed) =>
+
+    f_enterLong  = f_st == STRAT_ENTER_LONG
+    f_enterShort = f_st == STRAT_ENTER_SHORT
+    f_exitLong   = f_st == STRAT_EXIT_LONG
+    f_exitShort  = f_st == STRAT_EXIT_SHORT
+
+    curr_long_entry_val  = float(na)
+    curr_short_entry_val = float(na)
+    curr_long_entry_val  := curr_long_entry_val[1]
+    curr_short_entry_val := curr_short_entry_val[1]
+
+
+    atr_val = ta.atr(_atr_length)
+
+    if f_enterLong[1]
+        curr_long_entry_val  := math.max(high[1], high[2], high) + atr_val * _atr_mult
+    if f_enterShort[1]
+        curr_short_entry_val := math.min(low[1],  low[2],  low)  - atr_val * _atr_mult
+    if f_exitLong
+        curr_long_entry_val  := float(na)
+    if f_exitShort
+        curr_short_entry_val := float(na)
+
+    trigg_active_pos = false
+    trigg_longpos    = false
+    trigg_shortpos   = false
+    trigg_active_pos := trigg_active_pos[1]
+
+    first_trigg_enterLong  = confirmed and not trigg_active_pos and
+                              not na(curr_long_entry_val)  and src > curr_long_entry_val
+    first_trigg_enterShort = confirmed and not trigg_active_pos and
+                              not na(curr_short_entry_val) and src < curr_short_entry_val
+
+    first_long_entry_val  = float(na)
+    first_short_entry_val = float(na)
+    first_long_entry_val  := first_long_entry_val[1]
+    first_short_entry_val := first_short_entry_val[1]
+    first_long_entry_val  :=
+         first_trigg_enterLong  and na(first_long_entry_val)  ? high : first_long_entry_val
+    first_short_entry_val :=
+         first_trigg_enterShort and na(first_short_entry_val) ? low  : first_short_entry_val
+
+    if f_exitLong
+        first_long_entry_val  := float(na)
+    if f_exitShort
+        first_short_entry_val := float(na)
+
+    second_trigg_enterLong  = confirmed and not trigg_active_pos and
+                               not na(first_long_entry_val)  and src > first_long_entry_val
+    second_trigg_enterShort = confirmed and not trigg_active_pos and
+                               not na(first_short_entry_val) and src < first_short_entry_val
+
+    second_long_entry_val  = float(na)
+    second_short_entry_val = float(na)
+    second_long_entry_val  := second_long_entry_val[1]
+    second_short_entry_val := second_short_entry_val[1]
+    second_long_entry_val  :=
+         second_trigg_enterLong  and na(second_long_entry_val)  ? high : second_long_entry_val
+    second_short_entry_val :=
+         second_trigg_enterShort and na(second_short_entry_val) ? low  : second_short_entry_val
+
+    if f_exitLong
+        second_long_entry_val  := float(na)
+    if f_exitShort
+        second_short_entry_val := float(na)
+
+    third_trigg_enterLong  = confirmed and not trigg_active_pos and
+                              not na(second_long_entry_val)  and src > second_long_entry_val
+    third_trigg_enterShort = confirmed and not trigg_active_pos and
+                              not na(second_short_entry_val) and src < second_short_entry_val
+
+    trigg_enterLong  = strict_confirm_check == 1 ? first_trigg_enterLong  :
+                           strict_confirm_check == 2 ? second_trigg_enterLong  : third_trigg_enterLong
+    trigg_enterShort = strict_confirm_check == 1 ? first_trigg_enterShort :
+                           strict_confirm_check == 2 ? second_trigg_enterShort : third_trigg_enterShort
+
+    trigg_active_pos := trigg_enterLong or trigg_enterShort ? true : trigg_active_pos
+    trigg_longpos    := trigg_active_pos and (trigg_enterLong  or trigg_longpos[1])
+    trigg_shortpos   := trigg_active_pos and (trigg_enterShort or trigg_shortpos[1])
+
+    trigg_exitLong  = f_exitLong  and trigg_active_pos
+    trigg_exitShort = f_exitShort and trigg_active_pos
+    trigg_active_pos := trigg_exitLong or trigg_exitShort ? false : trigg_active_pos
+
+    trigg_exitLong   ? STRAT_EXIT_LONG   :
+     trigg_exitShort  ? STRAT_EXIT_SHORT  :
+     trigg_enterLong  ? STRAT_ENTER_LONG  :
+     trigg_enterShort ? STRAT_ENTER_SHORT :
+     trigg_longpos    ? STRAT_LONG        :
+     trigg_shortpos   ? STRAT_SHORT       : STRAT_NEUTRAL
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  is_entry_exit — true when the status code is any entry or exit signal
+//  Used by callers to gate alert firing and alert-array population
+// ─────────────────────────────────────────────────────────────────────────────
+export is_entry_exit(series int st) =>
+    st == STRAT_ENTER_LONG or st == STRAT_ENTER_SHORT or
+     st == STRAT_EXIT_LONG  or st == STRAT_EXIT_SHORT
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  format_time     — "hh:mm"  (used by scanner table)
+//  format_datetime — "dd/mm_hh:mm"  (used by scanner stats header and strategy)
+//  tz : timezone string e.g. 'GMT+05:30' or 'Asia/Kolkata'
+// ─────────────────────────────────────────────────────────────────────────────
+export format_time(series int t) =>
+    str.tostring(hour(t, india_tz)) + ':' + str.tostring(minute(t, india_tz))
+
+
+export format_datetime(series int t) =>
+    str.tostring(dayofmonth(t, india_tz)) + '/' +
+                 str.tostring(month(t, india_tz)) + '_' + format_time(t)
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  calc_lineup_status — MA alignment score 0/2/3/4
+//  4 = all four MAs fully aligned, 0 = only out1/out2 aligned
+// ─────────────────────────────────────────────────────────────────────────────
+export calc_lineup_status(series float out1, series float out2,
+                           series float out3, series float out4) =>
+    l4 = out1<=out2 and out2<=out3 and out3<=out4 or
+          out1>=out2 and out2>=out3 and out3>=out4
+    l3 = out1<=out2 and out2<=out3 or out1>=out2 and out2>=out3
+    l2 = out1<=out2 or out1>=out2
+    l4 ? 4 : l3 ? 3 : l2 ? 2 : 0
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  calc_trade_stats — shared profit/loss tracking engine
+//
+//  Encapsulates the stats accumulation logic that was duplicated in both the
+//  scanner (inside get_all_status_codes) and the strategy (top-level block).
+//
+//  Parameters:
+//    final_st       : STRAT_* signal code for this bar
+//    src            : price series (close)
+//    show_stats_now : true on the bar where open-position stats should be counted
+//                     (show_stats_bar in scanner; false in strategy live tracking)
+//
+//  Returns:
+//    [entry_val, curr_prof, maxp, trades, total_maxp, win_trades, active_pos]
+//    curr_prof and maxp are returned rounded to 2 decimal places
+// ─────────────────────────────────────────────────────────────────────────────
+export calc_trade_stats(series int   final_st,
+                         series float src,
+                         series bool  show_stats_now) =>
+    is_long_entry  = final_st == STRAT_ENTER_LONG
+    is_short_entry = final_st == STRAT_ENTER_SHORT
+    is_long_exit   = final_st == STRAT_EXIT_LONG
+    is_short_exit  = final_st == STRAT_EXIT_SHORT
+    is_neutral     = final_st == STRAT_NEUTRAL
+
+    // All persistent vars need `var` so Pine allocates a history buffer.
+    // Without `var`, [1] references are always na → NaN in P&L calculations.
+    var float entry_val  = 0.0
+    var float curr_prof  = 0.0
+    var float maxp       = 0.0
+    var int   trades     = 0
+    var int   win_trades = 0
+    var float total_maxp = 0.0
+    var bool  active_pos = false
+
+    if not is_neutral
+        sig_long  = final_st == STRAT_ENTER_LONG or
+                         final_st == STRAT_LONG or
+                         final_st == STRAT_EXIT_LONG
+        entry_val := is_long_entry or is_short_entry ? src : entry_val
+        bv         = sig_long ? entry_val : src
+        sv         = sig_long ? src       : entry_val
+        curr_prof := (sv - bv) * 100 / bv
+        maxp      := maxp > curr_prof ? maxp : curr_prof
+
+        if not active_pos and (is_long_entry or is_short_entry)
+            active_pos := true
+
+        if active_pos and (is_long_exit or is_short_exit)
+            trades     := trades + 1
+            total_maxp := total_maxp + maxp
+            if curr_prof >= 0
+                win_trades := win_trades + 1
+            // Reset per-trade accumulators after exit
+            active_pos := false
+            entry_val  := 0.0
+            curr_prof  := 0.0
+            maxp       := 0.0
+
+        else if show_stats_now and active_pos
+            trades     := trades + 1
+            total_maxp := total_maxp + maxp
+            if curr_prof >= 0
+                win_trades := win_trades + 1
+
+    [entry_val, math.round(curr_prof, 2), math.round(maxp, 2),
+     trades, total_maxp, win_trades, active_pos]

@@ -1,142 +1,38 @@
-
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0
+// © harshad_inarkar
 //@version=6
-indicator(title="VolKSTH", shorttitle="VolKSTH")
+// ─────────────────────────────────────────────────────────────────────────────
+//  KSTH  —  KST oscillator strategy indicator
+//  Shared engine imported from TradeHLib.
+// ─────────────────────────────────────────────────────────────────────────────
+indicator(title = 'VolKSTH', shorttitle = 'VolKSTH')
 
-var roclen1 = 8
-var roclen2 = 13
-var roclen3 = 21
-var roclen4 = 34
-var smalen1 = 8
-var smalen2 = 8
-var smalen3 = 8
-var smalen4 = 13
-var siglen = 13
-
-
-var baselen = 89
+import harshad_inarkar/TradeHLib/13 as THL
 
 source = volume
 
+// ── KST signal + plot values ──────────────────────────────────────────────────
+// calc_KST_raw returns [smoothkst, sig, status_code].
+// Gated behind barstate.isconfirmed so values only update on closed bars,
+// matching the original behaviour. var vars hold the last confirmed value
+// so plot() always shows a clean line rather than flickering on ticks.
+var float kst = 0.0
+var float sig = 0.0
+var color col = color(na)
 
-smaroc(cust_source,roclen, smalen) => ta.rma(ta.roc(cust_source, roclen), smalen)
-calc_custom_kst(cust_source) => smaroc(cust_source,roclen1, smalen1) + 2 * smaroc(cust_source,roclen2, smalen2) + 3 * smaroc(cust_source,roclen3, smalen3) + 4 * smaroc(cust_source,roclen4, smalen4)
-
-kst_orig = calc_custom_kst(source)
-kst_base_ma = ta.rma(kst_orig,baselen)
-
-
-kst = 10*kst_orig/kst_base_ma
-sig = ta.rma(kst, siglen)
-
-plot(kst, color=color.new(color.aqua, 0), linewidth=2, title="KST")
-plot(sig, color=color.new(color.red, 0), linewidth=2, title="Signal")
-hline(0, title="Zero", color=color.new(color.gray, 0))
-
-
-var UP = 1
-var DOWN = -1
-var NEUTRAL = 0
-
-
-var STRAT_NEUTRAL = 0
-var STRAT_LONG = 1
-var STRAT_SHORT = 2
-var STRAT_ENTER_LONG = 3
-var STRAT_ENTER_SHORT = 4
-var STRAT_EXIT_LONG = 5
-var STRAT_EXIT_SHORT = 6
-
-decodeStratCode(adx_code) =>
-    adx_col = adx_code == STRAT_EXIT_LONG ? color.new(color.yellow, transp = 80) : adx_code == STRAT_EXIT_SHORT ? color.new(color.blue, transp = 80) : adx_code == STRAT_ENTER_LONG ? color.new(color.lime, transp = 80) : adx_code == STRAT_ENTER_SHORT ? color.new(color.red, transp = 80) : adx_code == STRAT_LONG ? color.new(color.aqua, transp = 80) : adx_code == STRAT_SHORT ? color.new(color.orange, transp = 80) : na
-    adx_txt = adx_code == STRAT_EXIT_LONG ? 'ExUp' : adx_code == STRAT_EXIT_SHORT ? 'ExDn' : adx_code == STRAT_ENTER_LONG ? 'EnUp' : adx_code == STRAT_ENTER_SHORT ? 'EnDn' : adx_code == STRAT_LONG ? 'Up' : adx_code == STRAT_SHORT ? 'Dn' : 'Na'
-    [adx_txt, adx_col]
-
-
-// OSc Constants
-var rad2degree = 180 / 3.14159265359
-var lookback_period = 1
-var smoothing = 3
-
-var RANGE_BACK_BARS = 20
-var osc_filter_range = 5.2
-
-angle(_src, osc_avg_tr) =>
-    ang = rad2degree * math.atan((_src - nz(_src[lookback_period])) / (lookback_period * osc_avg_tr))
-    ang
-
-
-get_osc_trend_params(osc, osc_filter) =>
-    osc_max = ta.highest(osc, RANGE_BACK_BARS)
-    osc_min = ta.lowest(osc, RANGE_BACK_BARS)
-
-    osc_avg_tr = osc_max - osc_min
-
-    osc_ft = osc_filter
-    osc_fb = -osc_ft
-
-    osc_slope = ta.linreg(angle(osc, osc_avg_tr), smoothing, 0)
-    trend = osc_slope >= osc_ft or osc >= osc_max ? UP : osc_slope <= osc_fb or osc <= osc_min ? DOWN : NEUTRAL
-    trend
-
-
-get_osc_trend(osc) =>
-    get_osc_trend_params(osc, osc_filter_range)
-
-
-
-calc_generic_osc(fastma, sigma, center_level=0,short_sig_flag=true) => 
-
-    osc_trend = get_osc_trend(fastma)
-
-
-    osc_validlong = osc_trend == UP
-    osc_validshort = osc_trend == DOWN
-
-    osc_diPositive = fastma > sigma
-    osc_diNegative = not osc_diPositive
-
-
-    osc_di_crossover = osc_diNegative[1] and osc_diPositive or osc_diNegative and osc_diPositive[1]
-
-
-    osc_buyCond = osc_diPositive and fastma >= center_level
-    osc_sellCond = osc_diNegative and fastma < center_level
-
-
-    osc_validtrend = osc_buyCond or osc_sellCond
-
-    osc_validlongentry = osc_buyCond and osc_validlong 
-    osc_validshortentry = osc_sellCond and osc_validshort and short_sig_flag
-
-    osc_noTradeZone = not osc_validtrend or osc_di_crossover
-
-
-    osc_active_position = false
-    osc_active_position := (osc_validlongentry or osc_validshortentry) and not osc_active_position[1] ? true : osc_noTradeZone ? false : osc_active_position[1]
-
-
-    osc_enterLong = osc_validlongentry and not osc_active_position[1]
-    osc_enterShort = osc_validshortentry and not osc_active_position[1]
-
-
-    osc_longpos = osc_buyCond and osc_active_position
-    osc_shortpos = osc_sellCond and osc_active_position
-
-
-    osc_exitLong = osc_noTradeZone and osc_longpos[1]
-    osc_exitShort = osc_noTradeZone and osc_shortpos[1]
-
-
-    osc_status_code = osc_exitLong ? STRAT_EXIT_LONG : osc_exitShort ? STRAT_EXIT_SHORT : osc_enterLong ? STRAT_ENTER_LONG : osc_enterShort ? STRAT_ENTER_SHORT : osc_longpos ? STRAT_LONG : osc_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
-
-    osc_status_code
-
-
-var col = color(na)
 if barstate.isconfirmed
-    kst_status_code = calc_generic_osc(kst,sig,short_sig_flag=false)
-    [_, co] = decodeStratCode(kst_status_code)
-    col := co
-    
-bgcolor(col)
+    [k, s, kst_status_code] = THL.calc_generic_KST(source,short_entry=false)
 
+    kst := k
+    sig := s
+
+    // Decode signal → colour for bgcolor
+    [_, co] = THL.decodeStratCode(kst_status_code)
+    col := co
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+plot(kst, color = color.new(color.aqua, 0), linewidth = 2, title = 'KST')
+plot(sig, color = color.new(color.red,  0), linewidth = 2, title = 'Signal')
+hline(0,  title = 'Zero', color = color.new(color.gray, 0))
+
+bgcolor(col)

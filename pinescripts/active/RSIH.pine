@@ -1,113 +1,36 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0
+// © harshad_inarkar
 //@version=6
+// ─────────────────────────────────────────────────────────────────────────────
+//  RSIH  —  RSI MA Strategy indicator
+//  Shared engine imported from TradeHLib.
+// ─────────────────────────────────────────────────────────────────────────────
 indicator(title = 'RSI MA Strat', shorttitle = 'RSIMA', format = format.price)
-len = input(title = 'RSI len', defval = 8)
-smmaLen = input(title = 'RSI MA Len', defval = 13)
-sigLen = input(title = 'RSI Signal Len', defval = 13)
 
-src = close
+import harshad_inarkar/TradeHLib/13 as THL
 
-rsi = ta.rsi(src, len)
-rsiMA = ta.rma(rsi, smmaLen)
-rsiSig = ta.rma(rsiMA, sigLen)
+source = close
 
+// ── RSI level lines (display only — not in library) ───────────────────────────
+const float hl = 66.7
+const float ml = 50.0
+const float ll = 33.3
 
-// End ###
+// ── RSI signal — calc_RSI_raw returns [smoothrsi, sig_rsiMA, status_code] ──────
+// Uses the same linreg-based trend detection as the Strategy and Scanner.
+// Previously used a simple 3-bar slope comparison — replaced with the
+// library's more robust angle+linreg version for consistency across all scripts.
+[rsiMA, sig_rsiMA, rsi_status_code] = THL.calc_RSI(source)
 
-//plot(rsi, title = 'RSI', linewidth = 2, color = color.silver)
-
-var hl = 66.7
-var ml = 50
-var ll = 33.3
-
-hline(hl, title = 'Middle Line', linewidth = 2, linestyle = hline.style_dotted, color = color.yellow)
-hline(ml, title = 'Middle Line', linewidth = 2, linestyle = hline.style_dotted, color = color.red)
-hline(ll, title = 'Middle Line', linewidth = 2, linestyle = hline.style_dotted, color = color.blue)
-
-
-plot(rsiMA, linewidth = 2, color = color.aqua)
-plot(rsiSig, linewidth = 2, color = color.red)
-
-
-// END ###
-
-STRAT_NEUTRAL = 0
-STRAT_LONG = 1
-STRAT_SHORT = 2
-STRAT_ENTER_LONG = 3
-STRAT_ENTER_SHORT = 4
-STRAT_EXIT_LONG = 5
-STRAT_EXIT_SHORT = 6
-
-
-decodeStratCode(adx_code) =>
-    adx_col = adx_code == STRAT_EXIT_LONG ? color.new(color.yellow, transp = 80) : adx_code == STRAT_EXIT_SHORT ? color.new(color.blue, transp = 80) : adx_code == STRAT_ENTER_LONG ? color.new(color.lime, transp = 80) : adx_code == STRAT_ENTER_SHORT ? color.new(color.red, transp = 80) : adx_code == STRAT_LONG ? color.new(color.aqua, transp = 80) : adx_code == STRAT_SHORT ? color.new(color.orange, transp = 80) : na
-
-
-    adx_txt = adx_code == STRAT_EXIT_LONG ? 'ExUp' : adx_code == STRAT_EXIT_SHORT ? 'ExDn' : adx_code == STRAT_ENTER_LONG ? 'EnUp' : adx_code == STRAT_ENTER_SHORT ? 'EnDn' : adx_code == STRAT_LONG ? 'Up' : adx_code == STRAT_SHORT ? 'Dn' : 'Na'
-
-    [adx_txt, adx_col]
-
-
-
-UP = 1
-DOWN = -1
-NEUTRAL = 0
-
-get_osc_trend(osc) =>
-    osc[2] < osc[1] and osc[1] < osc ? UP : osc < osc[1] and osc[1 ] < osc[2] ? DOWN : NEUTRAL
-
-
-
-calc_generic_osc(fastma, sigma,center_level=0) => 
-
-    osc_trend = get_osc_trend(fastma)
-
-
-    osc_validlong = osc_trend == UP
-    osc_validshort = osc_trend == DOWN
-
-    osc_diPositive = fastma > sigma
-    osc_diNegative = not osc_diPositive
-
-
-    osc_di_crossover = osc_diNegative[1] and osc_diPositive or osc_diNegative and osc_diPositive[1]
-
-
-    osc_buyCond = osc_diPositive and fastma >= center_level
-    osc_sellCond = osc_diNegative and fastma < center_level
-
-
-    osc_validtrend = osc_buyCond or osc_sellCond
-
-    osc_validlongentry = osc_buyCond and osc_validlong 
-    osc_validshortentry = osc_sellCond and osc_validshort 
-
-    osc_noTradeZone = not osc_validtrend or osc_di_crossover
-
-
-    osc_active_position = false
-    osc_active_position := (osc_validlongentry or osc_validshortentry) and not osc_active_position[1] ? true : osc_noTradeZone ? false : osc_active_position[1]
-
-
-    osc_enterLong = osc_validlongentry and not osc_active_position[1]
-    osc_enterShort = osc_validshortentry and not osc_active_position[1]
-
-
-    osc_longpos = osc_buyCond and osc_active_position
-    osc_shortpos = osc_sellCond and osc_active_position
-
-
-    osc_exitLong = osc_noTradeZone and osc_longpos[1]
-    osc_exitShort = osc_noTradeZone and osc_shortpos[1]
-
-
-    osc_status_code = osc_exitLong ? STRAT_EXIT_LONG : osc_exitShort ? STRAT_EXIT_SHORT : osc_enterLong ? STRAT_ENTER_LONG : osc_enterShort ? STRAT_ENTER_SHORT : osc_longpos ? STRAT_LONG : osc_shortpos ? STRAT_SHORT : STRAT_NEUTRAL
-
-    osc_status_code
-
-
-
-rsi_status_code = calc_generic_osc(rsiMA,rsiSig,center_level=ml)
-[txt, col] = decodeStratCode(rsi_status_code)
+// ── Decode signal → colour and text ───────────────────────────────────────────
+[_, col] = THL.decodeStratCode(rsi_status_code)
 bgcolor(col)
 
+// ── Level lines ───────────────────────────────────────────────────────────────
+hline(hl, title = 'Upper Line', linewidth = 2, linestyle = hline.style_dotted, color = color.yellow)
+hline(ml, title = 'Middle Line', linewidth = 2, linestyle = hline.style_dotted, color = color.red)
+hline(ll, title = 'Lower Line', linewidth = 2, linestyle = hline.style_dotted, color = color.blue)
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+plot(rsiMA,     linewidth = 2, color = color.aqua, title = 'RSI MA')
+plot(sig_rsiMA, linewidth = 2, color = color.red,  title = 'Signal')

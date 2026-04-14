@@ -1,0 +1,20 @@
+//@version=6
+indicator("VOlOscH", "VolOscH", false)
+
+
+import harshad_inarkar/TradeHLib/13 as THL
+
+
+source = volume
+[pmo, sig, st_code] = THL.calc_ROC_osc(source, short_entry_flag = false) 
+
+
+// hline(66, "HL", color.yellow)
+hline(0, "Zero", color.red,linestyle = hline.style_dotted,linewidth = 2)
+// hline(-66, "LL", color.blue)
+
+plot(pmo, "PMO",color.aqua,linewidth = 2)
+plot(sig, "Sig", color.red,linewidth = 2)
+
+[_, col] = THL.decodeStratCode(st_code)
+bgcolor(col)
