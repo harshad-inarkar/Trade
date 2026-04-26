@@ -449,6 +449,10 @@ nav.header-nav a.active {
     <div class="chip"><div class="dot"></div><strong>{{ refresh_time }}</strong></div>
     <div class="chip"><span>TF</span><strong>{{ timeframe }}{% if timeframe != 'D' %}m{% endif %}</strong></div>
     <div class="chip"><span>symbols</span><strong>{{ count - 1 }}</strong></div>
+    <div class="chip"><span>Positive</span><strong>{{ pos_count }}</strong></div>
+    <div class="chip"><span>Negative</span><strong>{{ neg_count }}</strong></div>
+    <div class="chip"><span>Neutral</span><strong>{{ neut_count }}</strong></div>
+
     {% if filter %}
     <div class="chip"><span>filter&nbsp;ltp</span><strong>{{ filter }}</strong></div>
     {% endif %}
@@ -474,21 +478,22 @@ nav.header-nav a.active {
 {% if symbols and symbols|length > 1 %}
 {% set headers        = symbols[0] %}
 {% set symbol_idx     = headers.index('symbol') %}
-{% set volume_slow_idx = headers.index('volume_slow') %}
 {% set volume_fast_idx = headers.index('volume_fast') %}
 {% set vol_surge_idx  = headers.index('vol_surge') %}
 {% set ltp_idx        = headers.index('ltp') %}
+{% set price_surge_idx  = headers.index('price_surge') %}
+{% set pma_idx        = headers.index('price_ma_action') %}
 
 {% set current_sort  = sort  if sort  else 'volume_fast' %}
 {% set current_order = order if order else 'desc' %}
 
 {# Compute column max for spark bars (skip None) #}
 {% set vf_vals  = symbols[1:] | map(attribute=volume_fast_idx) | select('ne', None) | list %}
-{% set vs_vals  = symbols[1:] | map(attribute=volume_slow_idx) | select('ne', None) | list %}
 {% set sur_vals = symbols[1:] | map(attribute=vol_surge_idx)   | select('ne', None) | list %}
+
 {% set max_vf   = vf_vals  | max if vf_vals  else 1 %}
-{% set max_vs   = vs_vals  | max if vs_vals  else 1 %}
 {% set max_sur  = sur_vals | max if sur_vals else 1 %}
+
 
 <table class="symbols-table">
   <thead>
@@ -496,16 +501,6 @@ nav.header-nav a.active {
     <th style="width:40px">#</th>
 
     <th>SYMBOL</th>
-
-    <th class="num">
-      VOL SLOW MA
-      <span class="sort-arrows">
-        <a class="{{ 'active' if current_sort == 'volume_slow' and current_order == 'asc' else '' }}"
-           href="?tf={{ timeframe }}&sort=volume_slow&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
-        <a class="{{ 'active' if current_sort == 'volume_slow' and current_order == 'desc' else '' }}"
-           href="?tf={{ timeframe }}&sort=volume_slow&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
-      </span>
-    </th>
 
     <th class="num">
       VOL FAST MA
@@ -528,12 +523,22 @@ nav.header-nav a.active {
     </th>
 
     <th class="num">
-      LTP
+      Price
       <span class="sort-arrows">
         <a class="{{ 'active' if current_sort == 'ltp' and current_order == 'asc' else '' }}"
            href="?tf={{ timeframe }}&sort=ltp&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
         <a class="{{ 'active' if current_sort == 'ltp' and current_order == 'desc' else '' }}"
            href="?tf={{ timeframe }}&sort=ltp&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
+      </span>
+    </th>
+
+    <th class="num">
+      Price Surge
+      <span class="sort-arrows">
+        <a class="{{ 'active' if current_sort == 'price_ma_action' and current_order == 'asc' else '' }}"
+           href="?tf={{ timeframe }}&sort=price_ma_action&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
+        <a class="{{ 'active' if current_sort == 'price_ma_action' and current_order == 'desc' else '' }}"
+           href="?tf={{ timeframe }}&sort=price_ma_action&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
       </span>
     </th>
   </tr>
@@ -542,9 +547,10 @@ nav.header-nav a.active {
   <tbody>
   {% for row in symbols[1:] %}
   {% set vf  = row[volume_fast_idx] %}
-  {% set vs  = row[volume_slow_idx] %}
   {% set sur = row[vol_surge_idx] %}
   {% set ltp = row[ltp_idx] %}
+  {% set price_surge = row[price_surge_idx] %}
+  {% set pma = row[pma_idx] %}
 
   {# heat colour for vol_fast bar #}
   {% if vf and max_vf %}
@@ -573,17 +579,7 @@ nav.header-nav a.active {
       </a>
     </td>
 
-    <td class="num">
-      <div class="num-cell">
-        <div class="spark">
-          <div class="spark-fill"
-               data-width="{{ ((vs / max_vs) * 100)|round(1) if vs and max_vs else 0 }}%"
-               data-bg="var(--heat-2)"></div>
-        </div>
-        {{ "{:,.0f}".format(vs) if vs is not none else '—' }}
-      </div>
-    </td>
-
+ 
     <td class="num">
       <div class="num-cell">
         <div class="spark">
@@ -612,7 +608,27 @@ nav.header-nav a.active {
 
     <td class="num">
       <span class="ltp-val">
-        {{ "{:,.2f}".format(ltp) if ltp is not none else '—' }}
+        {{ltp}}
+      </span>
+    </td>
+
+
+    <td class="num">
+      <span class="ltp-val">
+        {{"{:,.2f}".format(price_surge)}}
+        {% if pma == 1 %}
+          <span style="color: #1bbf49; font-weight: bold; font-size: 2em; vertical-align: middle;">
+            &#8593;
+          </span>
+        {% elif pma == -1 %}
+          <span style="color: #e0556a; font-weight: bold; font-size: 2em; vertical-align: middle;">
+            &#8595;
+          </span>
+        {% else %}
+          <span style="display: inline-block; width: 0.9em; height: 2em; background: #b1b5bc; border-radius: 50%; vertical-align: middle;">
+          </span>
+
+        {% endif %}
       </span>
     </td>
   </tr>

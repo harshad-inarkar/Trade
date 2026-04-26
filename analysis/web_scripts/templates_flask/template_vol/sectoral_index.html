@@ -132,6 +132,56 @@
       font-weight: 600;
     }
 
+    /* ── SORT CHIPS (header inline) ────────────────────────────────────── */
+    .sort-chips {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sort-chips .sort-label {
+      font-family: var(--mono);
+      font-size: .68rem;
+      color: var(--muted);
+      letter-spacing: .08em;
+      margin-right: 2px;
+    }
+    .sort-chip {
+      font-family: var(--mono);
+      font-size: .68rem;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      white-space: nowrap;
+      transition: border-color .2s, color .2s;
+    }
+    .sort-chip:has(.sort-arrows a.active) {
+      border-color: var(--accent3);
+      color: var(--text);
+    }
+    .sort-arrows {
+      display: flex;
+      flex-direction: column;
+      line-height: 1;
+      gap: 1px;
+    }
+    .sort-arrows a {
+      font-size: .55rem;
+      color: #2a3a48;
+      text-decoration: none;
+      line-height: 1.15;
+      transition: color .15s, text-shadow .15s;
+    }
+    .sort-arrows a:hover { color: var(--accent3); }
+    .sort-arrows a.active {
+      color: var(--accent3);
+      font-size: .65rem;
+      text-shadow: 0 0 6px var(--accent3);
+    }
+
     /* ── META BAR ───────────────────────────────────────────────────────── */
     .meta-bar {
       display: flex;
@@ -484,6 +534,46 @@
     {% endfor %}
   </div>
 
+  <div class="sort-chips">
+    <span class="sort-label">SORT:</span>
+    <span class="sort-chip">
+      VOL FAST MA
+      <span class="sort-arrows">
+        <a class="{{ 'active' if current_sort == 'volume_fast' and current_order == 'asc' else '' }}"
+           href="?tf={{ timeframe }}&sort=volume_fast&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
+        <a class="{{ 'active' if current_sort == 'volume_fast' and current_order == 'desc' else '' }}"
+           href="?tf={{ timeframe }}&sort=volume_fast&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
+      </span>
+    </span>
+    <span class="sort-chip">
+      VOL SURGE
+      <span class="sort-arrows">
+        <a class="{{ 'active' if current_sort == 'vol_surge' and current_order == 'asc' else '' }}"
+           href="?tf={{ timeframe }}&sort=vol_surge&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
+        <a class="{{ 'active' if current_sort == 'vol_surge' and current_order == 'desc' else '' }}"
+           href="?tf={{ timeframe }}&sort=vol_surge&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
+      </span>
+    </span>
+    <span class="sort-chip">
+      PRICE
+      <span class="sort-arrows">
+        <a class="{{ 'active' if current_sort == 'ltp' and current_order == 'asc' else '' }}"
+           href="?tf={{ timeframe }}&sort=ltp&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
+        <a class="{{ 'active' if current_sort == 'ltp' and current_order == 'desc' else '' }}"
+           href="?tf={{ timeframe }}&sort=ltp&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
+      </span>
+    </span>
+    <span class="sort-chip">
+      PRICE SURGE
+      <span class="sort-arrows">
+        <a class="{{ 'active' if current_sort == 'price_ma_action' and current_order == 'asc' else '' }}"
+           href="?tf={{ timeframe }}&sort=price_ma_action&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
+        <a class="{{ 'active' if current_sort == 'price_ma_action' and current_order == 'desc' else '' }}"
+           href="?tf={{ timeframe }}&sort=price_ma_action&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
+      </span>
+    </span>
+  </div>
+
   <nav class="header-nav">
     <a href="/?tf={{ timeframe }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}">Index</a>
     <a href="/sectors/?tf={{ timeframe }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}" class="active">Sectors</a>
@@ -532,6 +622,7 @@
 
 <!-- ── SECTOR GRID ──────────────────────────────────────────────────────── -->
 <div class="sector-grid" id="sector-grid">
+  {% set maxsymlen = 12 %}
   {% if sectors %}
     {% for s in sectors %}
     {% set vol = s.avg_volume_fast %}
@@ -589,9 +680,9 @@
           <span class="sym-chip">{{ sym }}</span>
           {% endfor %}
         </div>
-        {% if s.symbols|length > 12 %}
+        {% if s.symbols|length > maxsymlen %}
         <button class="expand-btn" data-idx="{{ loop.index }}">
-          +{{ s.symbols|length - 12 }} more ▾
+          +{{ s.symbols|length - maxsymlen }} more ▾
         </button>
         {% endif %}
       </div>
@@ -612,10 +703,18 @@
 
 <script>
   /* ── CHIP EXPAND ────────────────────────────────────────────────────── */
+  const maxsymlen = 12
   function toggleChips(idx, btn) {
     const el = document.getElementById('chips-' + idx);
-    const open = el.classList.toggle('expanded');
-    btn.textContent = open ? '▴ collapse' : btn.textContent;
+    const expanded = el.classList.toggle('expanded');
+    if (expanded) {
+      btn.textContent = '▴ collapse';
+    } else {
+      // Restore original button content, e.g., "+N more ▾"
+      const total = el.querySelectorAll('.sym-chip').length;
+      const hidden = total - maxsymlen;
+      btn.textContent = `+${hidden} more ▾`;
+    }
   }
 
   // Apply templated visual values without embedding Jinja in CSS.
@@ -644,7 +743,24 @@
     });
   });
 
-  /* ── SORT ───────────────────────────────────────────────────────────── */
+  /* ── ACTIVE SORT ARROW (from URL params) ───────────────────────────── */
+  (function () {
+    const params = new URLSearchParams(window.location.search);
+    const activeSort  = params.get('sort');
+    const activeOrder = params.get('order');
+    if (!activeSort || !activeOrder) return;
+
+    document.querySelectorAll('.sort-arrows a').forEach(a => {
+      const ap = new URLSearchParams(a.href.split('?')[1] || '');
+      if (ap.get('sort') === activeSort && ap.get('order') === activeOrder) {
+        a.classList.add('active');
+      } else {
+        a.classList.remove('active');
+      }
+    });
+  })();
+
+
   let currentSort = 'vol';
 
   function sortCards(mode) {
