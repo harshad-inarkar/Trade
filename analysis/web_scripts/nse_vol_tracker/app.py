@@ -29,6 +29,11 @@ start_session = '0915'
 end_session   = '1530'
 
 RELOAD_INTERVAL_MINUTES = None
+buffertime = 15 
+
+merge_filter_ltp = None
+merge_sort_key = None
+last_n_days = None
 remote_sync_flag=False
 REFRESH_DT_PAT = 'Date: %d  Time: %H:%M'
 
@@ -92,10 +97,10 @@ def dump_index(symbols_list, tf, ref_t, fut_flag=False):
             out.write(f"{sym_data[sym_idx]}{fut_str}\n")
     
  
-def dump_merge(filt, sort_key, ref_t,order_by):
+def dump_merge(filt, sort_key, ref_t,order_by,from_web=False):
     import heapq
     fut_flag = bool(filt)
-    merge_tf_list = ('3', '15')
+    merge_tf_list = ('3','15')
     top = 30
     sym_idx = INDEX_FIELDS.index('symbol')
     sidx = INDEX_FIELDS.index('volume_fast') if not sort_key else INDEX_FIELDS.index(sort_key)
@@ -120,13 +125,43 @@ def dump_merge(filt, sort_key, ref_t,order_by):
             # No need to store all symbols, just propagate max in one dict
 
     # Now collect and output, sort once
-    desc     = request.args.get('order', '') != 'asc'
+    desc     = order_by != 'asc'
     sorted_symbols = sorted(symbols_map.items(), key=lambda item: item[1], reverse=desc)
     fut_str = '1!' if fut_flag else ''
-    with open(f'{OUT_DIR}/candidates_merge.txt', 'w') as out:
-        out.write(f"Merge Timeframes: {merge_tf_list} | sorted by {sort_key} {order_by}  | Filter ltp {filt} | Refresh Time: {ref_t}\n")
+    initiator = 'Web' if from_web else 'Refresh'
+
+    
+    # Write INDEX_FIELDS as header and values of all fields for each symbol (in sorted_symbols order) to sym_table.csv
+    with open(f'{OUT_DIR}/sym_table.csv', 'w', newline='') as out_csv, open(f'{OUT_DIR}/candidates_merge.txt', 'w') as out:
+        import csv
+        writer = csv.writer(out_csv)
+        writer.writerow(INDEX_FIELDS)
+
+        # for values of all fields, need to search each symbol across the input top symbol lists
+        # So, reconstruct a mapping of symbol -> the complete field list from the merged tf lists
+        symbol_full_row_map = {}
+        for tf in merge_tf_list:
+            symbols_list, _, _, _ = filter_list(CACHE.get_symbols_avg(tf), filt)
+            # Build a mapping from symbol to row (skip header row)
+            top_syms = heapq.nlargest(top, symbols_list[1:], key=lambda x: x[sidx])
+            for row in top_syms:
+                sy = row[sym_idx]
+                # Only keep the row with the maximum current sort value
+                val = row[sidx]
+                curr = symbol_full_row_map.get(sy)
+                if curr is None or val > curr[sidx]:
+                    symbol_full_row_map[sy] = row
+
+        sorted_symbols = sorted(symbol_full_row_map.items(), key=lambda item: item[1][sidx], reverse=desc)
+
         for sym, _ in sorted_symbols:
-            out.write(f"{sym}{fut_str}\n")
+            row = symbol_full_row_map.get(sym)
+            if row is not None:
+                writer.writerow(row)
+                out.write(f"{sym}{fut_str}\n")
+        
+        out.write(f"{initiator}|Timeframes: {merge_tf_list} | sorted by {sort_key} {order_by}  | Filter ltp {filt} | Refresh Time: {ref_t}\n")
+
 
 
 def sync_data_from_remote():
@@ -139,7 +174,11 @@ def sync_data_from_remote():
 
 def _load():
     sync_data_from_remote()
-    CACHE.load_files(NSE_INTRADAY_DIR_PATH)
+    CACHE.load_files(NSE_INTRADAY_DIR_PATH,last_n_days)
+    refresh_dt_obj = CACHE.get_refresh_time()
+    ref_t = refresh_dt_obj.strftime(REFRESH_DT_PAT) if refresh_dt_obj else '-'
+    dump_merge(merge_filter_ltp,merge_sort_key,ref_t,'desc')
+
 
 
 # ── ROUTES ────────────────────────────────────────────────────────────────────
@@ -166,7 +205,7 @@ def index(sector_list=None,sector_name=None):
     ref_t = refresh_dt_obj.strftime(REFRESH_DT_PAT) if refresh_dt_obj else '-'
 
     dump_index(symbols_list, tf, ref_t, fut_flag=bool(filt))
-    dump_merge(filt,sort_key,ref_t,order_by)
+    dump_merge(filt,sort_key,ref_t,order_by,from_web=True)
 
     return render_template(
         'index.html',
@@ -351,26 +390,28 @@ def sectors():
 
 # ── PERIODIC RELOAD ───────────────────────────────────────────────────────────
 
-def periodic_reload():
-    buffertime = 15
-    print(f"🔁 Reloads every {RELOAD_INTERVAL_MINUTES} minutes: Bufferime: {buffertime} seconds")
+def wait_reload_time(reload_time,buffertime=15):
 
-    while True:
-        now      = datetime.now()
-        interval = RELOAD_INTERVAL_MINUTES
-        next_trigger = ((now.minute // interval) + 1) * interval
-        if next_trigger >= 60:
-            next_time = now.replace(minute=0, second=0) + timedelta(hours=1, seconds=buffertime)
-        else:
-            next_time = now.replace(minute=next_trigger, second=0) + timedelta(seconds=buffertime)
+    now      = datetime.now()
+    interval = reload_time
+    next_trigger = ((now.minute // interval) + 1) * interval
+    if next_trigger >= 60:
+        next_time = now.replace(minute=0, second=0) + timedelta(hours=1, seconds=buffertime)
+    else:
+        next_time = now.replace(minute=next_trigger, second=0) + timedelta(seconds=buffertime)
 
+    wait = (next_time - now).total_seconds()
+    if wait < 0.5:
+        next_time += timedelta(minutes=interval)
         wait = (next_time - now).total_seconds()
-        if wait < 0.5:
-            next_time += timedelta(minutes=interval)
-            wait = (next_time - now).total_seconds()
 
-        time.sleep(wait)
+    time.sleep(wait)
 
+
+def periodic_reload():
+    print(f"🔁 Reloads every {RELOAD_INTERVAL_MINUTES} minutes: Bufferime: {buffertime} seconds")
+    while True:
+        wait_reload_time(RELOAD_INTERVAL_MINUTES,buffertime)
         t0 = time.time()
         # Do not reload after 15:30
         current_time = datetime.now().time()
@@ -393,6 +434,9 @@ if __name__ == '__main__':
     parser.add_argument('-pd', '--parent-dir', type=str, default=None, help='Parent dir of nse_data')
     parser.add_argument('-rd', '--remote-dir', type=str, default=None, help='Remote dir of nse_data')
 
+    parser.add_argument('-fl', '--filter-ltp', type=str, default='400-6000', help='Merge File Filter Ltp range e.g. 500-1000')
+    parser.add_argument('-so', '--sort-key', type=str, default='volume_fast', help=f'Merge File Sort Key e.g. {INDEX_FIELDS}')
+    parser.add_argument('-dy', '--last-ndays', type=int, default=None, help='Last n days data')
 
 
     # Only parse args if running as main script (not under flask reloader)
@@ -412,6 +456,10 @@ if __name__ == '__main__':
     if args.remote_dir:
         REMOTE_DIR = os.path.abspath(args.remote_dir)
         REMOTE_INTRADAY_DIR_PATH = f'{REMOTE_DIR}/{NSE_DATA_DIR}/{INTRADAY_DIR}'
+    
+    merge_filter_ltp = args.filter_ltp
+    merge_sort_key = args.sort_key
+    last_n_days = args.last_ndays
 
     if RELOAD_INTERVAL_MINUTES:
         threading.Thread(target=periodic_reload, daemon=True).start()

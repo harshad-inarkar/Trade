@@ -122,7 +122,7 @@ def get_index_from_dtobj(dt_obj, sorted_dates, tf, odi):
 
 # ── file discovery ────────────────────────────────────────────────────────────
 
-def discover_files(data_dir):
+def discover_files(data_dir,last_n_days=None):
     """Scan data_dir for valid CSVs.  Returns (sorted_files, sorted_dates)."""
     csv_files = glob.glob(os.path.join(data_dir, '**/*.csv'), recursive=True)
     files_with_dates = []
@@ -142,8 +142,16 @@ def discover_files(data_dir):
         uniq_dates.add(file_date.date())
 
     sorted_files = sorted(files_with_dates, key=lambda x: x['date_obj'])
-    sorted_dates = [d.strftime('%d%m%Y') for d in sorted(uniq_dates)]
+    sorted_dates_all = [d.strftime('%d%m%Y') for d in sorted(uniq_dates)]
+    if last_n_days is not None and last_n_days > 0 and len(sorted_dates_all) > last_n_days:
+        use_dates = set(sorted_dates_all[-last_n_days:])
+        sorted_files = [f for f in sorted_files if f['date_obj'].strftime('%d%m%Y') in use_dates]
+        sorted_dates = sorted_dates_all[-last_n_days:]
+        
+    else:
+        sorted_dates = sorted_dates_all
 
+    print(f'Start Date : {sorted_dates[0]}')
     return sorted_files, sorted_dates
 
 
@@ -171,7 +179,17 @@ def read_csv_files_to_arrays(sorted_files, sorted_dates, tf, odi,
         sym_to_idx = {s: i for i, s in enumerate(sym_list)}
     else:
         sym_set = set()
-        with open(sorted_files[-1]['filename'], 'r', encoding='utf-8-sig') as f:
+        previous_dt_file = sorted_files[-1]
+
+        for i in range(len(sorted_files)-1,0,-1):
+            cur = sorted_files[i]['date_obj'].strftime('%d%m%Y')
+            prev = sorted_files[i-1]['date_obj'].strftime('%d%m%Y')
+            if prev != cur:
+                previous_dt_file = sorted_files[i-1]
+                break
+        
+        print(f"Symbols List From : {previous_dt_file['date_obj']}")
+        with open(previous_dt_file['filename'], 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 sy = row[SYMB_COL].strip('"')
@@ -537,11 +555,11 @@ def build_symbols_avg(sym_list, num_data, last_col_idx):
     for si in range(len(sym_list)):
         row = [None] * N_INDEX
         row[IX_SYM]   = sym_list[si]
-        row[IX_VFAST] = float(vfast[si])                        # already 1-D scalar
-        row[IX_SURGE] = float(vol_surge[si])             # last interval of smooth series
-        row[IX_LTP]   = float(ltp[si])
+        row[IX_VFAST] = round(vfast[si],2)                        # already 1-D scalar
+        row[IX_SURGE] = round(vol_surge[si],2)             # last interval of smooth series
+        row[IX_LTP]   = round(ltp[si],2)
         ps            = float(price_surge[si])       # last interval
-        row[IX_PS]    = ps
+        row[IX_PS]    = round(ps,2)
         row[IX_PMA]   = calc_pma(ps, pfast_last[si], pslow_last[si])
         result.append(row)
     return result

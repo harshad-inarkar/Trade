@@ -130,7 +130,7 @@ class CacheManager:
 
     # ── single public entry point ─────────────────────────────────────────────
 
-    def load_files(self, data_dir):
+    def load_files(self, data_dir,last_n_days=None):
         """
         Call on startup and on every periodic tick.
         Full load if cache is not yet ready; incremental otherwise.
@@ -139,7 +139,7 @@ class CacheManager:
         label = 'Reloading' if incremental else 'Loading data'
         print(f"🔄 {datetime.now().strftime('%M:%S')} : {label}...")
 
-        result = self._load_csv_files(data_dir, incremental=incremental)
+        result = self._load_csv_files(data_dir, last_n_days, incremental=incremental)
 
         if result is None:
             print(f"✅ {datetime.now().strftime('%M:%S')} : No updates.")
@@ -154,7 +154,7 @@ class CacheManager:
 
     # ── shared CSV loading pipeline ───────────────────────────────────────────
 
-    def _load_csv_files(self, data_dir, incremental):
+    def _load_csv_files(self, data_dir, last_n_days,incremental):
         """
         Identical pipeline for full and incremental — only the range differs.
 
@@ -166,9 +166,10 @@ class CacheManager:
              Wilder MA carries across the session boundary correctly.
         """
         tf_min, odi_min = get_one_day_intervals(MIN_TF)
-        sorted_files, sorted_dates = discover_files(data_dir)
+        sorted_files, sorted_dates = discover_files(data_dir,last_n_days)
         if not sorted_files:
             return None
+        
 
         last_file_dt  = sorted_files[-1]['date_obj']
         cache_refresh = self._refresh_time
