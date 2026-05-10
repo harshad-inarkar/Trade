@@ -1,0 +1,64 @@
+# price_config.toml
+
+[nse_indices]
+NIFTY = 100
+NIFTY50 = 100
+BANKNIFTY = 100
+FINNIFTY = 100
+MIDCPNIFTY = 100
+SENSEX = 100
+BANKEX = 100
+NIFTYNXT50 = 100
+
+[mcx_commodities]
+GOLD = 1000
+GOLDM = 1000
+GOLDPETAL = 100
+SILVER = 5000
+SILVERM = 5000
+SILVERMIC = 1
+CRUDEOIL = 100
+CRUDEOILM = 100
+NATURALGAS = 10
+NATURALGASM = 10
+COPPER = 10
+ZINC = 1
+ZINIMINI = 1
+LEAD = 1
+LEADMINI = 1
+ALUMINIUM = 1
+ALUMIMINI = 1
+NICKEL = 10
+MENTHAOIL = 10
+COTTON = 10
+CASTORSEED = 10
+
+# NSE equity option strike intervals by price band
+# Order matters: from lowest max_price to highest.
+[[nse_equity_bands]]
+max_price = 100
+interval = 1
+
+[[nse_equity_bands]]
+max_price = 250
+interval = 5
+
+[[nse_equity_bands]]
+max_price = 500
+interval = 5
+
+[[nse_equity_bands]]
+max_price = 1000
+interval = 10
+
+[[nse_equity_bands]]
+max_price = 2500
+interval = 20
+
+[[nse_equity_bands]]
+max_price = 5000
+interval = 50
+
+# Fallback for anything > 5000
+[nse_equity_defaults]
+fallback_interval = 100

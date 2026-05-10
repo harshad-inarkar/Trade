@@ -6,8 +6,9 @@ def_quantity     = 1
 def_order_mode   = 'NA'
 
 [nse_stocks.config]
+	trade_amount = 20000
     order_mode  = "EQ" # EQ / NA
-    expiry_date = "2026-05-26"
+    #expiry_date = "2026-05-26"
 
 # ─────────────────────────────────────────────
 # NSE Indices
@@ -37,17 +38,17 @@ def_order_mode   = 'NA'
     symbol      = "NATGASMINI"
     quantity    = 5
     expiry_date = "2026-05-22"
-    put_strike  = 280
+    #put_strike  = 280
 
 [mcx_comm.symbols.GOLD]
     symbol      = "GOLDM"
     quantity    = 2
     expiry_date = "2026-05-29"
-    strike      = 140000
+    #strike      = 140000
 
 [mcx_comm.symbols.SILVER]
     symbol      = "SILVERM"
     quantity    = 2
     expiry_date = "2026-05-26"
-    strike      = 260000
-    call_strike = 270000
+    #strike      = 260000
+    #call_strike = 270000
