@@ -1,42 +1,51 @@
 # Global Config
-stock_order_mode = "EQ" # EQ / NA
-index_order_mode = "OPT" # FUT / NA
-comm_order_mode  = "OPT" # FUT / NA
+
 def_expiry_date  = "2026-05-26"
 def_trade_amount = 10000
 def_quantity     = 1
+def_order_mode   = 'NA'
+
+[nse_stocks.config]
+    order_mode  = "EQ" # EQ / NA
+    expiry_date = "2026-05-26"
 
 # ─────────────────────────────────────────────
 # NSE Indices
 # ─────────────────────────────────────────────
-[nse_index.NIFTY]
+[nse_index.config]
+    order_mode = "OPT"  # FUT NA
+
+[nse_index.symbols.NIFTY]
     expiry_date = "2026-05-12"
 
-[nse_index.MIDCPNIFTY]
+[nse_index.symbols.MIDCPNIFTY]
 
-[nse_index.BANKNIFTY]
+[nse_index.symbols.BANKNIFTY]
 
 # ─────────────────────────────────────────────
 # MCX Commodities
 # ─────────────────────────────────────────────
-[mcx_comm.CRUDEOIL]
+[mcx_comm.config]
+    order_mode = "OPT" # FUT NA
+
+[mcx_comm.symbols.CRUDEOIL]
     symbol      = "CRUDEOILM"
     quantity    = 10
     expiry_date = "2026-05-14"
 
-[mcx_comm.NATURALGAS]
+[mcx_comm.symbols.NATURALGAS]
     symbol      = "NATGASMINI"
     quantity    = 5
     expiry_date = "2026-05-22"
     put_strike  = 280
 
-[mcx_comm.GOLD]
+[mcx_comm.symbols.GOLD]
     symbol      = "GOLDM"
     quantity    = 2
     expiry_date = "2026-05-29"
     strike      = 140000
 
-[mcx_comm.SILVER]
+[mcx_comm.symbols.SILVER]
     symbol      = "SILVERM"
     quantity    = 2
     expiry_date = "2026-05-26"
