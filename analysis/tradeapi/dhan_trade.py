@@ -10,15 +10,9 @@ from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional
+from utils.data.paths import OUT_DIR
+import tomllib
 
-try:
-    import tomllib
-except ImportError:
-    try:
-        import tomli as tomllib  # For Python < 3.11
-    except ImportError:
-        print("Please install tomli: pip install tomli")
-        raise
 
 # ─────────────────────────────────────────────
 # Proxy (set before any network call)
@@ -34,8 +28,8 @@ os.environ.update({
 # ─────────────────────────────────────────────
 BASE_DIR         = Path(__file__).parent
 SYMBOLS_CONFIG   = BASE_DIR / 'symbols_config.toml'
-LOCAL_CSV        = BASE_DIR / 'scrip_master.csv'
-ACCESS_FILE_PATH = BASE_DIR / 'access_token'
+LOCAL_CSV        = Path(OUT_DIR) / 'scrip_master.csv'
+ACCESS_FILE_PATH = BASE_DIR / 'access_token.toml'
 
 ORDER_URL       = 'https://api.dhan.co/v2/orders'
 SUPER_ORDER_URL = 'https://api.dhan.co/v2/super/orders'
@@ -68,12 +62,15 @@ SEG_EXCHANGE_SUFFIX = {
 # ─────────────────────────────────────────────
 def _load_credentials(path: Path) -> tuple[str, str]:
     try:
-        lines = path.read_text().splitlines()
-        if len(lines) < 2:
-            raise ValueError(f"{path} must have CLIENT_ID on line 1 and ACCESS_TOKEN on line 2.")
-        return lines[0].strip(), lines[1].strip()
-    except FileNotFoundError:
-        print(f"Warning: {path} not found. Ensure credentials exist.")
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+            client_id = data.get("CLIENT_ID", "").strip()
+            access_token = data.get("ACCESS_TOKEN", "").strip()
+            if not client_id or not access_token:
+                raise ValueError(f"{path} must contain CLIENT_ID and ACCESS_TOKEN fields.")
+            return client_id, access_token
+    except Exception as exc:
+        print(f"Error reading credentials from {path}: {exc}")
         return "", ""
 
 CLIENT_ID, ACCESS_TOKEN = _load_credentials(ACCESS_FILE_PATH)
