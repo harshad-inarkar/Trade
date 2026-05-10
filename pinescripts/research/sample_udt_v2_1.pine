@@ -1,0 +1,129 @@
+// Generic UDT array sort — Pine Script v6
+//
+// PATTERN: "Companion key array  +  optimised bubble sort"
+// ─────────────────────────────────────────────────────────────────────────────
+// Pine v6 has no generics, so a single sort function cannot access UDT fields.
+// Solution: separate the TWO concerns cleanly —
+//
+//   1. KEY BUILDING  (UDT-specific, typed)
+//      Each UDT has one small function that returns an array<float> of sort
+//      keys parallel to the UDT array. Only UDT-aware code in the file.
+//
+//   2. SORT ENGINE  (generic, in-place, optimised bubble sort)
+//      Two standard optimisations over naïve O(n²):
+//
+//      a) Early exit  — if a full pass produces zero swaps the array is
+//                       already sorted; stop immediately. Best case O(n).
+//
+//      b) Shrinking bound — track the index of the LAST swap each pass.
+//                       Everything beyond that index is already in its final
+//                       position, so the next pass stops there instead of
+//                       always scanning to n-2. Eliminates redundant work.
+//
+//      Extra space: O(n) for the float keys array only.
+//      The UDT array is sorted fully in-place.
+//
+// Adding a new UDT = one new build_<type>_keys() function. Engine unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+
+//---------------------------------------------------------------------------
+// INPUTS
+//---------------------------------------------------------------------------
+sortby     = input.string('tot_maxp', 'Sort Stats By',
+             options=['tot_maxp', 'avg_maxp', 'win_rate'])
+sort_order = input.string('Desc', 'Order', options=['Asc', 'Desc'])
+
+//---------------------------------------------------------------------------
+// UDT DEFINITIONS
+//---------------------------------------------------------------------------
+type stats_row
+    string symbol
+    int    trades
+    float  total_maxp
+    int    win_trades
+
+type alert_row
+    string symbol
+    float  entry
+    float  ltp
+    float  prof
+    float  maxp
+    color  sig
+    int    time_alert
+
+//---------------------------------------------------------------------------
+// ARRAYS
+//---------------------------------------------------------------------------
+var array<alert_row> alerts_arr = array.new<alert_row>()
+var array<stats_row> stats_arr  = array.new<stats_row>()
+
+//---------------------------------------------------------------------------
+// STEP 1 — KEY BUILDERS  (only UDT-typed code in the whole file)
+//   Each function reads its typed array and returns a parallel float array.
+//   One function per UDT — that's the only duplication needed.
+//---------------------------------------------------------------------------
+
+build_alert_keys() =>
+    keys = array.new<float>()
+    for i = 0 to array.size(alerts_arr) - 1
+        alert_row r = array.get(alerts_arr, i)
+        array.push(keys, float(r.time_alert))
+    keys
+
+build_stats_keys() =>
+    keys = array.new<float>()
+    for i = 0 to array.size(stats_arr) - 1
+        stats_row r = array.get(stats_arr, i)
+        val = switch sortby
+            'tot_maxp' => r.total_maxp
+            'avg_maxp' => r.total_maxp / r.trades
+            =>            float(r.win_trades) / r.trades
+        array.push(keys, val)
+    keys
+
+//---------------------------------------------------------------------------
+// STEP 2 — SINGLE REUSABLE SORT ENGINE
+//   Receives any UDT array + its float keys. Swaps both in lockstep.
+//   No UDT field access → compiles cleanly for any type.
+//---------------------------------------------------------------------------
+
+bubble_sort_by_keys(udt_arr, array<float> keys, string ord = 'Asc') =>
+    n = array.size(udt_arr)
+    if n > 1
+        last = n - 2  // upper bound of unsorted region shrinks each pass
+        while last >= 0
+            last_swap = -1  // track position of last swap this pass
+            for j = 0 to last
+                aVal = array.get(keys, j)
+                bVal = array.get(keys, j + 1)
+                if ord == 'Desc' ? aVal < bVal : aVal > bVal
+                    // swap UDT array
+                    a_udt = array.get(udt_arr, j)
+                    b_udt = array.get(udt_arr, j + 1)
+                    array.set(udt_arr, j,     b_udt)
+                    array.set(udt_arr, j + 1, a_udt)
+                    // swap keys in sync
+                    array.set(keys, j,     bVal)
+                    array.set(keys, j + 1, aVal)
+                    last_swap := j
+            // next pass only needs to go up to the last swap position
+            // if last_swap is still -1, no swaps occurred → already sorted
+            last := last_swap
+
+//---------------------------------------------------------------------------
+// STEP 3 — TYPED WRAPPERS  (one-liners, no logic duplication)
+//   Build keys then delegate to the shared engine.
+//---------------------------------------------------------------------------
+
+sort_alerts(string ord = 'Asc') =>
+    bubble_sort_by_keys(alerts_arr, build_alert_keys(), ord)
+
+sort_stats(string ord = 'Desc') =>
+    bubble_sort_by_keys(stats_arr, build_stats_keys(), ord)
+
+//---------------------------------------------------------------------------
+// USAGE
+//---------------------------------------------------------------------------
+if barstate.islast
+    sort_alerts('Asc')
+    sort_stats('Desc')

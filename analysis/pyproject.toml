@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trade_analysis"
+version = "1.0"
+description = "Trading Analysis"
+readme = "README.md"
+requires-python = ">=3.10"
+
+# List your project's dependencies here
+dependencies = [
+    "pandas",
+    "numpy",
+    "requests",
+    "pillow",
+    "dhanhq"
+]
+
+[tool.setuptools.packages.find]
+# Tells setuptools to look in the current root directory for your packages (like 'utils', 'tradeapi')
+where = ["."]

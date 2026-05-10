@@ -1,0 +1,34 @@
+stock_order_mode: OPT #EQ #NA
+index_order_mode: OPT #FUT #NA
+comm_order_mode: OPT #FUT #NA
+def_expiry_date: 2026-05-26
+def_trade_amount: 20000
+def_quantity: 1
+nse_index:
+  NIFTY:
+    expiry_date: 2026-05-12
+  MIDCPNIFTY:
+  BANKNIFTY:
+mcx_comm:
+  CRUDEOIL:
+    symbol: CRUDEOILM
+    quantity: 10
+    expiry_date: 2026-05-14
+  NATURALGAS:
+    symbol: NATGASMINI
+    quantity: 5
+    expiry_date: 2026-05-22
+    put_strike: 280
+  GOLD:
+    symbol: GOLDM
+    quantity: 2
+    expiry_date: 2026-05-29
+    strike: 140000
+  SILVER:
+    symbol: SILVERM
+    quantity: 2
+    expiry_date: 2026-05-26
+    strike: 260000
+    call_strike: 270000
+
+

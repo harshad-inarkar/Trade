@@ -1,0 +1,69 @@
+// Generic UDT array sort
+
+//---------------- STRUCT ----------------
+
+type stats_row
+    string symbol
+    int trades
+    float total_maxp
+    int win_trades
+
+//---------------- STRUCT ----------------
+type alert_row
+    string symbol
+    float entry
+    float ltp
+    float prof
+    float maxp
+    color sig
+    int time_alert
+
+
+var array<alert_row> alerts_arr = array.new<alert_row>()
+var array<stats_row> stats_arr = array.new<stats_row>()
+
+
+get_alert_sort_key_val(ao)=>
+    ao.time_alert
+
+get_stats_sort_key_val(so)=>
+    switch sortby 
+        'tot_maxp' => so.total_maxp
+        'avg_maxp' => so.total_maxp/so.trades
+        => so.win_trades/so.trades
+
+
+enum UDTtype
+    ALERT
+    STATS
+
+
+get_udt_key_val(a,udtyp) =>
+    switch udtyp
+        UDTtype.ALERT => get_alert_sort_key_val(a)
+        UDTtype.STATS => get_stats_sort_key_val(a)
+
+
+
+sort_udt_arr(udt_arr,UDTtype udtyp,udt_sort_ord='Asc') =>
+    n = array.size(udt_arr)
+    for i = 0 to n - 2
+        for j = 0 to n - 2 - i
+            a = array.get(udt_arr, j)
+            b = array.get(udt_arr, j + 1)
+ 
+            aVal = get_udt_key_val(a,udtyp)
+            bVal = get_udt_key_val(b,udtyp)
+ 
+            shouldSwap = udt_sort_ord == "Desc" ? aVal < bVal : aVal > bVal
+            if shouldSwap
+                array.set(udt_arr, j,     b)
+                array.set(udt_arr, j + 1, a)
+
+
+
+
+
+sort_udt_arr(alerts_arr,UDTtype.ALERT,udt_sort_ord='Asc')
+
+sort_udt_arr(statss_arr,UDTtype.STATS,udt_sort_ord='Desc')

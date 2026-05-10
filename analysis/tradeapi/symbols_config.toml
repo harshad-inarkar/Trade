@@ -1,0 +1,44 @@
+# Global Config
+stock_order_mode = "EQ" # EQ / NA
+index_order_mode = "OPT" # FUT / NA
+comm_order_mode  = "OPT" # FUT / NA
+def_expiry_date  = "2026-05-26"
+def_trade_amount = 10000
+def_quantity     = 1
+
+# ─────────────────────────────────────────────
+# NSE Indices
+# ─────────────────────────────────────────────
+[nse_index.NIFTY]
+    expiry_date = "2026-05-12"
+
+[nse_index.MIDCPNIFTY]
+
+[nse_index.BANKNIFTY]
+
+# ─────────────────────────────────────────────
+# MCX Commodities
+# ─────────────────────────────────────────────
+[mcx_comm.CRUDEOIL]
+    symbol      = "CRUDEOILM"
+    quantity    = 10
+    expiry_date = "2026-05-14"
+
+[mcx_comm.NATURALGAS]
+    symbol      = "NATGASMINI"
+    quantity    = 5
+    expiry_date = "2026-05-22"
+    put_strike  = 280
+
+[mcx_comm.GOLD]
+    symbol      = "GOLDM"
+    quantity    = 2
+    expiry_date = "2026-05-29"
+    strike      = 140000
+
+[mcx_comm.SILVER]
+    symbol      = "SILVERM"
+    quantity    = 2
+    expiry_date = "2026-05-26"
+    strike      = 260000
+    call_strike = 270000

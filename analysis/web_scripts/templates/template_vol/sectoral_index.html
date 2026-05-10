@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NSE Sectors — Volume Heatmap</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── VARIABLES ──────────────────────────────────────────────────────── */
+    :root {
+      --bg:        #0b0f14;
+      --surface:   #131920;
+      --border:    #1e2a35;
+      --text:      #c8d8e8;
+      --muted:     #4a6070;
+      --accent:    #00d4aa;
+      --accent2:   #ff6b35;
+      --accent3:   #f0c040;
+
+      /* volume heat stops (low → high) */
+      --heat-0:    #0d2235;
+      --heat-1:    #0a4060;
+      --heat-2:    #0d6e8a;
+      --heat-3:    #10a0a0;
+      --heat-4:    #00d4aa;
+      --heat-5:    #f0c040;
+      --heat-6:    #ff6b35;
+
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'Space Grotesk', sans-serif;
+      --radius: 4px;
+    }
+
+    /* ── RESET / BASE ───────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 14px; scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      padding: 0 0 60px;
+    }
+
+    /* ── HEADER ─────────────────────────────────────────────────────────── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(11,15,20,.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+
+    .header-brand {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+    .header-brand .logo {
+      font-family: var(--mono);
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: .12em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+    .header-brand .sub {
+      font-size: .75rem;
+      color: var(--muted);
+      letter-spacing: .06em;
+    }
+
+    nav.header-nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+    nav.header-nav a {
+      font-family: var(--mono);
+      font-size: .72rem;
+      letter-spacing: .08em;
+      padding: 5px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      text-decoration: none;
+      transition: border-color .2s, color .2s;
+    }
+    nav.header-nav a:hover,
+    nav.header-nav a.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .tf-bar {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .tf-bar span {
+      font-family: var(--mono);
+      font-size: .68rem;
+      color: var(--muted);
+      letter-spacing: .08em;
+      margin-right: 4px;
+    }
+    .tf-bar a {
+      font-family: var(--mono);
+      font-size: .72rem;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      text-decoration: none;
+      transition: all .2s;
+    }
+    .tf-bar a:hover { border-color: var(--accent); color: var(--accent); }
+    .tf-bar a.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+      font-weight: 600;
+    }
+
+    /* ── SORT CHIPS (header inline) ────────────────────────────────────── */
+    .sort-chips {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sort-chips .sort-label {
+      font-family: var(--mono);
+      font-size: .68rem;
+      color: var(--muted);
+      letter-spacing: .08em;
+      margin-right: 2px;
+    }
+    .sort-chip {
+      font-family: var(--mono);
+      font-size: .68rem;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      white-space: nowrap;
+      transition: border-color .2s, color .2s;
+    }
+    .sort-chip:has(.sort-arrows a.active) {
+      border-color: var(--accent3);
+      color: var(--text);
+    }
+    .sort-arrows {
+      display: flex;
+      flex-direction: column;
+      line-height: 1;
+      gap: 1px;
+    }
+    .sort-arrows a {
+      font-size: .55rem;
+      color: #2a3a48;
+      text-decoration: none;
+      line-height: 1.15;
+      transition: color .15s, text-shadow .15s;
+    }
+    .sort-arrows a:hover { color: var(--accent3); }
+    .sort-arrows a.active {
+      color: var(--accent3);
+      font-size: .65rem;
+      text-shadow: 0 0 6px var(--accent3);
+    }
+
+    /* ── META BAR ───────────────────────────────────────────────────────── */
+    .meta-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 5px 28px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      font-size: .66rem;
+      font-family: var(--mono);
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+    .meta-bar .chip {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .meta-bar .chip strong { color: var(--text); }
+    .meta-bar .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; }
+      50% { opacity: .3; }
+    }
+    .meta-chips {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 28px;
+  font-size: .66rem;
+  font-family: var(--mono);
+  color: var(--muted);
+  flex-wrap: wrap;
+  flex: 1;
+}
+.meta-chips .chip { display: flex; gap: 6px; align-items: center; }
+.meta-chips .chip strong { color: var(--text); }
+.meta-chips .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* filter form inline */
+.filter-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 28px 4px 0;
+}
+.filter-form input[type="text"] {
+  font-family: var(--mono);
+  font-size: .75rem;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+  width: 200px;
+  transition: border-color .2s;
+}
+.filter-form input[type="text"]::placeholder { color: var(--muted); }
+.filter-form input[type="text"]:focus { border-color: var(--accent); }
+.filter-form button {
+  font-family: var(--mono);
+  font-size: .72rem;
+  letter-spacing: .06em;
+  padding: 6px 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+.filter-form button:hover {
+  background: var(--accent);
+  color: #000;
+}
+.filter-form a.clear-btn {
+  font-family: var(--mono);
+  font-size: .68rem;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: color .2s, border-color .2s;
+}
+.filter-form a.clear-btn:hover { color: var(--accent2); border-color: var(--accent2); }
+
+    /* ── SORT CONTROLS ──────────────────────────────────────────────────── */
+    .controls {
+      padding: 16px 28px 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .controls label {
+      font-family: var(--mono);
+      font-size: .68rem;
+      color: var(--muted);
+      letter-spacing: .06em;
+    }
+    .sort-btn {
+      font-family: var(--mono);
+      font-size: .72rem;
+      padding: 5px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .sort-btn:hover { border-color: var(--accent3); color: var(--accent3); }
+    .sort-btn.active {
+      background: var(--accent3);
+      border-color: var(--accent3);
+      color: #000;
+      font-weight: 600;
+    }
+
+    /* ── SECTOR GRID ────────────────────────────────────────────────────── */
+    .sector-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+      padding: 16px 28px;
+    }
+
+    .sector-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      transition: border-color .25s, transform .25s;
+      cursor: default;
+      animation: fadeUp .4s ease both;
+    }
+    .sector-card:hover {
+      border-color: color-mix(in srgb, var(--heat-color, var(--accent)) 70%, transparent);
+      transform: translateY(-2px);
+    }
+    
+    /* staggered fade-in */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .sector-card { animation-delay: 0s; }
+
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 12px 14px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sector-name {
+      font-family: var(--sans);
+      font-size: .8rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      line-height: 1.3;
+      color: var(--accent);
+      text-transform: uppercase;
+      max-width: 72%;
+    }
+    .sector-rank {
+      font-family: var(--mono);
+      font-size: .65rem;
+      color: var(--text);
+      padding: 2px 7px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+    .sector-link {
+            color: var(--accent, #0077ff);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.15s;
+          }
+    .sector-link:hover, .sector-link:focus {
+            color: var(--accent-hover, #0054b1);
+            text-decoration: underline;
+    }
+
+
+    /* heat-coloured volume bar */
+    .vol-row {
+      padding: 10px 14px 4px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .vol-bar-wrap {
+      flex: 1;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .vol-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: var(--heat-color, var(--accent));
+      transition: width .6s cubic-bezier(.4,0,.2,1);
+    }
+    .vol-value {
+      font-family: var(--mono);
+      font-size: .8rem;
+      font-weight: 100;
+      color: var(--text);
+      white-space: nowrap;
+      min-width: 56px;
+      text-align: right;
+    }
+
+    /* symbol chips */
+    .sym-area {
+      padding: 6px 14px 12px;
+    }
+    .sym-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      max-height: 72px;
+      overflow: hidden;
+      position: relative;
+      transition: max-height .3s ease;
+    }
+    .sym-chips.expanded { max-height: 300px; }
+    .sym-chip {
+      font-family: var(--mono);
+      font-size: .62rem;
+      padding: 2px 7px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--accent);
+      background: var(--bg);
+      transition: border-color .15s, color .15s;
+    }
+    .sym-chip:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .expand-btn {
+      font-family: var(--mono);
+      font-size: .62rem;
+      color: var(--muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px 4px;
+      transition: color .15s;
+    }
+    .expand-btn:hover { color: var(--accent); }
+
+    /* footer meta */
+    .card-footer {
+      padding: 4px 14px 8px;
+      display: flex;
+      gap: 14px;
+      font-family: var(--mono);
+      font-size: .63rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+    .card-footer span { display: flex; align-items: center; gap: 4px; }
+    .card-footer .label { opacity: .55; }
+
+    /* ── LEGEND ─────────────────────────────────────────────────────────── */
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      padding: 2px 28px 12px;
+    }
+    .legend-label {
+      font-family: var(--mono);
+      font-size: .65rem;
+      color: var(--muted);
+      margin-right: 10px;
+    }
+    .legend-bar {
+      width: 160px;
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(to right,
+        var(--heat-0), var(--heat-2), var(--heat-4), var(--heat-5), var(--heat-6));
+    }
+    .legend-ends {
+      display: flex;
+      justify-content: space-between;
+      width: 160px;
+      font-family: var(--mono);
+      font-size: .6rem;
+      color: var(--muted);
+      margin-left: 0;
+    }
+    .legend-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .legend-wrap .legend-bar { width: 180px; }
+    .legend-wrap .legend-ends { width: 180px; }
+
+    /* ── NO-DATA STATE ──────────────────────────────────────────────────── */
+    .no-data {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 60px 20px;
+      font-family: var(--mono);
+      font-size: .85rem;
+      color: var(--muted);
+    }
+
+    /* ── SCROLLBAR ──────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ───────────────────────────────────────────────────────────── -->
+<header>
+  <div class="header-brand">
+    <span class="logo">NSE&nbsp;PORTAL</span>
+    <span class="sub">Intraday Analytics</span>
+  </div>
+
+  <div class="tf-bar">
+    <span>TF:</span>
+    {% for t in ['3','15','D'] %}
+    <a href="/sectors/?tf={{ t }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}" class="{{ 'active' if timeframe == t else '' }}">{{ t }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="sort-chips">
+    <span class="sort-label">SORT:</span>
+    <span class="sort-chip">
+      VOL FAST MA
+      <span class="sort-arrows">
+        <a class="{{ 'active' if current_sort == 'volume_fast' and current_order == 'asc' else '' }}"
+           href="?tf={{ timeframe }}&sort=volume_fast&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
+        <a class="{{ 'active' if current_sort == 'volume_fast' and current_order == 'desc' else '' }}"
+           href="?tf={{ timeframe }}&sort=volume_fast&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
+      </span>
+    </span>
+    <span class="sort-chip">
+      VOL SURGE
+      <span class="sort-arrows">
+        <a class="{{ 'active' if current_sort == 'vol_surge' and current_order == 'asc' else '' }}"
+           href="?tf={{ timeframe }}&sort=vol_surge&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
+        <a class="{{ 'active' if current_sort == 'vol_surge' and current_order == 'desc' else '' }}"
+           href="?tf={{ timeframe }}&sort=vol_surge&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
+      </span>
+    </span>
+    <span class="sort-chip">
+      PRICE
+      <span class="sort-arrows">
+        <a class="{{ 'active' if current_sort == 'ltp' and current_order == 'asc' else '' }}"
+           href="?tf={{ timeframe }}&sort=ltp&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
+        <a class="{{ 'active' if current_sort == 'ltp' and current_order == 'desc' else '' }}"
+           href="?tf={{ timeframe }}&sort=ltp&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
+      </span>
+    </span>
+    <span class="sort-chip">
+      PRICE SURGE
+      <span class="sort-arrows">
+        <a class="{{ 'active' if current_sort == 'price_ma_action' and current_order == 'asc' else '' }}"
+           href="?tf={{ timeframe }}&sort=price_ma_action&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
+        <a class="{{ 'active' if current_sort == 'price_ma_action' and current_order == 'desc' else '' }}"
+           href="?tf={{ timeframe }}&sort=price_ma_action&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
+      </span>
+    </span>
+  </div>
+
+  <nav class="header-nav">
+    <a href="/?tf={{ timeframe }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}">Index</a>
+    <a href="/sectors/?tf={{ timeframe }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}" class="active">Sectors</a>
+  </nav>
+</header>
+
+<!-- ── META BAR ─────────────────────────────────────────────────────────── -->
+<div class="meta-bar">
+  <div class="meta-chips">
+    <div class="chip"><div class="dot"></div><strong>{{ refresh_time }}</strong></div>
+    <div class="chip"><span class="label">TF</span><strong>{{ timeframe }}m</strong></div>
+    <div class="chip"><span class="label">sectors</span><strong>{{ sectors|length }}</strong></div>
+    <div class="chip"><span class="label">metric</span><strong>{{ sort }} {{ order }}</strong></div>
+    {% if filter %}
+    <div class="chip"><span>filter&nbsp;ltp</span><strong>{{ filter }}</strong></div>
+    {% endif %}
+  </div>
+
+  <form method="get" action="/sectors/" class="filter-form">
+    <input type="text" name="filter" value="{{ filter }}"
+    placeholder="LTP range  e.g. 100-500">
+    <button type="submit">FILTER</button>
+    {% if filter %}
+    <a href="/sectors/?tf={{ timeframe }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}"
+       class="clear-btn">✕ clear</a>
+    {% endif %}
+  </form>
+</div>
+
+<!-- ── SORT ─────────────────────────────────────────────────────────────── -->
+<!-- <div class="controls">
+  <label>SORT BY:</label>
+  <button class="sort-btn active" id="btn-vol" onclick="sortCards('vol')">AVG VOLUME</button>
+  <button class="sort-btn" id="btn-name" onclick="sortCards('name')">NAME A–Z</button>
+  <button class="sort-btn" id="btn-count" onclick="sortCards('count')">SYMBOL COUNT</button>
+</div> -->
+
+<!-- ── LEGEND ───────────────────────────────────────────────────────────── -->
+<!-- <div class="legend">
+  <span class="legend-label">VOLUME:</span>
+  <div class="legend-wrap">
+    <div class="legend-bar"></div>
+    <div class="legend-ends"><span>LOW</span><span>HIGH</span></div>
+  </div>
+</div> -->
+
+<!-- ── SECTOR GRID ──────────────────────────────────────────────────────── -->
+<div class="sector-grid" id="sector-grid">
+  {% set maxsymlen = 12 %}
+  {% if sectors %}
+    {% for s in sectors %}
+    {% set vol = s.avg_volume_fast %}
+    {% set pct = s.heat_pct %}
+    {# pick heat colour based on pct bucket #}
+    {% if pct < 0.15 %}
+      {% set hcol = 'var(--heat-0)' %}
+    {% elif pct < 0.30 %}
+      {% set hcol = 'var(--heat-1)' %}
+    {% elif pct < 0.45 %}
+      {% set hcol = 'var(--heat-2)' %}
+    {% elif pct < 0.60 %}
+      {% set hcol = 'var(--heat-3)' %}
+    {% elif pct < 0.75 %}
+      {% set hcol = 'var(--heat-4)' %}
+    {% elif pct < 0.88 %}
+      {% set hcol = 'var(--heat-5)' %}
+    {% else %}
+      {% set hcol = 'var(--heat-6)' %}
+    {% endif %}
+
+    <div class="sector-card"
+         data-heat-color="{{ hcol }}"
+         data-vol="{{ vol if vol else 0 }}"
+         data-name="{{ s.name }}"
+         data-count="{{ s.symbol_count }}">
+
+      <div class="card-header">
+        <!-- <div class="sector-name">{{ s.name }}</div> -->
+        <div class="sector-name">
+          <a href="/sectors/{{s.name}}/?tf={{ timeframe }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}" class="sector-link">
+            {{ s.name }}
+          </a>
+        </div>
+        <div class="sector-rank">#{{ loop.index }}</div>
+      </div>
+
+      <div class="vol-row">
+        <div class="vol-bar-wrap">
+          <div class="vol-bar-fill" data-width="{{ (pct * 100)|round(1) }}%"></div>
+        </div>
+        <div class="vol-value">
+          {% if vol %}
+            {% if vol >= 1000000 %}{{ (vol / 1000000)|round(2) }}M
+            {% elif vol >= 1000 %}{{ (vol / 1000)|round(1) }}K
+            {% else %}{{ vol|round(0)|int }}
+            {% endif %}
+          {% else %}—{% endif %}
+        </div>
+      </div>
+
+      <div class="sym-area">
+        <div class="sym-chips" id="chips-{{ loop.index }}">
+          {% for sym in s.symbols %}
+          <span class="sym-chip">{{ sym }}</span>
+          {% endfor %}
+        </div>
+        {% if s.symbols|length > maxsymlen %}
+        <button class="expand-btn" data-idx="{{ loop.index }}">
+          +{{ s.symbols|length - maxsymlen }} more ▾
+        </button>
+        {% endif %}
+      </div>
+
+      <div class="card-footer">
+        <span><span class="label">SYMs</span> {{ s.symbol_count }}</span>
+        {% if s.top_symbol %}
+        <span><span class="label">TOP</span> {{ s.top_symbol }}</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="no-data">No sector data available for timeframe {{ timeframe }}</div>
+  {% endif %}
+</div>
+
+
+<script>
+  /* ── CHIP EXPAND ────────────────────────────────────────────────────── */
+  const maxsymlen = 12
+  function toggleChips(idx, btn) {
+    const el = document.getElementById('chips-' + idx);
+    const expanded = el.classList.toggle('expanded');
+    if (expanded) {
+      btn.textContent = '▴ collapse';
+    } else {
+      // Restore original button content, e.g., "+N more ▾"
+      const total = el.querySelectorAll('.sym-chip').length;
+      const hidden = total - maxsymlen;
+      btn.textContent = `+${hidden} more ▾`;
+    }
+  }
+
+  // Apply templated visual values without embedding Jinja in CSS.
+  document.addEventListener('DOMContentLoaded', () => {
+    // initial stagger for visible cards
+    document.querySelectorAll('.sector-card').forEach((c, i) => {
+      c.style.animationDelay = `${(i * 0.025).toFixed(3)}s`;
+    });
+
+    // apply data-driven styles
+    document.querySelectorAll('[data-heat-color]').forEach((el) => {
+      const hc = el.getAttribute('data-heat-color');
+      if (hc != null) el.style.setProperty('--heat-color', hc);
+    });
+    document.querySelectorAll('[data-width]').forEach((el) => {
+      const w = el.getAttribute('data-width');
+      if (w != null) el.style.width = w;
+    });
+
+    // wire up expand buttons without inline template JS
+    document.querySelectorAll('.expand-btn[data-idx]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = btn.getAttribute('data-idx');
+        if (idx != null) toggleChips(idx, btn);
+      });
+    });
+  });
+
+  /* ── ACTIVE SORT ARROW (from URL params) ───────────────────────────── */
+  (function () {
+    const params = new URLSearchParams(window.location.search);
+    const activeSort  = params.get('sort');
+    const activeOrder = params.get('order');
+    if (!activeSort || !activeOrder) return;
+
+    document.querySelectorAll('.sort-arrows a').forEach(a => {
+      const ap = new URLSearchParams(a.href.split('?')[1] || '');
+      if (ap.get('sort') === activeSort && ap.get('order') === activeOrder) {
+        a.classList.add('active');
+      } else {
+        a.classList.remove('active');
+      }
+    });
+  })();
+
+
+  let currentSort = 'vol';
+
+  function sortCards(mode) {
+    currentSort = mode;
+    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn-' + mode).classList.add('active');
+
+    const grid = document.getElementById('sector-grid');
+    const cards = [...grid.querySelectorAll('.sector-card')];
+
+    cards.sort((a, b) => {
+      if (mode === 'vol')   return parseFloat(b.dataset.vol)   - parseFloat(a.dataset.vol);
+      if (mode === 'count') return parseInt(b.dataset.count)   - parseInt(a.dataset.count);
+      if (mode === 'name')  return a.dataset.name.localeCompare(b.dataset.name);
+      return 0;
+    });
+
+    // Re-append in sorted order, preserving animation
+    cards.forEach((c, i) => {
+      c.style.animationDelay = (i * 0.025) + 's';
+      c.style.animation = 'none';
+      requestAnimationFrame(() => {
+        c.style.animation = '';
+        grid.appendChild(c);
+      });
+    });
+
+    // Re-number rank badges
+    setTimeout(() => {
+      grid.querySelectorAll('.sector-rank').forEach((el, i) => {
+        el.textContent = '#' + (i + 1);
+      });
+    }, 50);
+  }
+</script>
+</body>
+</html>

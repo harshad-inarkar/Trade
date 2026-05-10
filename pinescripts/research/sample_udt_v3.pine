@@ -1,0 +1,116 @@
+// Generic UDT array sort — Pine Script v6
+//
+// PATTERN: "Sort by indices"
+// ─────────────────────────────────────────────────────────────────────────────
+// Instead of bubble sort, we use Pine's built-in array.sort_indices() which:
+//   • Runs in O(n log n) internally
+//   • Returns array<int> of original positions in sorted order
+//   • Works on any array<float>
+//
+// ENGINE (sort_udt_by_keys):
+//   1. array.sort_indices(keys, order) → sorted index list
+//   2. One pass over that index list to build the reordered UDT array
+//   3. array.new_from(sorted_udt) replaces the original array contents
+//
+// No bubble sort. No manual swaps. Single reusable function.
+// Adding a new UDT = only add one build_<type>_keys() function.
+// ─────────────────────────────────────────────────────────────────────────────
+
+//---------------------------------------------------------------------------
+// INPUTS
+//---------------------------------------------------------------------------
+sortby     = input.string('tot_maxp', 'Sort Stats By',
+             options=['tot_maxp', 'avg_maxp', 'win_rate'])
+sort_order = input.string('Desc', 'Order', options=['Asc', 'Desc'])
+
+//---------------------------------------------------------------------------
+// UDT DEFINITIONS
+//---------------------------------------------------------------------------
+type stats_row
+    string symbol
+    int    trades
+    float  total_maxp
+    int    win_trades
+
+type alert_row
+    string symbol
+    float  entry
+    float  ltp
+    float  prof
+    float  maxp
+    color  sig
+    int    time_alert
+
+//---------------------------------------------------------------------------
+// ARRAYS
+//---------------------------------------------------------------------------
+var array<alert_row> alerts_arr = array.new<alert_row>()
+var array<stats_row> stats_arr  = array.new<stats_row>()
+
+//---------------------------------------------------------------------------
+// STEP 1 — KEY BUILDERS  (only UDT-aware code in the whole file)
+//   Returns array<float> of sort keys, parallel to the UDT array.
+//   One small function per UDT — that's all.
+//---------------------------------------------------------------------------
+
+build_alert_keys() =>
+    keys = array.new<float>()
+    for i = 0 to array.size(alerts_arr) - 1
+        alert_row r = array.get(alerts_arr, i)
+        array.push(keys, float(r.time_alert))
+    keys
+
+build_stats_keys() =>
+    keys = array.new<float>()
+    for i = 0 to array.size(stats_arr) - 1
+        stats_row r = array.get(stats_arr, i)
+        val = switch sortby
+            'tot_maxp' => r.total_maxp
+            'avg_maxp' => r.total_maxp / r.trades
+            =>            float(r.win_trades) / r.trades
+        array.push(keys, val)
+    keys
+
+//---------------------------------------------------------------------------
+// STEP 2 — SINGLE REUSABLE SORT ENGINE
+//
+//   array.sort_indices(keys, order) does the heavy lifting — O(n log n).
+//   Returns sorted positions, e.g. [2, 0, 1] meaning:
+//     new[0] = old[2], new[1] = old[0], new[2] = old[1]
+//
+//   One loop rebuilds the UDT array in that order.
+//   array.new_from() then replaces the original array in-place.
+//
+//   No UDT field access here → compiles cleanly for any UDT type.
+//---------------------------------------------------------------------------
+
+sort_udt_by_keys(udt_arr, array<float> keys, string ord = 'Asc') =>
+    if array.size(udt_arr) > 1
+        order      = ord == 'Asc' ? order.ascending : order.descending
+        sorted_idx = array.sort_indices(keys, order)  // built-in, O(n log n)
+
+        sorted_udt = array.new<float>()  // typed as float but holds UDT refs
+        for i = 0 to array.size(sorted_idx) - 1
+            orig_pos = array.get(sorted_idx, i)
+            array.push(sorted_udt, array.get(udt_arr, orig_pos))
+
+        // copy sorted order back into the original array
+        for i = 0 to array.size(udt_arr) - 1
+            array.set(udt_arr, i, array.get(sorted_udt, i))
+
+//---------------------------------------------------------------------------
+// STEP 3 — TYPED WRAPPERS  (one-liners)
+//---------------------------------------------------------------------------
+
+sort_alerts(string ord = 'Asc') =>
+    sort_udt_by_keys(alerts_arr, build_alert_keys(), ord)
+
+sort_stats(string ord = 'Desc') =>
+    sort_udt_by_keys(stats_arr, build_stats_keys(), ord)
+
+//---------------------------------------------------------------------------
+// USAGE
+//---------------------------------------------------------------------------
+if barstate.islast
+    sort_alerts('Asc')
+    sort_stats('Desc')

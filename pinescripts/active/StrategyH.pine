@@ -1,0 +1,128 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © harshad_inarkar
+
+//@version=6
+// ─────────────────────────────────────────────────────────────────────────────
+//  Strategy  —  single-symbol signal indicator
+//  Shared engine imported from TradeHLib.
+//  Replace "harshad_inarkar" with your actual TradingView username
+//  after publishing the library.
+// ─────────────────────────────────────────────────────────────────────────────
+indicator(title = 'Strategy', shorttitle = 'StrategyH', overlay = true)
+
+import harshad_inarkar/TradeHLib/13 as THL
+
+
+
+// ── Inputs ────────────────────────────────────────────────────────────────────
+var use_vol_kst = input(true, 'Use Volume Indicator')
+
+
+var lineup_check               = input.int(2, title = 'Lineup Check',               options = [1,2,3,4])
+var ma_filter                  = input.int(2, title = 'MA Filter',                  options = [1,2,3,4])
+var strict_confirm_trade_check = input.int(0, title = 'Strict confirm trade check', options = [0,1,2,3])
+
+var last_n_days      = input.float(60, 'Days')
+var last_hrs         = input.float(0, 'Hours')
+var show_only_window = input(true, title = 'Show trades in window')
+
+var start   = THL.calc_window_start(show_only_window,last_n_days, last_hrs)
+
+window() => time >= start
+
+var long_signal_flag  = input(true, title = 'Long Signal')
+var short_signal_flag = input(true, title = 'Short Signal')
+
+
+// ── MAs ───────────────────────────────────────────────────────────────────────
+
+// ── Sources ───────────────────────────────────────────────────────────────────
+source = close
+volsrc = volume
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+raise_alert(ord_type) =>
+    alert(ord_type + THL.sep + str.tostring(source), freq = alert.freq_once_per_bar_close)
+
+
+var color fin_status_col = color(na)
+
+[out1,out2,out3,out4] = THL.get_all_mas(source) 
+out1_trend = THL.get_osc_trend(out1)
+out2_trend = THL.get_osc_trend(out2)
+
+
+if barstate.isconfirmed
+
+    // ── Main signal ───────────────────────────────────────────────────────────────
+    final_summary_status_code = THL.calc_final_summary(
+                                        source, volsrc,
+                                        out1, out2, out3, out4,
+                                        out1_trend, out2_trend,
+                                        use_vol_kst, long_signal_flag, short_signal_flag,
+                                        lineup_check, ma_filter,
+                                        window())
+
+    trigg_status_code = THL.calc_trigger_entry(
+                                final_summary_status_code, source,
+                                strict_confirm_trade_check,
+                                barstate.isconfirmed)
+
+    fin_status_code = strict_confirm_trade_check != 0 ?
+                                 trigg_status_code : final_summary_status_code
+
+
+
+    final_enterLong  = fin_status_code == THL.STRAT_ENTER_LONG
+    final_enterShort = fin_status_code == THL.STRAT_ENTER_SHORT
+    final_exitLong   = fin_status_code == THL.STRAT_EXIT_LONG
+    final_exitShort  = fin_status_code == THL.STRAT_EXIT_SHORT
+
+ 
+    is_neutral = fin_status_code == THL.STRAT_NEUTRAL
+
+ 
+    if final_enterLong
+        raise_alert('U')
+    else if final_exitLong
+        raise_alert('XU')
+    else if final_enterShort
+        raise_alert('D')
+    else if final_exitShort
+        raise_alert('XD')
+
+    // ── Stats table ───────────────────────────────────────────────────────────────
+
+    show_stats_bar = barstate.islastconfirmedhistory
+
+    [_ev, _cp, _mp, trades, total_maxp, win_trades, _ap] =
+                     THL.calc_trade_stats(fin_status_code, source, show_stats_bar)
+
+    if show_stats_bar
+        var table tbl1 = table.new(position.top_right, 2, 6,
+                                    frame_color = na, frame_width = 1,
+                                    border_width = 2, border_color = na)
+
+        mxpavg = trades == 0 ? 0.0 : total_maxp / trades
+        winrt  = trades == 0 ? 0.0 : float(win_trades) / trades
+
+        table.cell(tbl1, 0, 0, 'From: ' + THL.format_datetime(start), text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 0, 1, 'Trades',    text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 0, 2, 'MaxPct',    text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 0, 3, 'MaxPCTAvg', text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 0, 4, 'WinRate',   text_halign = text.align_center, bgcolor = na, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 1, 0, 'To: ' + THL.format_datetime(time),   text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 1, 1, str.tostring(trades),                           text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 1, 2, str.tostring(math.round(total_maxp, 2)),        text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 1, 3, str.tostring(math.round(mxpavg,     2)),        text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
+        table.cell(tbl1, 1, 4, str.tostring(math.round(winrt,      2)),        text_halign = text.align_left, bgcolor = na, text_color = color.white, text_size = size.small)
+
+
+    [_, fin_col] = THL.decodeStratCode(fin_status_code)
+    fin_status_col := fin_col
+
+bgcolor(fin_status_col)
+plot(out1, title = 'RMA - 1', color = color.new(color.silver, transp = 0), linewidth = 2)
+plot(out2, title = 'RMA - 2', color = color.new(color.aqua,   transp = 0), linewidth = 2)
+//plot(out3, title = 'RMA - 3', color = color.new(color.yellow, transp = 0), linewidth = 2)
+//plot(out4, title = 'RMA - 4', color = color.new(color.red,    transp = 0), linewidth = 2)
