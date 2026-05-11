@@ -2,29 +2,22 @@
 dhan_trade.py — Dhan HQ automated order placement (Object-Oriented).
 """
 
-import os
 import math
 import requests
+from requests.exceptions import RequestException
 import pandas as pd
 from pathlib import Path
-from datetime import datetime
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
-from utils.data.paths import OUT_DIR
 import tomllib
+
+from utils.data.paths import OUT_DIR
 from tradeapi.price_strike_calc import get_price_strike, get_strike_interval
 
-# ───────────────────────────────────────
-# Proxy (set before any network call)
-# ───────────────────────────────────────
-os.environ.update({
-    'HTTP_PROXY':  'socks5h://localhost:9090',
-    'HTTPS_PROXY': 'socks5h://localhost:9090',
-    'ALL_PROXY':   'socks5h://localhost:9090',
-})
+from utils.network.start_proxy import SSHProxyManager
 
 # ───────────────────────────────────────
-# Paths & constants
+# Paths & Pure Constants
 # ───────────────────────────────────────
 BASE_DIR         = Path(__file__).parent
 SYMBOLS_CONFIG   = BASE_DIR / 'symbols_config.toml'
@@ -32,20 +25,16 @@ LOCAL_CSV        = Path(OUT_DIR) / 'scrip_master.csv'
 ACCESS_FILE_PATH = BASE_DIR / 'access_token.toml'
 
 ORDER_URL        = 'https://api.dhan.co/v2/orders'
+INSTRUMENT_SEGMENTS = ['NSE_EQ', 'NSE_FNO', 'MCX_COMM']
+INSTRUMENT_URL   = 'https://api.dhan.co/v2/instrument/{segment}'
 SUPER_ORDER_URL  = 'https://api.dhan.co/v2/super/orders'
-
-ENTRY_PRICE_PERC = 0.1
-LIMIT_PRICE_PERC = 0.2
-TARGET_PERC      = 4.0
-STOP_LOSS_PERC   = 0.7
-STOP_TRAIL_PERC  = 0.5
 
 FILTER_SEG  = frozenset({'EQUITY', 'OPTSTK', 'OPTIDX', 'OPTFUT'})
 FILTER_EXCH = frozenset({'NSE', 'MCX'})
 SCRIP_COLS  = [
-    'SEM_EXM_EXCH_ID', 'SEM_INSTRUMENT_NAME',
-    'SEM_TRADING_SYMBOL', 'SEM_SMST_SECURITY_ID',
-    'SEM_LOT_UNITS', 'SEM_EXPIRY_DATE',
+    'EXCH_ID', 'INSTRUMENT',
+    'UNDERLYING_SYMBOL','SECURITY_ID',
+    'LOT_SIZE', 'SM_EXPIRY_DATE', 'STRIKE_PRICE','OPTION_TYPE'
 ]
 
 SEG_EXCHANGE_SUFFIX = {
@@ -58,162 +47,44 @@ SEG_EXCHANGE_SUFFIX = {
 OPT_SEGMENTS = frozenset({'OPTSTK', 'OPTIDX', 'OPTFUT'})
 
 # ───────────────────────────────────────
-# Credentials
-# ───────────────────────────────────────
-def _load_credentials(path: Path) -> tuple[str, str]:
-    try:
-        with open(path, 'rb') as f:
-            data = tomllib.load(f)
-        client_id    = data.get('CLIENT_ID', '').strip()
-        access_token = data.get('ACCESS_TOKEN', '').strip()
-        if not client_id or not access_token:
-            raise ValueError(f'{path} must contain CLIENT_ID and ACCESS_TOKEN.')
-        return client_id, access_token
-    except Exception as exc:
-        print(f'Error reading credentials from {path}: {exc}')
-        return '', ''
-
-
-CLIENT_ID, ACCESS_TOKEN = _load_credentials(ACCESS_FILE_PATH)
-
-try:
-    from dhanhq import dhanhq, DhanContext  # noqa: E402
-    if CLIENT_ID and ACCESS_TOKEN:
-        _dhan_ctx = DhanContext(CLIENT_ID, ACCESS_TOKEN)
-        _dhan_api = dhanhq(_dhan_ctx)
-    else:
-        _dhan_api = None
-except ImportError:
-    _dhan_api = None
-
-API_HEADERS = {
-    'access-token': ACCESS_TOKEN,
-    'Content-Type': 'application/json',
-    'Accept':       'application/json',
-}
-
-# ───────────────────────────────────────
 # Pure utility helpers
 # ───────────────────────────────────────
 def _signal_to_opt(signal: str) -> str:
     """'BUY' → 'CE', 'SELL' → 'PE'."""
     return 'CE' if signal == 'BUY' else 'PE'
 
-
-def _format_expiry(expiry_date, fmt: str) -> str:
-    if not expiry_date:
-        return ''
-    date_part = str(expiry_date).split()[0]
-    try:
-        return datetime.strptime(date_part, '%Y-%m-%d').strftime(fmt)
-    except ValueError:
-        return ''
-
-
-def build_option_symbol(base: str, expiry_date, strike: int,
-                        opt_type: str, fmt: str) -> str:
-    return f'{base}-{_format_expiry(expiry_date, fmt)}-{strike}-{opt_type}'
-
-
 def _adjust_price(base: float, perc: float, signal: str) -> float:
     if signal == 'BUY':
         return math.ceil(base * (1 + perc / 100))
     return math.floor(base * (1 - perc / 100))
 
-
 # ───────────────────────────────────────
 # Fallback strike helpers
 # ───────────────────────────────────────
-
-# Standard exchange strike steps in ascending order — shared with price_strike_calc
 _FALLBACK_STEPS = (1, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1_000, 5_000)
 
-
 def _next_round_step(current_step: int) -> Optional[int]:
-    """
-    Return the first standard step strictly larger than *current_step*.
-
-    Used to escalate to a rounder grid when an auto-calculated strike
-    is not listed in the scrip master.
-
-    Examples
-    --------
-    50  → 100   (stock/NIFTY step=50 → try 100)
-    100 → 200   (BANKNIFTY step=100 → try 200)
-    20  → 25    (SBIN step=20 → try 25)
-    """
     for s in _FALLBACK_STEPS:
         if s > current_step:
             return s
     return None
 
-
-def _parse_option_symbol(symbol: str) -> Optional[tuple[str, str, int, str]]:
-    """
-    Parse 'BASE-expiry-STRIKE-TYPE' from the right.
-
-    Splits on the rightmost 3 hyphens so base names with hyphens
-    (e.g. 'M&M-FIN') are handled correctly.
-
-    Returns (base, expiry_str, strike_int, opt_type) or None.
-    """
-    parts = symbol.rsplit('-', 3)
-    if len(parts) != 4:
-        return None
-    base, expiry, strike_str, opt_type = parts
-    if opt_type not in ('CE', 'PE'):
-        return None
-    try:
-        return base, expiry, int(strike_str), opt_type
-    except ValueError:
-        return None
-
-
-def _build_fallback_symbol(option_symbol: str) -> Optional[str]:
-    """
-    Return a new option symbol with a rounder strike, or None if
-    no better alternative exists.
-
-    Algorithm
-    ---------
-    1. Parse base, expiry, strike, opt_type from the symbol string.
-    2. Re-derive the instrument's standard step via get_strike_interval
-       (using the strike as a close proxy for entry price).
-    3. Escalate to the next standard step with _next_round_step.
-    4. Round CE strikes DOWN, PE strikes UP to the new step.
-    5. Return None if the strike is unchanged (already on that grid).
-
-    Examples
-    --------
-    'ASIANPAINT-May2026-2550-CE' → 'ASIANPAINT-May2026-2500-CE'  (50→100)
-    'TVSMOTOR-May2026-3650-PE'   → 'TVSMOTOR-May2026-3700-PE'    (50→100)
-    'CRUDEOIL-19May2026-6475-PE' → 'CRUDEOIL-19May2026-6500-PE'  (50→100)
-    'NATURALGAS-May2026-185-CE'  → 'NATURALGAS-May2026-180-CE'   (10→20)
-    'NIFTY-May2026-22500-CE'     → None  (22500 % 100 == 0, unchanged)
-    """
-    parsed = _parse_option_symbol(option_symbol)
-    if parsed is None:
-        return None
-    base, expiry, strike, opt_type = parsed
-
-    orig_step = get_strike_interval(base, strike)   # strike ≈ entry price
+def _get_fallback_strike(base: str, strike: float, opt_type: str) -> Optional[float]:
+    orig_step = get_strike_interval(base, strike)
     fb_step   = _next_round_step(orig_step)
+    
     if fb_step is None:
         return None
 
     if opt_type == 'CE':
-        new_strike = int(math.floor(strike / fb_step) * fb_step)
-    else:  # PE
-        new_strike = int(math.ceil(strike / fb_step) * fb_step)
+        new_strike = math.floor(strike / fb_step) * fb_step
+    else:  
+        new_strike = math.ceil(strike / fb_step) * fb_step
 
-    if new_strike == strike:
-        return None
-
-    return f'{base}-{expiry}-{new_strike}-{opt_type}'
-
+    return float(new_strike) if new_strike != strike else None
 
 # ───────────────────────────────────────
-# Price levels
+# Price levels & Data Classes
 # ───────────────────────────────────────
 @dataclass
 class PriceLevels:
@@ -223,17 +94,6 @@ class PriceLevels:
     target:    float
     trail:     float
 
-
-def compute_price_levels(raw_entry: float, signal: str) -> PriceLevels:
-    entry     = _adjust_price(raw_entry, ENTRY_PRICE_PERC, signal)
-    limit     = _adjust_price(entry, LIMIT_PRICE_PERC, signal)
-    stop_loss = _adjust_price(entry, STOP_LOSS_PERC,
-                              'SELL' if signal == 'BUY' else 'BUY')
-    target    = _adjust_price(entry, TARGET_PERC, signal)
-    trail     = math.ceil(entry * STOP_TRAIL_PERC / 100)
-    return PriceLevels(entry, limit, stop_loss, target, trail)
-
-
 def compute_quantity(trade_amount: float, price: float,
                      lot_size: int, base_quant: int) -> int:
     if trade_amount > 0 and price > 0:
@@ -241,13 +101,9 @@ def compute_quantity(trade_amount: float, price: float,
         return lots * lot_size
     return base_quant * lot_size
 
-
-# ───────────────────────────────────────
-# Instrument dataclass
-# ───────────────────────────────────────
 @dataclass
 class Instrument:
-    symb:         str
+    symb:         str   
     exch:         str
     seg:          str
     expiry_date:  str   = ''
@@ -255,14 +111,15 @@ class Instrument:
     quant:        int   = 1
     entry_val:    float = 0.0
     trade_amount: float = 0.0
-
+    strike:       float = 0.0
+    opt_type:     str   = ''
 
 # ───────────────────────────────────────
-# SymbolsConfig — hot-reloads on file change
+# Config Managers
 # ───────────────────────────────────────
 class SymbolsConfig:
     def __init__(self, path: Path):
-        self._path:   Path           = path
+        self._path:   Path            = path
         self._mtime:  Optional[float] = None
         self._config: dict            = {}
 
@@ -287,124 +144,174 @@ class SymbolsConfig:
         except Exception as exc:
             print(f'Failed to parse TOML config: {exc}')
 
-
 # ───────────────────────────────────────
-# ScripMaster — loads & indexes Dhan CSV
+# ScripMaster
 # ───────────────────────────────────────
 class ScripMaster:
-    def __init__(self):
-        self._df: Optional[pd.DataFrame] = None
+    def __init__(self, refresh_master_scrip=False):
+        self._eq_index:     Optional[dict] = None  
+        self._opt_index:    Optional[dict] = None  
+        self._expiry_index: Optional[dict] = None  
+        self._ensure_loaded(refresh_master_scrip)
 
-    def _ensure_loaded(self):
-        if self._df is not None:
+    def _ensure_loaded(self, refresh_master_scrip=False):
+        if self._eq_index is not None:
             return
-        if not LOCAL_CSV.exists():
-            print(f'{LOCAL_CSV} not found. Downloading...')
-            if _dhan_api:
-                _dhan_api.fetch_security_list('compact', str(LOCAL_CSV))
-            self._load_and_save(save_filtered=True)
+        if not LOCAL_CSV.exists() or refresh_master_scrip:
+            print(f'Rebuild {LOCAL_CSV}. Downloading segments...')
+            raw_df = self._download_segments()
+            if raw_df is None:
+                print('Failed to download all scrip master segments.')
+                return
+            self._save_and_index(raw_df)
         else:
-            self._load_and_save(save_filtered=False)
+            self._index_from_csv()
 
-    def _load_and_save(self, *, save_filtered: bool):
-        chunks = []
+    def _download_segments(self) -> Optional[pd.DataFrame]:
+        import io
+        frames = []
+        for segment in INSTRUMENT_SEGMENTS:
+            url = INSTRUMENT_URL.format(segment=segment)
+            try:
+                resp = requests.get(url, timeout=30)
+                resp.raise_for_status()
+                
+                # OPTIMIZATION: Only parse columns we actually need
+                df = pd.read_csv(
+                    io.StringIO(resp.text), 
+                    usecols=lambda c: c in SCRIP_COLS,
+                    low_memory=False
+                )
+                
+                # OPTIMIZATION: Immediately filter rows to save memory before concatenation
+                if 'EXCH_ID' in df.columns and 'INSTRUMENT' in df.columns:
+                    mask = df['EXCH_ID'].isin(FILTER_EXCH) & df['INSTRUMENT'].isin(FILTER_SEG)
+                    df = df[mask]
+
+                print(f'Downloaded and filtered {segment}: {len(df)} rows')
+                frames.append(df)
+            except Exception as exc:
+                print(f'Failed to download {segment} from {url}: {exc}')
+        
+        if not frames:
+            return None
+            
+        combined = pd.concat(frames, ignore_index=True)
+        print(f'Combined segments: {len(combined)} total rows')
+        return combined
+
+    def _save_and_index(self, df: pd.DataFrame):
+        missing = [c for c in SCRIP_COLS if c not in df.columns]
+        if missing:
+            print(f'Downloaded data is missing columns: {missing}')
+            return
+
+        df.to_csv(LOCAL_CSV, index=False)
+        print(f'Saved filtered scrip master → {LOCAL_CSV}')
+        
+        eq_index, opt_index, expiry_index = {}, {}, {}
+        self._fold_chunk(df, eq_index, opt_index, expiry_index)
+        self._eq_index     = eq_index
+        self._opt_index    = opt_index
+        self._expiry_index = expiry_index
+        print(f'Scrip master indexed (equity={len(eq_index)}, options={len(opt_index)} keys).')
+
+    def _index_from_csv(self):
+        eq_index, opt_index, expiry_index = {}, {}, {}
         try:
-            with pd.read_csv(LOCAL_CSV, usecols=SCRIP_COLS,
-                             chunksize=50_000, low_memory=False) as reader:
+            with pd.read_csv(LOCAL_CSV, usecols=SCRIP_COLS, chunksize=50_000, low_memory=False) as reader:
                 for chunk in reader:
-                    mask = (
-                        chunk['SEM_EXM_EXCH_ID'].isin(FILTER_EXCH) &
-                        chunk['SEM_INSTRUMENT_NAME'].isin(FILTER_SEG)
-                    )
-                    filtered = chunk.loc[mask]
-                    if not filtered.empty:
-                        chunks.append(filtered)
+                    self._fold_chunk(chunk, eq_index, opt_index, expiry_index)
         except FileNotFoundError:
             print(f'Error: {LOCAL_CSV} missing, unable to load scrip master.')
             return
-        if not chunks:
+        except Exception as exc:
+            print(f'Error loading scrip master: {exc}')
             return
-        df = pd.concat(chunks, ignore_index=True)
-        df['_EXPIRY_DATE_STR'] = (
-            df['SEM_EXPIRY_DATE'].astype(str).str.split().str[0]
-        )
-        df.set_index(
-            ['SEM_EXM_EXCH_ID', 'SEM_INSTRUMENT_NAME', 'SEM_TRADING_SYMBOL'],
-            inplace=True,
-        )
-        df.sort_index(inplace=True)
-        self._df = df
-        if save_filtered:
-            df.reset_index().to_csv(LOCAL_CSV, index=False)
-            print(f'Saved filtered scrip master to {LOCAL_CSV}.')
-        print('Scrip master loaded.')
+            
+        self._eq_index     = eq_index
+        self._opt_index    = opt_index
+        self._expiry_index = expiry_index
+        print(f'Scrip master loaded (equity={len(eq_index)}, options={len(opt_index)} keys).')
 
-    def lookup(self, symbol: str, exch: str, seg: str,
-               expiry_date: str = '', *, silent: bool = False
-               ) -> tuple[Optional[str], int]:
-        """
-        Look up (security_id, lot_size) for an instrument.
+    @staticmethod
+    def _fold_chunk(chunk: pd.DataFrame, eq_index: dict, opt_index: dict, expiry_index: dict) -> None:
+        if chunk.empty:
+            return
+        
+        expiry_strs = chunk['SM_EXPIRY_DATE'].astype(str).str.split().str[0]
+        eq_mask     = chunk['INSTRUMENT'] == 'EQUITY'
 
-        Parameters
-        ----------
-        silent : suppress the 'not found' error log (used during
-                 fallback retries so only one final message is printed).
-        """
+        for row in chunk[eq_mask].itertuples(index=False):
+            eq_index[(row.EXCH_ID, row.UNDERLYING_SYMBOL)] = (str(row.SECURITY_ID), int(row.LOT_SIZE))
+
+        for row, exp in zip(chunk[~eq_mask].itertuples(index=False), expiry_strs[~eq_mask]):
+            base_key = (row.EXCH_ID, row.INSTRUMENT, row.UNDERLYING_SYMBOL)
+            expiry_index.setdefault(base_key, set()).add(exp)
+
+            key = (
+                row.EXCH_ID, row.INSTRUMENT, row.UNDERLYING_SYMBOL, 
+                exp, float(row.STRIKE_PRICE), str(row.OPTION_TYPE).strip().upper()
+            )
+            
+            if key not in opt_index:
+                opt_index[key] = (str(row.SECURITY_ID), int(row.LOT_SIZE))
+
+    def lookup(self, inst: Instrument, *, silent: bool = False) -> tuple[Optional[str], int]:
         self._ensure_loaded()
-        if self._df is None:
-            return None, 0
-        try:
-            rows = self._df.loc[(exch, seg, symbol)]
-        except KeyError:
-            if not silent:
-                print(f'Error: {symbol} ({exch}/{seg}) not found in '
-                      'scrip master. Skipping.')
-            return None, 0
 
-        if isinstance(rows, pd.Series):
-            rows = rows.to_frame().T
+        if inst.seg == 'EQUITY':
+            result = self._eq_index.get((inst.exch, inst.symb)) if self._eq_index else None
+            if result is None:
+                if not silent:
+                    print(f'Error: {inst.symb} ({inst.exch}/{inst.seg}) not found in scrip master.')
+                return None, 0
+            return result
 
-        if expiry_date:
-            date_key = str(expiry_date).split()[0]
-            rows = rows[rows['_EXPIRY_DATE_STR'] == date_key]
+        date_key = inst.expiry_date
+        
+        if not date_key:
+            valid_expiries = self._expiry_index.get((inst.exch, inst.seg, inst.symb))
+            if not valid_expiries:
+                if not silent:
+                    print(f'Error: {inst.symb} ({inst.exch}/{inst.seg}) no expiries found in master.')
+                return None, 0
+            date_key = sorted(list(valid_expiries))[0]
+            inst.expiry_date = date_key
 
-        if rows.empty:
-            if not silent:
-                print(f'Error: {symbol} with expiry {expiry_date} not found. Skipping.')
-            return None, 0
+        key = (inst.exch, inst.seg, inst.symb, date_key, float(inst.strike), inst.opt_type)
+        result = self._opt_index.get(key)
+        
+        if result:
+            return result
 
-        row = rows.iloc[0]
-        return str(row['SEM_SMST_SECURITY_ID']), int(row['SEM_LOT_UNITS'])
+        if not silent:
+            print(f'Error: {inst.symb} {inst.opt_type} {inst.strike} EXP: {date_key} not found.')
+        return None, 0
 
-    def lookup_with_fallback(self, symbol: str, exch: str, seg: str,
-                              expiry_date: str = '') -> tuple[Optional[str], int, str]:
-        """
-        Look up an instrument, automatically retrying once with a
-        rounder strike when the first lookup fails (option segments only).
-
-        Returns (security_id, lot_size, resolved_symbol).
-        resolved_symbol may differ from symbol when a fallback was used.
-        """
-        sec_id, lot_size = self.lookup(symbol, exch, seg, expiry_date, silent=True)
+    def lookup_with_fallback(self, inst: Instrument) -> tuple[Optional[str], int]:
+        sec_id, lot_size = self.lookup(inst, silent=True)
         if sec_id is not None:
-            return sec_id, lot_size, symbol
+            return sec_id, lot_size
 
-        # Only attempt fallback for option symbols
-        if seg not in OPT_SEGMENTS:
-            print(f'Error: {symbol} ({exch}/{seg}) not found in scrip master. Skipping.')
-            return None, 0, symbol
+        if inst.seg not in OPT_SEGMENTS:
+            print(f'Error: {inst.symb} ({inst.exch}/{inst.seg}) not found in scrip master. Skipping.')
+            return None, 0
 
-        fb_symbol = _build_fallback_symbol(symbol)
-        if fb_symbol:
-            sec_id, lot_size = self.lookup(fb_symbol, exch, seg, expiry_date, silent=True)
+        fb_strike = _get_fallback_strike(inst.symb, inst.strike, inst.opt_type)
+        if fb_strike:
+            original_strike = inst.strike
+            inst.strike = fb_strike 
+            sec_id, lot_size = self.lookup(inst, silent=True)
+            
             if sec_id is not None:
-                print(f'[fallback] {symbol} → {fb_symbol}')
-                return sec_id, lot_size, fb_symbol
+                print(f'[fallback] {inst.symb} strike {original_strike} → {fb_strike}')
+                return sec_id, lot_size
+            
+            inst.strike = original_strike 
 
-        # Both attempts failed
-        print(f'Error: {symbol} ({exch}/{seg}) not found in scrip master. Skipping.')
-        return None, 0, symbol
-
+        print(f'Error: {inst.symb} {inst.strike} {inst.opt_type} not found in scrip master. Skipping.')
+        return None, 0
 
 # ───────────────────────────────────────
 # Core Dhan API class
@@ -412,21 +319,57 @@ class ScripMaster:
 class DhanTrader:
     """Object-oriented wrapper managing state, session, config, and orders."""
 
-    def __init__(self):
-        self.session = requests.Session()
+    def __init__(self, refresh_master_scrip=False):
         self.cfg     = SymbolsConfig(SYMBOLS_CONFIG)
-        self.scrip   = ScripMaster()
+        self.scrip   = ScripMaster(refresh_master_scrip)
         self.traded_this_scan: set = set()
+        
+        self.proxy_manager = SSHProxyManager()
+        # Initialize Session
+        self.session = requests.Session()
+        
+        # Apply Proxy if configured
+        if self.cfg.get('use_proxy', False):
+            proxy_url = self.cfg.get('proxy_url', 'socks5h://localhost:9090')
+            self.session.proxies = {
+                'http': proxy_url,
+                'https': proxy_url
+            }
+            print(f"Network proxy applied: {proxy_url}")
 
-    # ── Session ──────────────────────────
+        # State: Credentials & Headers
+        self.client_id, self.access_token = self._load_credentials(ACCESS_FILE_PATH)
+        self.api_headers = {
+            'access-token': self.access_token,
+            'Content-Type': 'application/json',
+            'Accept':       'application/json',
+        }
+
+        # State: Trading Adjustments (Loaded dynamically)
+        self.entry_perc      = self.cfg.get('entry_price_perc', 0.1)
+        self.limit_perc      = self.cfg.get('limit_price_perc', 0.2)
+        self.target_perc     = self.cfg.get('target_perc', 4.0)
+        self.stop_loss_perc  = self.cfg.get('stop_loss_perc', 0.7)
+        self.stop_trail_perc = self.cfg.get('stop_trail_perc', 0.5)
+
+    def _load_credentials(self, path: Path) -> tuple[str, str]:
+        try:
+            with open(path, 'rb') as f:
+                data = tomllib.load(f)
+            client_id    = data.get('CLIENT_ID', '').strip()
+            access_token = data.get('ACCESS_TOKEN', '').strip()
+            if not client_id or not access_token:
+                raise ValueError(f'{path} must contain CLIENT_ID and ACCESS_TOKEN.')
+            return client_id, access_token
+        except Exception as exc:
+            print(f'Error reading credentials from {path}: {exc}')
+            return '', ''
+
     def begin_session(self):
-        """Prepare the trader for a new scan cycle."""
         self.cfg.refresh()
         self.traded_this_scan.clear()
 
-    # ── Config helpers ───────────────────
     def _defaults(self) -> dict:
-        """Read top-level defaults from config (single access point)."""
         return {
             'expiry':       self.cfg.get('def_expiry_date', ''),
             'quant':        self.cfg.get('def_quantity', 1),
@@ -434,110 +377,98 @@ class DhanTrader:
             'order_mode':   self.cfg.get('def_order_mode', ''),
         }
 
-    # ── Shared option-instrument builder ─
-    def _build_opt_instrument(
-        self,
-        sym_data:    dict,
-        base_symb:   str,
-        expiry:      str,
-        signal:      str,
-        entry_val:   float,
-        exch:        str,
-        seg:         str,
-        def_quant:   int,
-        expiry_fmt:  str,
-    ) -> Instrument:
-        """
-        Build an Instrument for any option segment (OPTIDX / OPTSTK / OPTFUT).
+    def _compute_price_levels(self, raw_entry: float, signal: str) -> PriceLevels:
+        entry     = _adjust_price(raw_entry, self.entry_perc, signal)
+        limit     = _adjust_price(entry, self.limit_perc, signal)
+        stop_loss = _adjust_price(entry, self.stop_loss_perc, 'SELL' if signal == 'BUY' else 'BUY')
+        target    = _adjust_price(entry, self.target_perc, signal)
+        trail     = math.ceil(entry * self.stop_trail_perc / 100)
+        return PriceLevels(entry, limit, stop_loss, target, trail)
 
-        sym_data  : per-symbol overrides from the TOML config (may be empty).
-        base_symb : underlying name used for auto strike calculation.
-        expiry    : section-level default expiry (overridden by sym_data).
-        expiry_fmt: strftime format for the exchange ('%b%Y' NSE, '%d%b%Y' MCX).
-        """
+    def _build_opt_instrument(
+        self, sym_data: dict, base_symb: str, expiry: str,
+        signal: str, entry_val: float, exch: str, seg: str, def_quant: int
+    ) -> Instrument:
         expiry   = sym_data.get('expiry_date', expiry)
         opt_type = _signal_to_opt(signal)
 
-        # Strike resolution priority:
-        #   1. explicit 'call_strike' / 'put_strike' key in config
-        #   2. generic 'strike' key
-        #   3. auto-calculated from entry price
         auto_strike = get_price_strike(base_symb, entry_val, signal)
         strike = sym_data.get('strike', auto_strike)
         sig_key = 'call_strike' if signal == 'BUY' else 'put_strike'
         strike = sym_data.get(sig_key, strike)
 
-        final_symb = build_option_symbol(
-            sym_data.get('symbol', base_symb), expiry, strike, opt_type, expiry_fmt
-        )
+        expiry = str(expiry).split()[0] if expiry else None
+
         return Instrument(
-            symb=final_symb, exch=exch, seg=seg,
-            expiry_date=expiry, signal='BUY',
+            symb=sym_data.get('symbol', base_symb), 
+            exch=exch, 
+            seg=seg,
+            expiry_date=expiry, 
+            signal='BUY', 
             quant=sym_data.get('quantity', def_quant),
+            strike=float(strike),
+            opt_type=opt_type
         )
 
-    # ── Exchange resolvers ────────────────
+    def _resolve_opt_section(
+        self, section: dict, symb: str, signal: str, entry_val: float,
+        exch: str, seg: str, dfl: dict, *, sym_data: Optional[dict] = None
+    ) -> Optional[Instrument]:
+        sect_cfg = section.get('config', {})
+
+        if sect_cfg.get('order_mode', dfl['order_mode']) != 'OPT':
+            return None
+
+        if sym_data is None:
+            sym_data = section.get('symbols', {}).get(symb) or {}
+
+        expiry = sect_cfg.get('expiry_date', dfl['expiry'])
+        return self._build_opt_instrument(
+            sym_data, symb, expiry, signal, entry_val,
+            exch=exch, seg=seg, def_quant=dfl['quant'],
+        )
+
     def _resolve_nse(self, symb: str, signal: str,
                      entry_val: float, quant: int) -> Optional[Instrument]:
         dfl = self._defaults()
+        nse_cfg = self.cfg.get('nse', {})
 
-        # ── NSE Indices (OPTIDX) ──────────
-        nse_index = self.cfg.get('nse_index', {})
-        if symb in nse_index.get('symbols', {}):
-            idx_cfg = nse_index.get('config', {})
-            if idx_cfg.get('order_mode', dfl['order_mode']) != 'OPT':
-                return None
-            sym_data = nse_index['symbols'][symb] or {}
-            expiry   = idx_cfg.get('expiry_date', dfl['expiry'])
-            return self._build_opt_instrument(
-                sym_data, symb, expiry, signal, entry_val,
-                exch='NSE', seg='OPTIDX',
-                def_quant=dfl['quant'], expiry_fmt='%b%Y',
+        nse_indices = nse_cfg.get('indices', {})
+        if symb in nse_indices.get('symbols', {}):
+            return self._resolve_opt_section(
+                nse_indices, symb, signal, entry_val,
+                exch='NSE', seg='OPTIDX', dfl=dfl,
             )
 
-        # ── NSE Stocks (EQUITY / OPTSTK) ─
-        nse_stocks = self.cfg.get('nse_stocks', {})
+        nse_stocks = nse_cfg.get('stocks', {})
         stk_cfg    = nse_stocks.get('config', {})
         ord_mode   = stk_cfg.get('order_mode', dfl['order_mode'])
-        expiry     = stk_cfg.get('expiry_date', dfl['expiry'])
 
         if ord_mode == 'EQ':
             return Instrument(
                 symb=symb, exch='NSE', seg='EQUITY',
-                signal=signal, quant=quant,
-                entry_val=entry_val,
+                signal=signal, quant=quant, entry_val=entry_val,
                 trade_amount=stk_cfg.get('trade_amount', dfl['trade_amount']),
             )
 
         if ord_mode == 'OPT':
-            return self._build_opt_instrument(
-                sym_data={}, base_symb=symb, expiry=expiry,
-                signal=signal, entry_val=entry_val,
-                exch='NSE', seg='OPTSTK',
-                def_quant=dfl['quant'], expiry_fmt='%b%Y',
+            return self._resolve_opt_section(
+                nse_stocks, symb, signal, entry_val,
+                exch='NSE', seg='OPTSTK', dfl=dfl, sym_data={},
             )
-
         return None
 
     def _resolve_mcx(self, symb: str, signal: str,
                      entry_val: float) -> Optional[Instrument]:
         dfl = self._defaults()
-
-        mcx_comm = self.cfg.get('mcx_comm', {})
-        mcx_data = mcx_comm.get('symbols', {})
-        if symb not in mcx_data:
+        mcx_cfg = self.cfg.get('mcx', {})
+        mcx_comm = mcx_cfg.get('comm', {})
+        
+        if symb not in mcx_comm.get('symbols', {}):
             return None
-
-        comm_cfg = mcx_comm.get('config', {})
-        if comm_cfg.get('order_mode', dfl['order_mode']) != 'OPT':
-            return None
-
-        sym_data = mcx_data[symb] or {}
-        expiry   = comm_cfg.get('expiry_date', dfl['expiry'])
-        return self._build_opt_instrument(
-            sym_data, symb, expiry, signal, entry_val,
-            exch='MCX', seg='OPTFUT',
-            def_quant=dfl['quant'], expiry_fmt='%d%b%Y',
+        return self._resolve_opt_section(
+            mcx_comm, symb, signal, entry_val,
+            exch='MCX', seg='OPTFUT', dfl=dfl,
         )
 
     def resolve_instrument(self, symb: str, exch: str,
@@ -555,64 +486,85 @@ class DhanTrader:
             print(f'No valid segment configured for {symb} on {exch}. Skipping.')
         return inst
 
-    # ── Order placement ──────────────────
-    def _post_order(self, url: str, payload: dict, label: str = ''):
+
+    def _post_order(self, url: str, payload: dict, label: str = '', retry: bool = True):
         try:
-            resp = self.session.post(url, json=payload, headers=API_HEADERS)
+            # Added a 10-second timeout so a dead proxy doesn't hang the thread forever
+            resp = self.session.post(url, json=payload, headers=self.api_headers, timeout=10)
+            
             if resp.status_code != 200:
-                print(f'[✗] {label} Order failed ({resp.status_code})')
-        except Exception as exc:
+                print(f'[✗] {label} Order failed ({resp.status_code}): {resp.text}')
+            else:
+                print(f'[✓] {label} Order placed successfully.')
+
+        except RequestException as exc:
             print(f'[✗] {label} Network error: {exc}')
+            
+            if retry and self.cfg.get('use_proxy', False):
+                print(f'[!] Attempting to restart SSH proxy and retry {label} order...')
+                
+                # 1. Restart the proxy using your manager
+                self.proxy_manager.restart()
+                
+                # 2. Wait briefly to ensure the local port binds and SSH tunnel establishes
+                import time
+                time.sleep(2) 
+                
+                # 3. Retry the exact same order, but disable further retries
+                self._post_order(url, payload, label=f"{label} (Retry)", retry=False)
+            else:
+                print(f'[✗] {label} Order permanently failed due to network error.')
+
+
+
+    def _base_payload(self, signal: str, exchange_seg: str, sec_id: str) -> dict:
+        return {
+            'dhanClientId':     self.client_id,
+            'correlationId':    f'auto_{self.client_id}',
+            'transactionType':  signal,
+            'exchangeSegment':  exchange_seg,
+            'productType':      'INTRADAY',
+            'orderType':        'MARKET',
+            'validity':         'DAY',
+            'securityId':       sec_id,
+            'quantity':         0,
+            'price':            0,
+            'triggerPrice':     0,
+            'afterMarketOrder': False,
+            'amoTime':          'OPEN',
+            'targetPrice': 0,
+            'stopLossPrice': 0
+        }
 
     def place_super_order(
-        self, symb: str, exchange_seg: str, lot_size: int,
-        sec_id: str, signal: str, quant: int,
-        entry_val: float, trade_amount: float,
+        self, display_symb: str, exchange_seg: str, lot_size: int,
+        sec_id: str, signal: str, quant: int, entry_val: float, trade_amount: float,
     ):
-        if entry_val == 0:
-            payload = {
-                'dhanClientId':    CLIENT_ID,
-                'correlationId':   f'auto_{CLIENT_ID}',
-                'transactionType': signal,
-                'exchangeSegment': exchange_seg,
-                'productType':     'INTRADAY',
-                'orderType':       'MARKET',
-                'validity':        'DAY',
-                'securityId':      sec_id,
-                'quantity':        quant * lot_size,
-                'price':           0,
-            }
-            print(f'##### MARKET | {symb} | {sec_id} | {signal} | '
-                  f'qty={quant * lot_size}')
-            self._post_order(ORDER_URL, payload, label='MARKET')
-            return
-
-        levels     = compute_price_levels(entry_val, signal)
+        base = self._base_payload(signal, exchange_seg, sec_id)
+        levels = self._compute_price_levels(entry_val, signal)
         total_quant = compute_quantity(trade_amount, levels.entry, lot_size, quant)
-        print(f'##### SUPER | {symb} | {sec_id} | {signal} | '
+        
+        print(f'##### SUPER | {display_symb} | {sec_id} | {signal} | '
               f'qty={total_quant} | entry={levels.entry} | '
               f'amt={round(total_quant * levels.entry)}')
 
-        payload = {
-            'dhanClientId':    CLIENT_ID,
-            'correlationId':   f'auto_{CLIENT_ID}',
-            'transactionType': signal,
-            'exchangeSegment': exchange_seg,
-            'productType':     'INTRADAY',
-            'orderType':       'LIMIT',
-            'validity':        'DAY',
-            'securityId':      sec_id,
-            'quantity':        total_quant,
-            'price':           levels.limit,
-            'stopLossPrice':   levels.stop_loss,
-            'trailingJump':    levels.trail,
+        payload = base | {
+            'orderType':     'LIMIT',
+            'quantity':      total_quant,
+            'price':         levels.limit,
+            'stopLossPrice': levels.stop_loss,
+            'trailingJump':  levels.trail,
         }
         self._post_order(SUPER_ORDER_URL, payload, label='SUPER')
 
-    # ── Main entry point ─────────────────
+    def place_market_order(self, display_symb, signal, exchange_seg, sec_id, quant, lot_size):
+        base = self._base_payload(signal, exchange_seg, sec_id)
+        payload = base | {'quantity': quant * lot_size}
+        print(f'##### MARKET | {display_symb} | {sec_id} | {signal} | qty={quant * lot_size}')
+        self._post_order(ORDER_URL, payload, label='MARKET')
+
     def fire_trade(self, symb: str, exch: str, signal: str,
                    quant: int = 1, entry_val: float = 0):
-        """Resolve, look up, and place a single trade."""
         trade_key = f'{exch}:{symb}:{signal}'
         if trade_key in self.traded_this_scan:
             print(f'[skip] {trade_key} already traded this scan cycle.')
@@ -624,21 +576,22 @@ class DhanTrader:
             return
 
         exchange_seg = f'{inst.exch}_{SEG_EXCHANGE_SUFFIX[inst.seg]}'
-
-        # lookup_with_fallback: tries original strike, then rounder strike,
-        # then gives up — all in one call, one final error log.
-        sec_id, lot_size, resolved_symb = self.scrip.lookup_with_fallback(
-            inst.symb, inst.exch, inst.seg, inst.expiry_date
-        )
+        sec_id, lot_size = self.scrip.lookup_with_fallback(inst)
         if sec_id is None:
             return
-        inst.symb = resolved_symb   # update to whichever symbol was found
 
-        self.place_super_order(
-            inst.symb, exchange_seg, lot_size, sec_id,
-            inst.signal, inst.quant, inst.entry_val, inst.trade_amount,
-        )
+        if inst.seg in OPT_SEGMENTS:
+            display_symb = f"{inst.symb} {inst.strike} {inst.opt_type} {inst.expiry_date}"
+        else:
+            display_symb = inst.symb
 
+        if inst.entry_val == 0:
+            self.place_market_order(display_symb, inst.signal, exchange_seg, sec_id, inst.quant, lot_size)
+        else:
+            self.place_super_order(
+                display_symb, exchange_seg, lot_size, sec_id,
+                inst.signal, inst.quant, inst.entry_val, inst.trade_amount,
+            )
 
 # ───────────────────────────────────────
 # Test Execution

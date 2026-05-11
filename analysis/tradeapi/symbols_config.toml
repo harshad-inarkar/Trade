@@ -1,54 +1,68 @@
 # Global Config
-
-def_expiry_date  = "2026-05-26"
+#def_expiry_date  = "2026-05-26"
 def_trade_amount = 10000
 def_quantity     = 1
 def_order_mode   = 'NA'
 
-[nse_stocks.config]
-	trade_amount = 20000
-    order_mode  = "EQ" # EQ / NA
+# ─────────────────────────────────────────────
+# Trade Level Percentages
+# ─────────────────────────────────────────────
+entry_price_perc = 0.1
+limit_price_perc = 0.2
+target_perc      = 4.0
+stop_loss_perc   = 0.7
+stop_trail_perc  = 0.5
+
+# ─────────────────────────────────────────────
+# Network & Proxy
+# ─────────────────────────────────────────────
+use_proxy = true
+proxy_url = "socks5h://localhost:9090"
+
+# ─────────────────────────────────────────────
+# NSE Configs
+# ─────────────────────────────────────────────
+[nse.stocks.config]
+    order_mode   = "OPT" # EQ / NA
+    trade_amount = 20000
     #expiry_date = "2026-05-26"
 
-# ─────────────────────────────────────────────
-# NSE Indices
-# ─────────────────────────────────────────────
-[nse_index.config]
+[nse.indices.config]
     order_mode = "OPT"  # FUT NA
 
-[nse_index.symbols.NIFTY]
-    expiry_date = "2026-05-12"
+[nse.indices.symbols.NIFTY]
+    #expiry_date = "2026-05-12"
 
-[nse_index.symbols.MIDCPNIFTY]
+[nse.indices.symbols.MIDCPNIFTY]
 
-[nse_index.symbols.BANKNIFTY]
+[nse.indices.symbols.BANKNIFTY]
 
 # ─────────────────────────────────────────────
-# MCX Commodities
+# MCX Configs
 # ─────────────────────────────────────────────
-[mcx_comm.config]
+[mcx.comm.config]
     order_mode = "OPT" # FUT NA
 
-[mcx_comm.symbols.CRUDEOIL]
+[mcx.comm.symbols.CRUDEOIL]
     symbol      = "CRUDEOILM"
     quantity    = 10
-    expiry_date = "2026-05-14"
+    # expiry_date = "2026-05-14"
 
-[mcx_comm.symbols.NATURALGAS]
+[mcx.comm.symbols.NATURALGAS]
     symbol      = "NATGASMINI"
     quantity    = 5
-    expiry_date = "2026-05-22"
+    # expiry_date = "2026-05-22"
     #put_strike  = 280
 
-[mcx_comm.symbols.GOLD]
+[mcx.comm.symbols.GOLD]
     symbol      = "GOLDM"
-    quantity    = 2
+    quantity    = 1
     expiry_date = "2026-05-29"
     #strike      = 140000
 
-[mcx_comm.symbols.SILVER]
+[mcx.comm.symbols.SILVER]
     symbol      = "SILVERM"
-    quantity    = 2
-    expiry_date = "2026-05-26"
+    quantity    = 1
     #strike      = 260000
     #call_strike = 270000
+    #expiry_date = "2026-05-26"

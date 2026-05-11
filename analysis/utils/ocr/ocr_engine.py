@@ -16,7 +16,7 @@ def get_api():
     return _thread_local.api
 
 # ─── Preprocessing ───────────────────────────────────────────────────────────
-def _preprocess(img: Image.Image) -> Image.Image:
+def _preprocess1(img: Image.Image) -> Image.Image:
     img = img.convert("L")
     img = ImageOps.invert(img)
     
@@ -25,6 +25,24 @@ def _preprocess(img: Image.Image) -> Image.Image:
     img = ImageOps.expand(img, border=30, fill="white")
     
     return img.point(lambda p: 255 if p > 140 else 0)
+
+
+def _preprocess(img: Image.Image) -> Image.Image:
+    # 1. Convert to grayscale
+    img = img.convert("L")
+    
+    # 2. Invert (Dark mode white text -> Black text on white bg)
+    img = ImageOps.invert(img)
+    
+    # 3. Upscale to give Tesseract more pixel density to work with
+    scale = 3
+    img = img.resize((img.width * scale, img.height * scale), resample=Image.LANCZOS)
+    
+    # 4. Add padding (Tesseract struggles if text touches the edge)
+    img = ImageOps.expand(img, border=30, fill="white")
+    
+    # Return the grayscale image directly. Do NOT force a manual binary threshold.
+    return img
 
 # ─── Public API ──────────────────────────────────────────────────────────────
 def ocr_pil(img: Image.Image, whitelist: str = "") -> str:

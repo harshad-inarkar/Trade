@@ -12,12 +12,11 @@ import re, math
 import threading
 import time
 
-from utils.data.paths import OUT_DIR, NSE_INTRADAY_DIR_PATH, ROOT_DIR
+from utils.data.paths import OUT_DIR, NSE_INTRADAY_DIR_PATH, TEMPLATES_PARENT_DIR
 
 
 # ================= CONFIG =================
 
-TEMPLATES_PARENT_DIR = os.path.join(ROOT_DIR,'web_scripts/templates')
 
 RELOAD_INTERVAL_MINUTES = None
 

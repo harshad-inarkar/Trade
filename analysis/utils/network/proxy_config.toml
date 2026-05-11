@@ -1,0 +1,6 @@
+[proxy]
+host = "80.225.247.216"
+user = "ubuntu"
+key_path = "~/.ssh/oracle_dhan.key"
+port = 9090
+restart_delay = 1.0
