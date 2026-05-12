@@ -202,7 +202,7 @@ class ScannerVision:
         region = arr[y0::15, x0:x1:5].astype(np.int32) 
         if region.size == 0: return -1
 
-        r, g, b = region[..., 0], region[..., 1], region[..., 2]
+        r, g, _ = region[..., 0], region[..., 1], region[..., 2]
         sat   = region.max(axis=2) - region.min(axis=2)
         green = (sat >= self.min_saturation) & (g - r >= self.green_bias) & (g > 80)
         red   = (sat >= self.min_saturation) & (r - g >= self.red_bias)   & (r > 80)

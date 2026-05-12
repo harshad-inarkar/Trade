@@ -15,17 +15,6 @@ def get_api():
             _thread_local.api = None
     return _thread_local.api
 
-# ─── Preprocessing ───────────────────────────────────────────────────────────
-def _preprocess1(img: Image.Image) -> Image.Image:
-    img = img.convert("L")
-    img = ImageOps.invert(img)
-    
-    scale = 3
-    img = img.resize((img.width * scale, img.height * scale), resample=Image.LANCZOS)
-    img = ImageOps.expand(img, border=30, fill="white")
-    
-    return img.point(lambda p: 255 if p > 140 else 0)
-
 
 def _preprocess(img: Image.Image) -> Image.Image:
     # 1. Convert to grayscale
@@ -36,7 +25,7 @@ def _preprocess(img: Image.Image) -> Image.Image:
     
     # 3. Upscale to give Tesseract more pixel density to work with
     scale = 3
-    img = img.resize((img.width * scale, img.height * scale), resample=Image.LANCZOS)
+    img = img.resize((img.width * scale, img.height * scale), resample=Image.Resampling.LANCZOS)
     
     # 4. Add padding (Tesseract struggles if text touches the edge)
     img = ImageOps.expand(img, border=30, fill="white")

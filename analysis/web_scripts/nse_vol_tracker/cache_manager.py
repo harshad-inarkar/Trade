@@ -290,6 +290,7 @@ class CacheManager:
             # Corner case: same interval re-read (corrected/latest file same timestamp).
             # Overwrite old_total in-place: fill from old_total-1 anchor (slot 0),
             # write starting at old_total (n_new covers old_total..total).
+            fill_from_idx=old_total
             if from_idx == old_total:
                 self._seed_slot = 0
                 fill_from_idx   = old_total      # fill_gaps anchor includes old_total-1
@@ -393,7 +394,7 @@ class CacheManager:
             total      = res['total']
             ts_list    = res['ts_list']
             tsf_list   = res['tsf_list']
-            odi        = res['odi']
+            # odi        = res['odi']
 
             n_new = total - from_index + 1
             if n_new <= 0:

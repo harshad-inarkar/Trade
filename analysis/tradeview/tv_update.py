@@ -19,9 +19,16 @@ from utils.utility import wait_next_wall_clock
 if sys.platform == "darwin":
     try:
         import AppKit
-        info = AppKit.NSBundle.mainBundle().infoDictionary()
-        info["LSUIElement"] = "1"
+        
+        # Initialize the shared application instance
+        app = AppKit.NSApplication.sharedApplication()
+        
+        # Set activation policy to 'Accessory' (1) 
+        # This acts exactly like LSUIElement=1 (Hides Dock icon, runs in background)
+        app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
+        
     except ImportError:
+        # Fails silently if pyobjc-framework-AppKit is not installed
         pass
 
 # Safety mechanism

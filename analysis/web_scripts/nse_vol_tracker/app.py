@@ -31,6 +31,8 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
+import heapq
+import csv as _csv
 
 import argparse
 import uvicorn
@@ -137,17 +139,14 @@ def dump_index():
 
 
 def dump_merge(tf,filt: str, sort_key_list,ref_t: str, order_by: str, from_web: bool = False):
-    import heapq
-    import csv as _csv
-    from collections import defaultdict
-
-    fut_flag     = bool(filt)
+ 
+    # fut_flag     = bool(filt)
 
     top          = 40
     sym_idx      = INDEX_FIELDS.index('symbol')
     
 
-    desc           = order_by != 'asc'
+    # desc           = order_by != 'asc'
     fut_str        =  '' #'1!' if fut_flag else ''
     initiator      = 'Web' if from_web else 'Refresh'
 
