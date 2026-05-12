@@ -92,7 +92,7 @@ class ScriptManager:
             
             # Add Start Separator safely
             start_time = time.strftime('%Y-%m-%d %H:%M:%S')
-            self.log_handles[name].write(f"{'-' * 60}\nStart: {start_time}\n{'-' * 60}\n")
+            self.log_handles[name].write(f"{'#' * 60}\nStart: {start_time}\n{'#' * 60}\n")
        
             out_target = self.log_handles[name]
 
