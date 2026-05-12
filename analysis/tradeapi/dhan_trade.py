@@ -16,6 +16,8 @@ from utils.data.paths import OUT_DIR
 from tradeapi.price_strike_calc import get_price_strike, get_strike_interval
 
 from utils.network.start_proxy import SSHProxyManager
+from datetime import datetime
+
 
 # ───────────────────────────────────────
 # Paths & Pure Constants
@@ -59,6 +61,12 @@ def _adjust_price(base: float, perc: float, signal: str) -> float:
     if signal == 'BUY':
         return math.ceil(base * (1 + perc / 100))
     return math.floor(base * (1 - perc / 100))
+
+
+def _get_today_str() -> str:
+    """Returns today's date in IST as 'YYYY-MM-DD' for fast string comparison."""
+    return datetime.now().strftime('%Y-%m-%d')
+
 
 # ───────────────────────────────────────
 # Fallback strike helpers
@@ -200,7 +208,38 @@ class ScripMaster:
         print(f'Combined segments: {len(combined)} total rows')
         return combined
 
+
     def _save_and_index(self, df: pd.DataFrame):
+        missing = [c for c in SCRIP_COLS if c not in df.columns]
+        if missing:
+            print(f'Downloaded data is missing columns: {missing}')
+            return
+
+        # ─── OPTIMIZATION: Filter out expired options before saving ───
+        today_str = _get_today_str()
+        is_eq = df['INSTRUMENT'] == 'EQUITY'
+        
+        # Extract just the 'YYYY-MM-DD' part for comparison
+        expiry_dates = df['SM_EXPIRY_DATE'].astype(str).str.split().str[0]
+        
+        # Create a mask: Keep ALL Equity OR Keep Options that expire >= today
+        valid_mask = is_eq | (~is_eq & (expiry_dates >= today_str))
+        
+        # Apply the mask to drop expired rows instantly using C-backend
+        df = df[valid_mask].copy()
+        # ──────────────────────────────────────────────────────────────
+
+        df.to_csv(LOCAL_CSV, index=False)
+        print(f'Saved filtered scrip master → {LOCAL_CSV}')
+        
+        eq_index, opt_index, expiry_index = {}, {}, {}
+        self._fold_chunk(df, eq_index, opt_index, expiry_index)
+        self._eq_index     = eq_index
+        self._opt_index    = opt_index
+        self._expiry_index = expiry_index
+        print(f'Scrip master indexed (equity={len(eq_index)}, options={len(opt_index)} keys).')
+
+    def _save_and_index1(self, df: pd.DataFrame):
         missing = [c for c in SCRIP_COLS if c not in df.columns]
         if missing:
             print(f'Downloaded data is missing columns: {missing}')
@@ -241,11 +280,16 @@ class ScripMaster:
         
         expiry_strs = chunk['SM_EXPIRY_DATE'].astype(str).str.split().str[0]
         eq_mask     = chunk['INSTRUMENT'] == 'EQUITY'
+        today_str   = _get_today_str() # Calculate once per chunk
 
         for row in chunk[eq_mask].itertuples(index=False):
             eq_index[(row.EXCH_ID, row.UNDERLYING_SYMBOL)] = (str(row.SECURITY_ID), int(row.LOT_SIZE))
 
         for row, exp in zip(chunk[~eq_mask].itertuples(index=False), expiry_strs[~eq_mask]):
+            # FAST O(1) STRING COMPARISON
+            if exp < today_str:
+                continue  # Skip expired options completely!
+
             base_key = (row.EXCH_ID, row.INSTRUMENT, row.UNDERLYING_SYMBOL)
             expiry_index.setdefault(base_key, set()).add(exp)
 
@@ -257,7 +301,10 @@ class ScripMaster:
             if key not in opt_index:
                 opt_index[key] = (str(row.SECURITY_ID), int(row.LOT_SIZE))
 
+
+
     def lookup(self, inst: Instrument, *, silent: bool = False) -> tuple[Optional[str], int]:
+
         self._ensure_loaded()
 
         if inst.seg == 'EQUITY':
@@ -266,17 +313,22 @@ class ScripMaster:
                 if not silent:
                     print(f'Error: {inst.symb} ({inst.exch}/{inst.seg}) not found in scrip master.')
                 return None, 0
+
             return result
 
         date_key = inst.expiry_date
         
-        if not date_key:
-            valid_expiries = self._expiry_index.get((inst.exch, inst.seg, inst.symb))
-            if not valid_expiries:
-                if not silent:
-                    print(f'Error: {inst.symb} ({inst.exch}/{inst.seg}) no expiries found in master.')
-                return None, 0
-            date_key = sorted(list(valid_expiries))[0]
+        # If no date provided, OR the provided date is already expired -> Grab the nearest valid one
+        valid_expiries = self._expiry_index.get((inst.exch, inst.seg, inst.symb))
+        
+        if not valid_expiries:
+            if not silent:
+                print(f'Error: {inst.symb} ({inst.exch}/{inst.seg}) no expiries found in master.')
+            return None, 0
+
+        # Since the set only contains valid dates (filtered at load), [0] is the nearest future expiry
+        if not date_key or date_key not in valid_expiries:
+            date_key = sorted(valid_expiries)[0]
             inst.expiry_date = date_key
 
         key = (inst.exch, inst.seg, inst.symb, date_key, float(inst.strike), inst.opt_type)
@@ -288,6 +340,8 @@ class ScripMaster:
         if not silent:
             print(f'Error: {inst.symb} {inst.opt_type} {inst.strike} EXP: {date_key} not found.')
         return None, 0
+
+
 
     def lookup_with_fallback(self, inst: Instrument) -> tuple[Optional[str], int]:
         sec_id, lot_size = self.lookup(inst, silent=True)
@@ -514,7 +568,7 @@ class DhanTrader:
         except RequestException as exc:
             print(f'[✗] {label} Network error: {exc}')
             
-            if retry and self.cfg.get('use_proxy', False):
+            if retry:
                 print(f'[!] Attempting to restart SSH proxy and retry {label} order...')
                 self.proxy_manager.restart()
                 time.sleep(2) 
@@ -618,7 +672,7 @@ class DhanTrader:
             
         except RequestException as e:
             print(f"[✗] Network error fetching positions: {e}")
-            if retry and self.cfg.get('use_proxy', False):
+            if retry:
                 print('[!] Attempting to restart SSH proxy and retry fetching positions...')
                 self.proxy_manager.restart()
                 time.sleep(2)
@@ -655,7 +709,7 @@ class DhanTrader:
             
         except RequestException as e:
             print(f"[✗] Network error fetching super orders: {e}")
-            if retry and self.cfg.get('use_proxy', False):
+            if retry:
                 print('[!] Attempting to restart SSH proxy and retry fetching super orders...')
                 self.proxy_manager.restart()
                 time.sleep(2)
@@ -678,7 +732,7 @@ class DhanTrader:
                 
         except RequestException as e:
             print(f"  [✗] Network error cancelling {order_id}: {e}")
-            if retry and self.cfg.get('use_proxy', False):
+            if retry:
                 print(f'[!] Attempting to restart SSH proxy and retry cancelling {order_id}...')
                 self.proxy_manager.restart()
                 time.sleep(2)
@@ -711,7 +765,7 @@ class DhanTrader:
 if __name__ == '__main__':
     trader = DhanTrader()
     trader.begin_session()
-    trader.fire_trade('RELIANCE', 'NSE', 'BUY', quant=15)
+    trader.fire_trade('NIFTY', 'NSE', 'BUY', entry_val=23333,quant=15)
     
     # Run cleanup independently
     trader.clean_orphaned_orders()

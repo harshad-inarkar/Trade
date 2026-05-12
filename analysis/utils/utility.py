@@ -20,3 +20,5 @@ def wait_next_wall_clock(interval_min: int, buf: int = BUFFER_SECONDS):
     wait   = (target - datetime.now()).total_seconds()
     print(f"\n  Next scan at {target.strftime('%H:%M:%S')}  ({wait:.0f}s)")
     time.sleep(max(0, wait))
+    
+    

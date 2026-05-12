@@ -17,13 +17,15 @@ class ScriptManager:
     def __init__(self, config_filename="config.toml"):
         self.config_path = Path(__file__).parent / config_filename
         self.processes = {}
-        self.log_handles = {}  
-        self.max_bytes = MAX_LOG_SIZE_KB * 1024
+        self.log_handles = {} 
+        self.config = {} 
+        
         
         # Ensure log directory exists
         os.makedirs(log_root_dir, exist_ok=True)
         
         self.load_config()
+        self.max_bytes = self.config.get('max_log_size',MAX_LOG_SIZE_KB) * 1024
 
         # Always run the background log monitor since logging is always enabled
         self.monitor_thread = threading.Thread(target=self._monitor_log_sizes, daemon=True)
@@ -58,10 +60,11 @@ class ScriptManager:
                                 
                                 # Leave a breadcrumb so you know why the logs vanished
                                 timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-                                handle.write(f"[{timestamp}] Orchestrator: Log exceeded {MAX_LOG_SIZE_KB}KB and was auto-cleared.\n\n")
+                                handle.write(f"[{timestamp}] Orchestrator: Log exceeded {self.max_bytes/1024}KB and was auto-cleared.\n\n")
                                 handle.flush()
-                except Exception:
+                except Exception as exc:
                     # Fail silently in the background thread so we don't crash the orchestrator
+                    print(f'Error CLeaning File {name} {exc}')
                     pass
 
     def start(self, name):

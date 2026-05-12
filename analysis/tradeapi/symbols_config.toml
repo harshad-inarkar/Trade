@@ -1,5 +1,5 @@
 # Global Config
-#def_expiry_date  = "2026-05-26"
+def_expiry_date  = "2026-05-13"
 def_trade_amount = 10000
 def_quantity     = 1
 def_order_mode   = 'NA'

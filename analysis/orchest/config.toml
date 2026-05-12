@@ -1,3 +1,5 @@
+max_log_size = 50 #KB
+
 [scripts.app]
 module = "web_scripts.nse_vol_tracker.app"
 args = ["-ri", "3", "-dy", "14"]
@@ -8,4 +10,4 @@ args = ["-ri", "9"]
 
 [scripts.tv_scanner]
 module = "tradeview.tv_scanner"
-args = ["-ri", "3", "--debug", "-il"]
+args = ["-ri", "1", "--debug", "-il"]
