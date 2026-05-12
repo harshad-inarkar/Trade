@@ -18,13 +18,13 @@ class SSHProxyManager:
         
         # Extract configurations
         proxy_cfg = self.config.get("proxy", {})
-        self.host = proxy_cfg.get("host", "80.225.247.216")
-        self.user = proxy_cfg.get("user", "ubuntu")
-        self.port = proxy_cfg.get("port", 9090)
-        self.restart_delay = proxy_cfg.get("restart_delay", 2.0)
+        self.host = proxy_cfg.get("host",'')
+        self.user = proxy_cfg.get("user", "")
+        self.port = proxy_cfg.get("port",0)
+        self.restart_delay = proxy_cfg.get("restart_delay", 1)
         
         # Expand user path (e.g., ~/.ssh/...)
-        raw_key_path = proxy_cfg.get("key_path", "~/.ssh/oracle_dhan.key")
+        raw_key_path = proxy_cfg.get("key_path", '')
         self.key_path = Path(raw_key_path).expanduser()
 
     def _load_config(self) -> dict:

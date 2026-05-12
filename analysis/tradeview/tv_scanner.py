@@ -340,6 +340,11 @@ class TradeExecutor:
                 signal    = order['signal'],
                 entry_val = float(order.get('entry', 0)),
             )
+    
+    def clear_super_orders(self):
+        if  self.no_trade or not self.broker:
+            return
+        self.broker.clean_orphaned_orders()
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Main Application Controller
@@ -352,6 +357,7 @@ class TVScannerApp:
         self.rebuild_master   = args.rebuild_master_scrip
         self.reload_interval  = args.reload_interval
         self.new_setup        = args.new_setup
+        self.clear_superorders_flag = args.clear_orders
         self.buffer_seconds   = 7
         
         # Paths
@@ -489,6 +495,8 @@ class TVScannerApp:
 
             # Execute & Notify
             self.executor.place_orders(new_alerts)
+            if self.clear_superorders_flag:
+                self.executor.clear_super_orders()
 
             buys  = [r for r in new_alerts if r["signal"] == "BUY"]
             sells = [r for r in new_alerts if r["signal"] == "SELL"]
@@ -556,6 +564,8 @@ def main():
     p.add_argument("-il", "--ignore-lastseen", action="store_true", help="Ignore Last Seen")
     p.add_argument("-nt", "--no-trade", action="store_true", help="Don't Place Orders")
     p.add_argument("-rm", "--rebuild-master-scrip", action="store_true", help="Rebuild Master Scrip")
+    p.add_argument("-co", "--clear-orders", action="store_true", help="Clear Inactive Super Orders")
+
 
     args = p.parse_args()
     

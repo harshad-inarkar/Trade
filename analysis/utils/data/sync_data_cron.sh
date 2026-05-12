@@ -6,7 +6,7 @@ if [ -x /usr/libexec/path_helper ]; then
     eval `/usr/libexec/path_helper -s`
 fi
 
-MAX_SIZE_KB='10'
+MAX_SIZE_KB='100'
 nse_logs_dir="../../nse_data/logs"
 log_file="nse_remote_sync.log"
 

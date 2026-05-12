@@ -38,19 +38,19 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.templating import Jinja2Templates
 
-from data_processor import INDEX_FIELDS, SYMB_COL
-from cache_manager import CacheManager, MIN_TF, TF_KEYS
+from web_scripts.nse_vol_tracker.data_processor import INDEX_FIELDS, SYMB_COL
+from web_scripts.nse_vol_tracker.cache_manager import CacheManager, MIN_TF, TF_KEYS
 
 from utils.utility import wait_next_wall_clock
 
 from utils.data.paths import (
     ROOT_DIR, REMOTE_DIR, OUT_DIR,
     NSE_INTRADAY_DIR_PATH, REMOTE_INTRADAY_DIR_PATH,
-    NSE_DATA_DIR, INTRADAY_DIR, TEMPLATES_PARENT_DIR
+    _nse_data_dir, _intraday_dir, TEMPLATES_ROOT_DIR
 )
 
 from utils.data.sync_data import sync_data_args
-from sector_loader import load_sector_symbols, UNIQ_CATEGORIES_CSV, CATEGORIES_CSV
+from web_scripts.nse_vol_tracker.sector_loader import load_sector_symbols, UNIQ_CATEGORIES_CSV, CATEGORIES_CSV
 
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
@@ -75,7 +75,7 @@ CACHE = CacheManager()
 
 # Rebuilt at startup once the CLI --parent-dir / template path is known.
 # Defaulting here so type checkers are happy; overwritten before first request.
-templates = Jinja2Templates(directory=f'{TEMPLATES_PARENT_DIR}/template_vol')
+templates = Jinja2Templates(directory=f'{TEMPLATES_ROOT_DIR}/template_vol')
 
 
 # ── HELPERS ────────────────────────────────────────────────────────────────────
@@ -531,19 +531,19 @@ if __name__ == '__main__':
 
     if args.parent_dir:
         ROOT_DIR             = os.path.abspath(args.parent_dir)
-        NSE_INTRADAY_DIR_PATH  = f'{ROOT_DIR}/{NSE_DATA_DIR}/{INTRADAY_DIR}'
+        NSE_INTRADAY_DIR_PATH  = f'{ROOT_DIR}/{_nse_data_dir}/{_intraday_dir}'
 
     if args.remote_dir:
         REMOTE_DIR                 = os.path.abspath(args.remote_dir)
-        REMOTE_INTRADAY_DIR_PATH   = f'{REMOTE_DIR}/{NSE_DATA_DIR}/{INTRADAY_DIR}'
+        REMOTE_INTRADAY_DIR_PATH   = f'{REMOTE_DIR}/{_nse_data_dir}/{_intraday_dir}'
 
     merge_filter_ltp = args.filter_ltp
     merge_sort_key_list   = [args.sort_key1,args.sort_key2]
     last_n_days      = args.last_ndays
 
     # Point Jinja2 at the correct template folder (may depend on --parent-dir).
-    TEMPLATES_PARENT_DIR = os.path.join(ROOT_DIR,'web_scripts/templates')
-    templates = Jinja2Templates(directory=os.path.join(TEMPLATES_PARENT_DIR,'template_vol'))
+    TEMPLATES_ROOT_DIR = os.path.join(ROOT_DIR,'web_scripts/templates')
+    templates = Jinja2Templates(directory=os.path.join(TEMPLATES_ROOT_DIR,'template_vol'))
 
     if RELOAD_INTERVAL_MINUTES:
         threading.Thread(target=periodic_reload, daemon=True).start()

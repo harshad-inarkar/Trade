@@ -13,17 +13,12 @@ target_perc      = 4.0
 stop_loss_perc   = 0.7
 stop_trail_perc  = 0.5
 
-# ─────────────────────────────────────────────
-# Network & Proxy
-# ─────────────────────────────────────────────
-use_proxy = true
-proxy_url = "socks5h://localhost:9090"
 
 # ─────────────────────────────────────────────
 # NSE Configs
 # ─────────────────────────────────────────────
 [nse.stocks.config]
-    order_mode   = "OPT" # EQ / NA
+    order_mode   = "NA" # EQ / NA
     trade_amount = 20000
     #expiry_date = "2026-05-26"
 
@@ -41,7 +36,7 @@ proxy_url = "socks5h://localhost:9090"
 # MCX Configs
 # ─────────────────────────────────────────────
 [mcx.comm.config]
-    order_mode = "OPT" # FUT NA
+    order_mode = "NA" # FUT NA
 
 [mcx.comm.symbols.CRUDEOIL]
     symbol      = "CRUDEOILM"

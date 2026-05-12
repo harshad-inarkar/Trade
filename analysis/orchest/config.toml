@@ -1,0 +1,11 @@
+[scripts.app]
+module = "web_scripts.nse_vol_tracker.app"
+args = ["-ri", "3", "-dy", "14"]
+
+[scripts.tv_update]
+module = "tradeview.tv_update"
+args = ["-ri", "9"]
+
+[scripts.tv_scanner]
+module = "tradeview.tv_scanner"
+args = ["-ri", "3", "--debug", "-il"]

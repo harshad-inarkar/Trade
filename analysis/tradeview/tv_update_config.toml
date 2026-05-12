@@ -1,0 +1,8 @@
+[settings]
+reload_interval = 15
+buffer_seconds = 15
+
+[coordinates]
+indicator = [1076, 126]
+textbox = [1185, 299]
+ok = [1410, 764]

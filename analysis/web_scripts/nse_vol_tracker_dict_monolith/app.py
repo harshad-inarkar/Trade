@@ -1,8 +1,5 @@
 import bisect
-from itertools import filterfalse
-from operator import length_hint
 import os
-from typing import Any
 import glob
 from flask import Flask, render_template, jsonify, request
 from datetime import datetime, timedelta
@@ -12,7 +9,7 @@ import re, math
 import threading
 import time
 
-from utils.data.paths import OUT_DIR, NSE_INTRADAY_DIR_PATH, TEMPLATES_PARENT_DIR
+from utils.data.paths import OUT_DIR, NSE_INTRADAY_DIR_PATH, TEMPLATES_ROOT_DIR
 
 
 # ================= CONFIG =================
@@ -835,7 +832,7 @@ if __name__ == '__main__':
     load_data_once()
     print(f"⏱ Loading data took {time.time()-t0:.2f}s")
 
-    app.template_folder = f'{TEMPLATES_PARENT_DIR}/template_vol'
+    app.template_folder = f'{TEMPLATES_ROOT_DIR}/template_vol'
     app.config['TEMPLATES_AUTO_RELOAD'] = True
     app.jinja_env.auto_reload = True
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)

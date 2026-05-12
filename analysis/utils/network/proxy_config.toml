@@ -4,3 +4,4 @@ user = "ubuntu"
 key_path = "~/.ssh/oracle_dhan.key"
 port = 9090
 restart_delay = 1.0
+proxy_host = 'localhost'

@@ -3,6 +3,7 @@ dhan_trade.py — Dhan HQ automated order placement (Object-Oriented).
 """
 
 import math
+import time
 import requests
 from requests.exceptions import RequestException
 import pandas as pd
@@ -25,9 +26,10 @@ LOCAL_CSV        = Path(OUT_DIR) / 'scrip_master.csv'
 ACCESS_FILE_PATH = BASE_DIR / 'access_token.toml'
 
 ORDER_URL        = 'https://api.dhan.co/v2/orders'
+POSITIONS_URL    = 'https://api.dhan.co/v2/positions'
+SUPER_ORDER_URL  = 'https://api.dhan.co/v2/super/orders'
 INSTRUMENT_SEGMENTS = ['NSE_EQ', 'NSE_FNO', 'MCX_COMM']
 INSTRUMENT_URL   = 'https://api.dhan.co/v2/instrument/{segment}'
-SUPER_ORDER_URL  = 'https://api.dhan.co/v2/super/orders'
 
 FILTER_SEG  = frozenset({'EQUITY', 'OPTSTK', 'OPTIDX', 'OPTFUT'})
 FILTER_EXCH = frozenset({'NSE', 'MCX'})
@@ -176,14 +178,12 @@ class ScripMaster:
                 resp = requests.get(url, timeout=30)
                 resp.raise_for_status()
                 
-                # OPTIMIZATION: Only parse columns we actually need
                 df = pd.read_csv(
                     io.StringIO(resp.text), 
                     usecols=lambda c: c in SCRIP_COLS,
                     low_memory=False
                 )
                 
-                # OPTIMIZATION: Immediately filter rows to save memory before concatenation
                 if 'EXCH_ID' in df.columns and 'INSTRUMENT' in df.columns:
                     mask = df['EXCH_ID'].isin(FILTER_EXCH) & df['INSTRUMENT'].isin(FILTER_SEG)
                     df = df[mask]
@@ -317,7 +317,7 @@ class ScripMaster:
 # Core Dhan API class
 # ───────────────────────────────────────
 class DhanTrader:
-    """Object-oriented wrapper managing state, session, config, and orders."""
+    """Object-oriented wrapper managing state, session, config, orders, and cleanups."""
 
     def __init__(self, refresh_master_scrip=False):
         self.cfg     = SymbolsConfig(SYMBOLS_CONFIG)
@@ -325,17 +325,12 @@ class DhanTrader:
         self.traded_this_scan: set = set()
         
         self.proxy_manager = SSHProxyManager()
+        
         # Initialize Session
         self.session = requests.Session()
         
         # Apply Proxy if configured
-        if self.cfg.get('use_proxy', False):
-            proxy_url = self.cfg.get('proxy_url', 'socks5h://localhost:9090')
-            self.session.proxies = {
-                'http': proxy_url,
-                'https': proxy_url
-            }
-            print(f"Network proxy applied: {proxy_url}")
+        self._apply_proxy()
 
         # State: Credentials & Headers
         self.client_id, self.access_token = self._load_credentials(ACCESS_FILE_PATH)
@@ -351,6 +346,25 @@ class DhanTrader:
         self.target_perc     = self.cfg.get('target_perc', 4.0)
         self.stop_loss_perc  = self.cfg.get('stop_loss_perc', 0.7)
         self.stop_trail_perc = self.cfg.get('stop_trail_perc', 0.5)
+
+    def _apply_proxy(self):
+        """Loads and applies proxy settings from proxy_config.toml if enabled."""
+        try:
+            proxy_cfg = self.proxy_manager.config.get("proxy", {})
+            proxy_host = proxy_cfg.get("proxy_host", '')
+            port = proxy_cfg.get("port", 0)
+            
+            if proxy_host:
+                proxy_url = f"socks5h://{proxy_host}:{port}"
+                self.session.proxies = {
+                    'http': proxy_url,
+                    'https': proxy_url
+                }
+                print(f"[*] Proxy applied: {proxy_url}")
+            else:
+                print(f"[!] Proxy Config Not Found.")
+        except Exception as exc:
+            print(f"[!] Failed to load proxy config: {exc}")
 
     def _load_credentials(self, path: Path) -> tuple[str, str]:
         try:
@@ -373,10 +387,11 @@ class DhanTrader:
         return {
             'expiry':       self.cfg.get('def_expiry_date', ''),
             'quant':        self.cfg.get('def_quantity', 1),
-            'trade_amount': self.cfg.get('def_trade_amount', 10_000),
+            'trade_amount': self.cfg.get('def_trade_amount', 10000),
             'order_mode':   self.cfg.get('def_order_mode', ''),
         }
 
+    # ── Instrument Resolution ──────────────────────────────────────────────
     def _compute_price_levels(self, raw_entry: float, signal: str) -> PriceLevels:
         entry     = _adjust_price(raw_entry, self.entry_perc, signal)
         limit     = _adjust_price(entry, self.limit_perc, signal)
@@ -486,10 +501,9 @@ class DhanTrader:
             print(f'No valid segment configured for {symb} on {exch}. Skipping.')
         return inst
 
-
+    # ── Core Trading Operations ──────────────────────────────────────────────
     def _post_order(self, url: str, payload: dict, label: str = '', retry: bool = True):
         try:
-            # Added a 10-second timeout so a dead proxy doesn't hang the thread forever
             resp = self.session.post(url, json=payload, headers=self.api_headers, timeout=10)
             
             if resp.status_code != 200:
@@ -502,20 +516,11 @@ class DhanTrader:
             
             if retry and self.cfg.get('use_proxy', False):
                 print(f'[!] Attempting to restart SSH proxy and retry {label} order...')
-                
-                # 1. Restart the proxy using your manager
                 self.proxy_manager.restart()
-                
-                # 2. Wait briefly to ensure the local port binds and SSH tunnel establishes
-                import time
                 time.sleep(2) 
-                
-                # 3. Retry the exact same order, but disable further retries
                 self._post_order(url, payload, label=f"{label} (Retry)", retry=False)
             else:
                 print(f'[✗] {label} Order permanently failed due to network error.')
-
-
 
     def _base_payload(self, signal: str, exchange_seg: str, sec_id: str) -> dict:
         return {
@@ -593,6 +598,113 @@ class DhanTrader:
                 inst.signal, inst.quant, inst.entry_val, inst.trade_amount,
             )
 
+    # ── Super Order Cleanup Operations ───────────────────────────────────────
+    def get_active_positions(self, retry: bool = True) -> set[str]:
+        """Fetches active positions (netQty != 0) and returns their symbols."""
+        try:
+            response = self.session.get(POSITIONS_URL, headers=self.api_headers, timeout=10)
+            if response.status_code != 200:
+                print(f"[✗] Failed to fetch positions: {response.status_code}")
+                return set()
+                
+            positions = response.json()
+            active_symbols = {
+                pos.get("tradingSymbol", "") 
+                for pos in positions 
+                if pos.get("netQty", 0) != 0 and pos.get("tradingSymbol")
+            }
+            print(f"\n[✓] Total Active Position Symbols: {len(active_symbols)}")
+            return active_symbols
+            
+        except RequestException as e:
+            print(f"[✗] Network error fetching positions: {e}")
+            if retry and self.cfg.get('use_proxy', False):
+                print('[!] Attempting to restart SSH proxy and retry fetching positions...')
+                self.proxy_manager.restart()
+                time.sleep(2)
+                return self.get_active_positions(retry=False)
+            return set()
+
+    def get_active_super_orders(self, retry: bool = True) -> set[tuple[str, str, str]]:
+        """Fetches super orders and returns a set of tuples for active legs: (symbol, order_id, leg_name)."""
+        try:
+            response = self.session.get(SUPER_ORDER_URL, headers=self.api_headers, timeout=10)
+            if response.status_code != 200:
+                print(f"[✗] Failed to fetch super orders: {response.status_code}")
+                return set()
+                
+            super_orders = response.json()
+            active_orders = set()
+            active_statuses = {"PENDING", "PART_TRADED", "TRADED"}
+
+            for order in super_orders:
+                status = order.get("orderStatus", "")
+                symbol = order.get("tradingSymbol", "")
+                oid    = order.get('orderId', '')
+
+                if status in {"PENDING", "PART_TRADED"}:
+                    active_orders.add((symbol, oid, 'ENTRY_LEG'))
+
+                if status in active_statuses:
+                    for ord_leg in order.get('legDetails', []):
+                        if ord_leg.get('orderStatus', '') == 'PENDING':
+                            active_orders.add((symbol, oid, ord_leg.get('legName', '')))
+
+            print(f"[✓] Total Active Super Orders: {len(active_orders)}")
+            return active_orders
+            
+        except RequestException as e:
+            print(f"[✗] Network error fetching super orders: {e}")
+            if retry and self.cfg.get('use_proxy', False):
+                print('[!] Attempting to restart SSH proxy and retry fetching super orders...')
+                self.proxy_manager.restart()
+                time.sleep(2)
+                return self.get_active_super_orders(retry=False)
+            return set()
+
+    def cancel_super_order(self, order_id: str, order_leg: str = "ENTRY_LEG", retry: bool = True) -> bool:
+        """Cancels a specific leg of a super order."""
+        url = f"{SUPER_ORDER_URL}/{order_id}/{order_leg}"
+        try:
+            response = self.session.delete(url, headers=self.api_headers, timeout=10)
+            if response.status_code in (200, 202):
+                result = response.json() if response.text else {}
+                status = result.get('orderStatus', 'CANCELLED')
+                print(f"  [✓] Cancelled Super Order: {order_id} | Status: {status}")
+                return True
+            else:
+                print(f"  [✗] Failed to cancel {order_id}: {response.status_code}")
+                return False
+                
+        except RequestException as e:
+            print(f"  [✗] Network error cancelling {order_id}: {e}")
+            if retry and self.cfg.get('use_proxy', False):
+                print(f'[!] Attempting to restart SSH proxy and retry cancelling {order_id}...')
+                self.proxy_manager.restart()
+                time.sleep(2)
+                return self.cancel_super_order(order_id, order_leg, retry=False)
+            return False
+
+    def clean_orphaned_orders(self):
+        """Orchestrates canceling super orders whose symbols are no longer in active positions."""
+        print(f"\n─── Starting Cleanup Cycle ───")
+        active_symbols = self.get_active_positions()
+        active_super_orders = self.get_active_super_orders()
+
+        cancelled_symb = []
+
+        for (symb, oid, legname) in active_super_orders:
+            if symb not in active_symbols:
+                if self.cancel_super_order(oid, legname):
+                    cancelled_symb.append(symb)
+        
+        if cancelled_symb:
+            print(f"\n[!] Cleanup Complete. Cancelled {len(cancelled_symb)} orphaned orders.")
+            print(f"    Symbols: {cancelled_symb}")
+        else:
+            print("\n[✓] Cleanup Complete. No orphaned orders found.")
+
+
 # ───────────────────────────────────────
 # Test Execution
 # ───────────────────────────────────────
@@ -600,3 +712,6 @@ if __name__ == '__main__':
     trader = DhanTrader()
     trader.begin_session()
     trader.fire_trade('RELIANCE', 'NSE', 'BUY', quant=15)
+    
+    # Run cleanup independently
+    trader.clean_orphaned_orders()

@@ -20,9 +20,8 @@ BUFFER_SECONDS = 18
      
 
 # ── Environment Setup ────────────────────────────────────────────────────────
-from sys import path as _syspath
-_syspath.append(os.path.abspath("../../")) 
-from utils.data.sync_data import OUT_DIR
+
+from utils.data.paths import OUT_DIR
 CSV_PATH = os.path.join(OUT_DIR, 'sym_table.csv')
 
 # ── CLI args ──────────────────────────────────────────────────────────────────

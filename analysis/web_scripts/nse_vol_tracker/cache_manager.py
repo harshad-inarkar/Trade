@@ -28,7 +28,7 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 
 
-from data_processor import (
+from web_scripts.nse_vol_tracker.data_processor import (
     CACHE_FIELDS,
     VOL_CUMUL, PRICE, VOL, VOL_SLOW, VOL_FAST, VOL_BASE,
     PRICE_FAST, PRICE_SLOW, NFIELDS,

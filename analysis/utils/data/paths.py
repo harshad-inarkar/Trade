@@ -22,16 +22,18 @@ REMOTE_DIR_PATH_OBJ = Path(REMOTE_DIR)
 
 
 OUT_DIR = str(ROOT_DIR_PATH_OBJ / 'out')
-NSE_DATA_DIR = 'nse_data'
-INTRADAY_DIR = 'intraday'
-INDX_DIR = 'index'
-WEB_SCR = 'web_scripts'
-TEMPLS =  'templates'
+_nse_data_dir = 'nse_data'
+_intraday_dir = 'intraday'
+_indx_dir = 'index'
+_web_scr = 'web_scripts'
+_templates_dir =  'templates'
+_logs_dir = 'logs'
 
-NSE_INDX_DATA = str(ROOT_DIR_PATH_OBJ / NSE_DATA_DIR / INDX_DIR)
-REMOTE_NSE_INDX_DATA = str(REMOTE_DIR_PATH_OBJ / NSE_DATA_DIR / INDX_DIR)
+NSE_LOGS_DIR = str(ROOT_DIR_PATH_OBJ / _nse_data_dir / _logs_dir)
+NSE_INDX_DATA = str(ROOT_DIR_PATH_OBJ / _nse_data_dir / _indx_dir)
+REMOTE_NSE_INDX_DATA = str(REMOTE_DIR_PATH_OBJ / _nse_data_dir / _indx_dir)
 
-NSE_INTRADAY_DIR_PATH = str(ROOT_DIR_PATH_OBJ / NSE_DATA_DIR / INTRADAY_DIR)
-REMOTE_INTRADAY_DIR_PATH = str(REMOTE_DIR_PATH_OBJ / NSE_DATA_DIR / INTRADAY_DIR)
+NSE_INTRADAY_DIR_PATH = str(ROOT_DIR_PATH_OBJ / _nse_data_dir / _intraday_dir)
+REMOTE_INTRADAY_DIR_PATH = str(REMOTE_DIR_PATH_OBJ / _nse_data_dir / _intraday_dir)
 
-TEMPLATES_PARENT_DIR = str(ROOT_DIR_PATH_OBJ / WEB_SCR / TEMPLS)
+TEMPLATES_ROOT_DIR = str(ROOT_DIR_PATH_OBJ / _web_scr / _templates_dir)

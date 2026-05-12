@@ -8,7 +8,7 @@ fi
 
 ##########
 
-MAX_SIZE_KB='10'
+MAX_SIZE_KB='100'
 nse_logs_dir="../../nse_data/logs"
 log_file="nse_downloader.log"
 download=true
