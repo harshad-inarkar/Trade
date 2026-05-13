@@ -6,6 +6,13 @@ ignore_lastseen = true
 no_trade = false
 rebuild_master_scrip = false
 clear_orders = false
+candidate_files = ['candidates.txt' , 'candidates_comm.txt', 'candidates_tv.txt','candidates_cryp.txt']
+
+
+[tv_symbol_map]
+    USOIL = 'CRUDEOIL'
+    CNXFINANCE = 'FINNIFTY'
+    NIFTY_MID_SELECT = 'MIDCPNIFTY'
 
 [coordinates]
 x1 = 1006

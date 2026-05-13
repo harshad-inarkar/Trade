@@ -389,15 +389,11 @@ class TVScannerApp:
         # Paths
         self.config_file = Path(__file__).parent / "tv_scanner_config.toml"
         self.seen_file   = Path(__file__).parent / ".tv_scanner_seen.json"
-        self.cand_paths  = [
-            os.path.join(OUT_DIR, "candidates.txt"),
-            os.path.join(OUT_DIR, "candidates_comm.txt"),
-            os.path.join(OUT_DIR, "candidates_cryp.txt")
-        ]
-
+ 
         # Core Components
         self.config   = ScannerConfig(self.config_file, self.seen_file)
         
+      
         # Map TOML Settings
         settings = self.config.data.get('settings', {})
         self.reload_interval        = settings.get('reload_interval', 1)
@@ -407,6 +403,12 @@ class TVScannerApp:
         self.no_trade               = settings.get('no_trade', False)
         self.rebuild_master         = settings.get('rebuild_master_scrip', False)
         self.clear_superorders_flag = settings.get('clear_orders', False)
+
+
+        candidate_files = settings.get('candidate_files', [])
+        self.cand_paths = [os.path.join(OUT_DIR, fname) for fname in candidate_files]
+
+        self.tv_symbols_map = self.config.data.get('tv_symbol_map',{})
 
         self.vision   = ScannerVision()
         self.matcher  = None
@@ -518,6 +520,8 @@ class TVScannerApp:
             
             for row in valid_parsed:
                 sym = row["symbol"]
+                sym = self.tv_symbols_map.get(sym,sym)
+                row["symbol"] = sym
                 sig = row["signal"]
                 
                 if not self.ignore_lastseen:
