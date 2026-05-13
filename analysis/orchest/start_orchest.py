@@ -68,6 +68,7 @@ class ScriptManager:
                     pass
 
     def start(self, name):
+        self.load_config()
         if name not in self.config["scripts"]:
             print(f"Error: Script '{name}' not found in config.")
             return
@@ -93,6 +94,7 @@ class ScriptManager:
             # Add Start Separator safely
             start_time = time.strftime('%Y-%m-%d %H:%M:%S')
             self.log_handles[name].write(f"{'#' * 60}\nStart: {start_time}\n{'#' * 60}\n")
+            self.log_handles[name].flush()
        
             out_target = self.log_handles[name]
 

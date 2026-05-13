@@ -91,7 +91,7 @@ class TVUpdaterApp:
         # Load Settings (Args -> Config -> Defaults)
         settings = self.config.data.get('settings', {})
         
-        self.reload_interval = args.reload_interval or settings.get('reload_interval', 15)
+        self.reload_interval = settings.get('reload_interval', 15)
         self.buffer_seconds  = settings.get('buffer_seconds', 15)
         self.new_setup       = args.new_setup
         
@@ -183,7 +183,7 @@ class TVUpdaterApp:
 
         # 1. User Active Check (Initial Warning)
         os.system("afplay /System/Library/Sounds/Tink.aiff")
-        time.sleep(3)
+        time.sleep(2)
 
         if self._is_user_active(1):
             print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] User active. Skipping update...")
@@ -241,7 +241,6 @@ class TVUpdaterApp:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='TradingView Indicator Auto-Updater')
-    parser.add_argument('-ri', '--reload-interval', type=int, help='Reload interval in minutes')
     parser.add_argument('-ns', '--new-setup', action='store_true', help='Force new coordinate setup')
 
     args, _ = parser.parse_known_args()

@@ -3,7 +3,7 @@
 TradingView Table Scanner v4 — macOS (Production)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Silent background execution. Auto-executes trades via Dhan API.
-Use --debug to view scan metrics.
+Driven by tv_scanner_config.toml.
 """
 
 import argparse
@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from functools import lru_cache
@@ -52,24 +53,56 @@ class AlertNotifier:
 # Configuration Manager
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class ScannerConfig:
-    """Manages coordinate configs and local 'seen' alerts state."""
+    """Manages TOML settings, coordinate saving, and local 'seen' alerts state."""
     def __init__(self, config_file: Path, seen_file: Path):
         self.config_file = config_file
         self.seen_file   = seen_file
-        self.data        = {}
-    
-    def load(self) -> bool:
-        if self.config_file.exists():
-            with open(self.config_file) as f:
-                self.data = json.load(f)
-                return True
-        return False
+        self.data        = self._load_toml()
 
-    def save(self):
+    def _load_toml(self) -> dict:
+        if self.config_file.exists():
+            try:
+                with open(self.config_file, "rb") as f:
+                    return tomllib.load(f)
+            except Exception as e:
+                print(f"Error reading {self.config_file}: {e}")
+        return {}
+
+    def _write_toml(self):
+        """Minimal manual TOML writer to preserve structure."""
+        lines = []
+        for section, content in self.data.items():
+            lines.append(f"[{section}]")
+            for k, v in content.items():
+                if isinstance(v, bool):
+                    lines.append(f"{k} = {'true' if v else 'false'}")
+                elif isinstance(v, str):
+                    lines.append(f'{k} = "{v}"')
+                else:
+                    lines.append(f"{k} = {v}")
+            lines.append("")
+
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
         with open(self.config_file, "w") as f:
-            json.dump(self.data, f, indent=2)
+            f.write("\n".join(lines))
 
+    def save_coordinates(self, x1: int, y1: int, x2: int, y2: int, sig_x: int):
+        self.data.setdefault('settings', {})
+        self.data.setdefault('coordinates', {})
+        
+        self.data['coordinates']['x1'] = x1
+        self.data['coordinates']['y1'] = y1
+        self.data['coordinates']['x2'] = x2
+        self.data['coordinates']['y2'] = y2
+        self.data['coordinates']['signal_col_x'] = sig_x
+        
+        self._write_toml()
+
+    def has_coordinates(self) -> bool:
+        coords = self.data.get('coordinates', {})
+        return all(k in coords for k in ('x1', 'y1', 'x2', 'y2', 'signal_col_x'))
+
+    # 'Seen' state is dynamic, so it stays as JSON to avoid constantly rewriting the TOML
     def load_seen(self) -> dict:
         if self.seen_file.exists():
             with open(self.seen_file) as f:
@@ -110,12 +143,9 @@ class ScannerConfig:
         x2, y2 = get_coord("BOTTOM-RIGHT corner")
         sx, _  = get_coord("SIGNAL column")
 
-        self.data = {
-            "x1": x1, "y1": y1, 
-            "x2": x2, "y2": y2, 
-            "signal_col_x": max(0, sx - x1)
-        }
-        self.save()
+        sig_x = max(0, sx - x1)
+        self.save_coordinates(x1, y1, x2, y2, sig_x)
+        print(f"\nCoordinates saved successfully to {self.config_file.name}")
         return True
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -259,7 +289,7 @@ class ScannerVision:
         search_limit = min(w - 1, e_start + int(w * 0.35))
         col_max = arr[y0 + 2 : y1 - 2, e_start : search_limit].max(axis=(0, 2)) if e_start < search_limit else np.array([])
 
-        in_text, gap_count, e_end = False, 0, search_limit
+        in_text, gap_count, e_end = search_limit, 0, search_limit
         for i, mx in enumerate(col_max):
             if mx > 120:
                 in_text, gap_count = True, 0
@@ -285,7 +315,6 @@ class ScannerVision:
         return data
 
     def process_image(self, img_path: str) -> list[dict]:
-        """Main pipeline to extract all signals from an image."""
         img = Image.open(img_path).convert("RGB")
         arr = np.array(img, dtype=np.uint8)
 
@@ -295,7 +324,6 @@ class ScannerVision:
 
         rows = self.detect_rows(arr, dynamic_sig_x)
         
-        # Multithreaded row parsing
         futures = {self.pool.submit(self.process_row, img, arr, row, dynamic_sig_x): row for row in rows}
         
         results_by_row = {}
@@ -305,7 +333,6 @@ class ScannerVision:
             if result is not None:
                 results_by_row[row] = result
 
-        # Return parsed rows in original order
         return [results_by_row[row] for row in rows if row in results_by_row]
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -333,16 +360,22 @@ class TradeExecutor:
             exch = self.get_exchange(symb)
             if not exch:
                 continue
-                
+            
+            entry_val = 0
+            try:
+                entry_val = float(order.get('entry', 0))
+            except (ValueError, TypeError):
+                pass
+
             self.broker.fire_trade(
                 symb      = symb,
                 exch      = exch,
                 signal    = order['signal'],
-                entry_val = float(order.get('entry', 0)),
+                entry_val = entry_val       
             )
     
     def clear_super_orders(self):
-        if  self.no_trade or not self.broker:
+        if self.no_trade or not self.broker:
             return
         self.broker.clean_orphaned_orders()
 
@@ -350,18 +383,11 @@ class TradeExecutor:
 # Main Application Controller
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class TVScannerApp:
-    def __init__(self, args):
-        self.debug            = args.debug
-        self.ignore_lastseen  = args.ignore_lastseen
-        self.no_trade         = args.no_trade
-        self.rebuild_master   = args.rebuild_master_scrip
-        self.reload_interval  = args.reload_interval
-        self.new_setup        = args.new_setup
-        self.clear_superorders_flag = args.clear_orders
-        self.buffer_seconds   = 7
+    def __init__(self, new_setup: bool = False):
+        self.new_setup = new_setup
         
         # Paths
-        self.config_file = Path(__file__).parent / ".tv_scanner_config.json"
+        self.config_file = Path(__file__).parent / "tv_scanner_config.toml"
         self.seen_file   = Path(__file__).parent / ".tv_scanner_seen.json"
         self.cand_paths  = [
             os.path.join(OUT_DIR, "candidates.txt"),
@@ -371,6 +397,17 @@ class TVScannerApp:
 
         # Core Components
         self.config   = ScannerConfig(self.config_file, self.seen_file)
+        
+        # Map TOML Settings
+        settings = self.config.data.get('settings', {})
+        self.reload_interval        = settings.get('reload_interval', 1)
+        self.buffer_seconds         = settings.get('buffer_seconds', 7)
+        self.debug                  = settings.get('debug', True)
+        self.ignore_lastseen        = settings.get('ignore_lastseen', True)
+        self.no_trade               = settings.get('no_trade', False)
+        self.rebuild_master         = settings.get('rebuild_master_scrip', False)
+        self.clear_superorders_flag = settings.get('clear_orders', False)
+
         self.vision   = ScannerVision()
         self.matcher  = None
         self.executor = None
@@ -397,12 +434,15 @@ class TVScannerApp:
         return candidates, cands_list
 
     def capture_screen(self) -> str:
-        """Takes screencapture based on saved coordinates."""
-        cfg = self.config.data
+        """Takes screencapture based on TOML coordinates."""
+        coords = self.config.data.get('coordinates', {})
         tmp = tempfile.mkstemp(suffix=".png")[1]
+        
+        w = coords['x2'] - coords['x1']
+        h = coords['y2'] - coords['y1']
+        
         subprocess.run(
-            ["screencapture", "-x", "-R",
-             f"{cfg['x1']},{cfg['y1']},{cfg['x2']-cfg['x1']},{cfg['y2']-cfg['y1']}", tmp],
+            ["screencapture", "-x", "-R", f"{coords['x1']},{coords['y1']},{w},{h}", tmp],
             check=True,
         )
         return tmp
@@ -519,8 +559,8 @@ class TVScannerApp:
         if self.new_setup:
             if not self.config.setup_interactive():
                 sys.exit(1)
-        elif not self.config.load():
-            print("No config — launching setup…\n")
+        elif not self.config.has_coordinates():
+            print("Missing coordinates in config — launching setup…\n")
             if not self.config.setup_interactive():
                 sys.exit(1)
 
@@ -543,7 +583,7 @@ class TVScannerApp:
             self.dprint(f"  Index     : Built {len(candidates)} candidates")
             self.dprint(f"  Ctrl+C to stop\n")
         elif not self.new_setup:
-            print("TradingView Scanner running in background. (Use --debug to view scan logs)")
+            print("TradingView Scanner running in background. (Use debug=true in TOML to view scan logs)")
 
         print(f"DEBUG_MODE: {self.debug}, IGNORE_LASTSEEN: {self.ignore_lastseen}, NO_TRADE: {self.no_trade}")
 
@@ -558,18 +598,11 @@ class TVScannerApp:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("-ri", "--reload-interval", type=int, default=1)
-    p.add_argument("-ns", "--new-setup", action="store_true")
-    p.add_argument("-d", "--debug", action="store_true", help="Print scan logs to terminal")
-    p.add_argument("-il", "--ignore-lastseen", action="store_true", help="Ignore Last Seen")
-    p.add_argument("-nt", "--no-trade", action="store_true", help="Don't Place Orders")
-    p.add_argument("-rm", "--rebuild-master-scrip", action="store_true", help="Rebuild Master Scrip")
-    p.add_argument("-co", "--clear-orders", action="store_true", help="Clear Inactive Super Orders")
-
-
+    # Only keep the flag that dictates an interactive action.
+    p.add_argument("-ns", "--new-setup", action="store_true", help="Interactively set TV coordinates.")
     args = p.parse_args()
     
-    app = TVScannerApp(args)
+    app = TVScannerApp(new_setup=args.new_setup)
     app.run()
 
 if __name__ == "__main__":

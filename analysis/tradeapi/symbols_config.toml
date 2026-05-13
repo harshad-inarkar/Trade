@@ -1,5 +1,5 @@
 # Global Config
-def_expiry_date  = "2026-05-13"
+def_expiry_date  = "2026-05-26"
 def_trade_amount = 10000
 def_quantity     = 1
 def_order_mode   = 'NA'
@@ -23,7 +23,7 @@ stop_trail_perc  = 0.5
     #expiry_date = "2026-05-26"
 
 [nse.indices.config]
-    order_mode = "OPT"  # FUT NA
+    order_mode = "NA"  # FUT NA
 
 [nse.indices.symbols.NIFTY]
     #expiry_date = "2026-05-12"
@@ -41,7 +41,7 @@ stop_trail_perc  = 0.5
 [mcx.comm.symbols.CRUDEOIL]
     symbol      = "CRUDEOILM"
     quantity    = 10
-    # expiry_date = "2026-05-14"
+    #expiry_date = "2026-05-14"
 
 [mcx.comm.symbols.NATURALGAS]
     symbol      = "NATGASMINI"
