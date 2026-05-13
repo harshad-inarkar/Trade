@@ -1,6 +1,6 @@
 [settings]
 reload_interval = 9
-buffer_seconds = 7
+buffer_seconds = -5
 
 [coordinates]
 indicator = [1076, 126]

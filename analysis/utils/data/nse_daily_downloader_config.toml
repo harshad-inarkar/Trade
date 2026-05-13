@@ -1,0 +1,13 @@
+[session]
+start = "0915"
+end = "1530"
+
+[gcp]
+# Equivalent to the old --reset-remote-sched argument
+reset_remote_sched = true
+gcp_state_filename = ".gcp_state"
+
+[api]
+session_url = "https://www.nseindia.com"
+refer_url = "https://www.nseindia.com/market-data/most-active-underlying"
+api_url = "https://www.nseindia.com/api/live-analysis-most-active-underlying?csv=true"
