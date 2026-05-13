@@ -8,8 +8,6 @@ buffer_seconds = 5
 
 [sync]
 remote_sync = false
-parent_dir = "" # Leave empty ("") to use default ROOT_DIR
-remote_dir = ""
 
 [merge]
 filter_ltp = "400-6000"

@@ -27,8 +27,8 @@ from web_scripts.nse_vol_tracker.data_processor import INDEX_FIELDS, SYMB_COL
 from web_scripts.nse_vol_tracker.cache_manager import CacheManager, MIN_TF, TF_KEYS
 from utils.utility import wait_next_wall_clock
 from utils.data.paths import (
-    ROOT_DIR, OUT_DIR,
-    _nse_data_dir, _intraday_dir, TEMPLATES_ROOT_DIR
+    ROOT_DATA_DIR, OUT_DIR,
+    _nse_data_dir, _intraday_dir, TEMPLATES_ROOT_DIR, REMOTE_DIR
 )
 from utils.data.sync_data import sync_data_args
 from web_scripts.nse_vol_tracker.sector_loader import load_sector_symbols, UNIQ_CATEGORIES_CSV, CATEGORIES_CSV
@@ -48,8 +48,6 @@ class AppConfig:
     buffer_seconds: Optional[int]  = None
     
     remote_sync: Optional[bool]    = None
-    parent_dir: Optional[str]      = None
-    remote_dir: Optional[str]      = None
     
     filter_ltp: Optional[str]      = None
     sort_keys: Optional[list[str]] = None
@@ -79,8 +77,6 @@ class AppConfig:
 
         sync = data.get("sync", {})
         c.remote_sync = sync.get("remote_sync", c.remote_sync)
-        c.parent_dir  = sync.get("parent_dir", c.parent_dir)
-        c.remote_dir  = sync.get("remote_dir", c.remote_dir)
 
         merge = data.get("merge", {})
         c.filter_ltp = merge.get("filter_ltp", c.filter_ltp)
@@ -108,16 +104,16 @@ class MarketDataService:
         self.cache = CacheManager()
         
         # Resolve Paths
-        self.root_path = os.path.abspath(config.parent_dir) if config.parent_dir else ROOT_DIR
-        self.intraday_path = f"{self.root_path}/{_nse_data_dir}/{_intraday_dir}"
+        self.root_path = ROOT_DATA_DIR
+        self.intraday_path = str(Path(self.root_path) / _nse_data_dir / _intraday_dir)
         
-        if config.remote_dir:
-            self.remote_intraday_path = f"{os.path.abspath(config.remote_dir)}/{_nse_data_dir}/{_intraday_dir}"
-        else:
-            self.remote_intraday_path = ""
+
+        self.remote_dir = REMOTE_DIR
+        self.remote_intraday_path = str(Path(self.remote_dir) / _nse_data_dir / _intraday_dir)
+ 
 
         # Initialize Templates
-        template_dir = os.path.join(self.root_path, 'web_scripts/templates/template_vol')
+        template_dir =  Path(TEMPLATES_ROOT_DIR) / 'template_vol'
         self.templates = Jinja2Templates(directory=template_dir)
 
     def _sync_data(self):

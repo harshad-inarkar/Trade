@@ -38,7 +38,7 @@ def sync_data_args(src,dst):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='NSE sync data')
     parser.add_argument('-tr', '--to-remote', action='store_true', help='Sync to remote drive')
-    parser.add_argument('-ix', '--index', action='store_true', help='Sync to remote drive')
+    parser.add_argument('-ix', '--index', action='store_true', help='Sync Index data to remote drive')
 
 
 

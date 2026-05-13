@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 # ─── Custom Imports ───────────────────────────────────────────────────────────
-from utils.data.paths import ROOT_DIR, NSE_LOGS_DIR
+from utils.data.paths import NSE_LOGS_DIR, ROOT_SRC_DIR
 
 # Set your max log size here (100 KB = 100 * 1024 bytes)
 MAX_LOG_SIZE_KB = 100
@@ -100,7 +100,7 @@ class ScriptManager:
 
             process = subprocess.Popen(
                 cmd,
-                cwd=ROOT_DIR,
+                cwd=ROOT_SRC_DIR,
                 stdout=out_target,
                 stderr=subprocess.STDOUT
             )
@@ -159,7 +159,7 @@ class ScriptManager:
 def main():
     manager = ScriptManager("config.toml")
     
-    print(f"Project Root Detected: {ROOT_DIR}")
+    print(f"Project Root Detected: {ROOT_SRC_DIR}")
     print("Starting all scripts based on config...")
     manager.start_all()
     manager.status()

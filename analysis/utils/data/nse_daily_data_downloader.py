@@ -2,8 +2,6 @@
 import requests
 from datetime import datetime
 import os, argparse, time
-import glob
-import hashlib
 import csv
 from io import StringIO
 from utils.data.paths import NSE_INTRADAY_DIR_PATH,REMOTE_INTRADAY_DIR_PATH 
@@ -59,47 +57,6 @@ API_URL="https://www.nseindia.com/api/live-analysis-most-active-underlying?csv=t
 
 
 
-def compare_csv_files_by_hash(file1, file2):
-    """
-    Compare two CSV files using MD5 hash.
-
-    Args:
-        file1 (str): Path to first CSV file
-        file2 (str): Path to second CSV file
-
-    Returns:
-        bool: True if files are identical, False otherwise
-    """
-    with open(file1, 'rb') as f1:
-        hash1 = hashlib.md5(f1.read()).hexdigest()
-
-    with open(file2, 'rb') as f2:
-        hash2 = hashlib.md5(f2.read()).hexdigest()
-
-    return hash1 == hash2
-
-
-def delete_duplicate_csv(data_dir):
- 
-    csv_files = glob.glob(os.path.join(data_dir, "*.csv"))
-
-    if len(csv_files) < 2:
-        print(f"Found only {len(csv_files)} CSV file(s). Need at least 2 files to compare.")
-        return
-
-    # Sort by modification time (most recent first)
-    csv_files.sort(key=lambda t: os.stat(t).st_mtime, reverse=True)
-
-    file1, file2 = csv_files[:2]
-
-   
-    print(f"Comparing {file1} and {file2}")
-    are_identical = compare_csv_files_by_hash(file1, file2)
-    if are_identical:
-        os.remove(file1)
-        print(f"Duplicate file {file1} deleted successfully!")
- 
-
 def read_gcp_state():
     gcp_state = ''
     try:
@@ -145,7 +102,9 @@ def download_nse_data():
     t1= time.time()
     date_timestamp = datetime.now().strftime("%d%m%Y")
     data_dir = f'{NSE_INTRADAY_DIR_PATH}/{date_timestamp}'
-    timestamp = datetime.now().strftime("%H%M")
+    now = datetime.now()
+    minute = now.minute + (1 if now.second >= 30 else 0)
+    timestamp = now.strftime("%H") + f"{minute:02d}"
 
     valid_flag, timestamp, time_exceeded_flag = check_valid_session(timestamp)
 

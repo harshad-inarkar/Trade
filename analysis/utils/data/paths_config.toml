@@ -1,0 +1,5 @@
+[paths]
+# Optional overrides. If left empty or commented, the script will auto-detect them.
+# root_src_dir = "/absolute/path/to/project/root"
+# root_data_dir = "/absolute/path/to/data/drive"
+remote_dir = "gs:/nse-data-bucket"
