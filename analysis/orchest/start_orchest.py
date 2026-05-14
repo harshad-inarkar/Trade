@@ -10,7 +10,8 @@ from pathlib import Path
 from utils.data.paths import NSE_LOGS_DIR, ROOT_SRC_DIR
 
 # Set your max log size here (100 KB = 100 * 1024 bytes)
-MAX_LOG_SIZE_KB = 100
+MAX_LOG_SIZE_KB = 100 #KB
+LOG_MONITOR_INT = 15 #min
 log_root_dir = NSE_LOGS_DIR
 
 class ScriptManager:
@@ -26,6 +27,7 @@ class ScriptManager:
         
         self.load_config()
         self.max_bytes = self.config.get('max_log_size',MAX_LOG_SIZE_KB) * 1024
+        self.log_monitor_interval = self.config.get('log_monitor_interval',LOG_MONITOR_INT) * 60 
 
         # Always run the background log monitor since logging is always enabled
         self.monitor_thread = threading.Thread(target=self._monitor_log_sizes, daemon=True)
@@ -42,7 +44,7 @@ class ScriptManager:
     def _monitor_log_sizes(self):
         """Background thread that truncates log files if they exceed the max size."""
         while True:
-            time.sleep(5)  # Check file sizes every 5 seconds
+            time.sleep(self.log_monitor_interval)
             
             # Iterate over a copy of the items to avoid dictionary changed size errors
             for name, handle in list(self.log_handles.items()):
