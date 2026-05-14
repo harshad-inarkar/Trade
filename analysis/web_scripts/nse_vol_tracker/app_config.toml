@@ -4,7 +4,7 @@ end = "1530"
 
 [reload]
 interval_minutes = 3
-buffer_seconds = -6
+buffer_seconds = -8
 
 [sync]
 remote_sync = false
