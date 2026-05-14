@@ -1,22 +1,21 @@
 [settings]
 reload_interval = 1
-buffer_seconds = 3
+buffer_seconds = 5
 debug = true
 ignore_lastseen = true
 no_trade = false
 rebuild_master_scrip = false
 clear_orders = false
-candidate_files = ['candidates.txt' , 'candidates_comm.txt', 'candidates_tv.txt','candidates_cryp.txt']
-
+candidate_files = ['candidates.txt', 'candidates_comm.txt', 'candidates_tv.txt', 'candidates_cryp.txt']
 
 [tv_symbol_map]
-    USOIL = 'CRUDEOIL'
-    CNXFINANCE = 'FINNIFTY'
-    NIFTY_MID_SELECT = 'MIDCPNIFTY'
+USOIL = "CRUDEOIL"
+CNXFINANCE = "FINNIFTY"
+NIFTY_MID_SELECT = "MIDCPNIFTY"
 
 [coordinates]
-x1 = 1006
-y1 = 107
-x2 = 1432
-y2 = 551
-signal_col_x = 150
+x1 = 1004
+y1 = 109
+x2 = 1424
+y2 = 462
+signal_col_x = 157

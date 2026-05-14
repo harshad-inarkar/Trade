@@ -289,13 +289,14 @@ class ScannerVision:
         search_limit = min(w - 1, e_start + int(w * 0.35))
         col_max = arr[y0 + 2 : y1 - 2, e_start : search_limit].max(axis=(0, 2)) if e_start < search_limit else np.array([])
 
-        in_text, gap_count, e_end = search_limit, 0, search_limit
+        in_text, gap_count, e_end = False, 0, search_limit
+
         for i, mx in enumerate(col_max):
             if mx > 120:
                 in_text, gap_count = True, 0
             elif in_text:
                 gap_count += 1
-                if gap_count >= 8:
+                if gap_count >= 12:
                     e_end = e_start + i - gap_count + 4
                     break
 
