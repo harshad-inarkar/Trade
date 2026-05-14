@@ -23,7 +23,7 @@ STATS_MONITOR_INT = 3 #min
 log_root_dir = NSE_LOGS_DIR
 
 class ScriptManager:
-    def __init__(self, config_filename="config.toml"):
+    def __init__(self, config_filename="orchest_config.toml"):
         self.config_path = Path(__file__).parent / config_filename
         self.processes = {}
         self.log_handles = {} 
@@ -246,7 +246,7 @@ class ScriptManager:
             self.stop(name)
 
 def main():
-    manager = ScriptManager("config.toml")
+    manager = ScriptManager()
     
     print(f"Project Root Detected: {ROOT_SRC_DIR}")
     print("Starting all scripts based on config...")
