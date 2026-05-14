@@ -178,7 +178,13 @@ class MarketDataService:
         forced_symbols = set()
         if os.path.exists(force_syms_path):
             with open(force_syms_path, 'r') as f:
-                forced_symbols = {line.strip() for line in f if line.strip()}
+                forced_symbols = set()
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    forced_symbols.add(line)
+           
 
         with open(os.path.join(OUT_DIR, 'sym_table.csv'), 'w', newline='') as out_csv, \
              open(os.path.join(OUT_DIR, 'candidates_merge.txt'), 'w') as out:
