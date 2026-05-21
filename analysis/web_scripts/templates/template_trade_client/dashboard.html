@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dhan Portal — Trading Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet" />
+
+<style>
+/* ── VARIABLES ───────────────────────────────────────────────────────────── */
+:root {
+  --bg:       #0b0f14;
+  --surface:  #131920;
+  --surface2: #1a2330;
+  --border:   #1e2a35;
+  --text:     #c8d8e8;
+  --muted:    #4a6070;
+  --accent:   #00d4aa;
+  --accent2:  #ff6b35;
+  --accent3:  #f0c040;
+  --red:      #e05555;
+  --green:    #1bbf49;
+
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Space Grotesk', sans-serif;
+  --radius: 4px;
+}
+
+/* ── RESET & BASE ───────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+}
+
+/* ── HEADER ──────────────────────────────────────────────────────────────── */
+header {
+  position: sticky; top: 0; z-index: 200;
+  background: rgba(11,15,20,.94); backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 28px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.header-brand { display: flex; align-items: baseline; gap: 10px; }
+.logo { font-family: var(--mono); font-size: 1.05rem; font-weight: 600; letter-spacing: .12em; color: var(--accent); }
+.sub { font-size: .72rem; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+
+/* ── META BAR ────────────────────────────────────────────────────────────── */
+.meta-bar {
+  display: flex; padding: 9px 28px; border-bottom: 1px solid var(--border);
+  background: var(--surface); gap: 18px; font-family: var(--mono); font-size: .72rem; color: var(--muted);
+}
+.meta-bar strong { color: var(--text); margin-left: 6px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; display: inline-block; margin-right: 6px;}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── LAYOUT GRID ─────────────────────────────────────────────────────────── */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 20px;
+  padding: 20px 28px;
+  align-items: start;
+}
+
+/* ── ORDER PANEL ─────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.panel-header {
+  font-family: var(--mono); font-size: .85rem; color: var(--text);
+  border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;
+  text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+}
+.order-form { display: flex; flex-direction: column; gap: 12px; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.order-form label { font-family: var(--mono); font-size: .65rem; color: var(--muted); text-transform: uppercase; }
+.order-form input, .order-form select {
+  font-family: var(--mono); font-size: .8rem; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--text); outline: none; transition: border-color .2s;
+}
+.order-form input:focus, .order-form select:focus { border-color: var(--accent); }
+
+.btn-group { display: flex; gap: 10px; margin-top: 10px; }
+.btn {
+  flex: 1; font-family: var(--mono); font-size: .75rem; font-weight: 600; padding: 10px;
+  border: none; border-radius: var(--radius); cursor: pointer; transition: opacity .2s;
+  color: #000; letter-spacing: 0.05em; text-transform: uppercase;
+}
+.btn:hover { opacity: 0.8; }
+.btn-buy { background: var(--accent); }
+.btn-sell { background: var(--red); color: #fff;}
+.btn-close { background: var(--border); color: var(--text); font-size: 0.65rem; padding: 4px 8px; border: 1px solid transparent;}
+.btn-close:hover { background: var(--surface2); border-color: var(--red); color: var(--red); }
+
+/* ── SYMBOLS TABLE ───────────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.symbols-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .8rem; }
+.symbols-table thead tr { border-bottom: 2px solid var(--border); }
+.symbols-table th { padding: 12px 16px; text-align: left; font-size: .68rem; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+.symbols-table tbody tr { border-bottom: 1px solid var(--border); transition: background .15s; }
+.symbols-table tbody tr:hover { background: var(--surface2); }
+.symbols-table td { padding: 10px 16px; color: var(--text); }
+
+.symbol-link {
+  font-family: var(--mono); font-size: .78rem; font-weight: 600; padding: 3px 10px; border-radius: 3px;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--accent) !important; text-decoration: none;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-brand">
+    <span class="logo">DHAN PORTAL</span>
+    <span class="sub">Execution Engine</span>
+  </div>
+</header>
+
+<div class="meta-bar">
+  <div><span class="dot"></span>API Live</div>
+  <div>Active Positions: <strong>{{ total_positions }}</strong></div>
+</div>
+
+<div class="dashboard-grid">
+  <div class="panel">
+    <div class="panel-header">Place Order</div>
+    
+    <form action="/place_order" method="post" class="order-form">
+      <div class="form-group">
+        <label>Symbol</label>
+        <input type="text" name="symbol" placeholder="e.g. TCS" required />
+      </div>
+      
+      <div class="form-group">
+        <label>Exchange Segment</label>
+        <select name="exchange">
+          <option value="NSE">NSE</option>
+          <option value="MCX">MCX</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label>Order Mode</label>
+        <select name="order_mode">
+          <option value="MARKET">Market</option>
+          <option value="SUPER">Super Order (Limit + SL + Target)</option>
+          <option value="FOREVER">Forever (GTT)</option>
+          <option value="ALERT">Alert Trigger</option>
+        </select>
+      </div>
+      
+      <div class="form-group" style="flex-direction: row; gap: 10px;">
+        <div style="flex:1;">
+          <label>Qty</label>
+          <input type="number" name="qty" value="1" min="1" style="width: 100%;" />
+        </div>
+        <div style="flex:1;">
+          <label>Entry / Trig Price</label>
+          <input type="number" name="price" value="0.0" step="0.05" style="width: 100%;" />
+        </div>
+      </div>
+      
+      <div class="btn-group">
+        <button type="submit" name="signal" value="BUY" class="btn btn-buy">BUY</button>
+        <button type="submit" name="signal" value="SELL" class="btn btn-sell">SELL</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="table-wrap">
+    <table class="symbols-table">
+      <thead>
+        <tr>
+          <th style="width:40px">#</th>
+          <th>SYMBOL</th>
+          <th style="text-align: right;">ACTION</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pos in positions %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><span class="symbol-link">{{ pos.symbol }}</span></td>
+          <td style="text-align: right;">
+            <form action="/close_position" method="post" style="display:inline;">
+              <input type="hidden" name="symbol" value="{{ pos.symbol }}">
+              <button type="submit" class="btn btn-close">Close Pos</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="3" style="text-align: center; color: var(--muted); padding: 40px;">No Active Positions.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</body>
+</html>
