@@ -3,6 +3,8 @@
 .*
 !.gitignore
 !.gitkeep
+**/access_token.toml
+
 
 # Python bytecode / cache (recursive)
 __pycache__/
