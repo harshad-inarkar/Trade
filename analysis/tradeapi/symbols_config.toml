@@ -24,7 +24,7 @@ stop_trail_perc  = 0.5
     #expiry_date = "2026-05-26"
 
 [nse.indices.config]
-    order_mode = "NA"  # FUT NA
+    order_mode = "OPT"  # FUT NA
 
 [nse.indices.symbols.NIFTY]
     #expiry_date = "2026-05-12"
