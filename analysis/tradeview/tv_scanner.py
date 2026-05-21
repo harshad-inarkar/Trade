@@ -375,11 +375,6 @@ class TradeExecutor:
                 entry_val = entry_val       
             )
     
-    def clear_super_orders(self):
-        if self.no_trade or not self.broker:
-            return
-        self.broker.clean_orphaned_orders()
-
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Main Application Controller
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -403,7 +398,6 @@ class TVScannerApp:
         self.ignore_lastseen        = settings.get('ignore_lastseen', True)
         self.no_trade               = settings.get('no_trade', False)
         self.rebuild_master         = settings.get('rebuild_master_scrip', False)
-        self.clear_superorders_flag = settings.get('clear_orders', False)
 
 
         candidate_files = settings.get('candidate_files', [])
@@ -518,6 +512,7 @@ class TVScannerApp:
             # ── Deduplication Logic ──
             seen = self.config.load_seen()
             new_alerts = []
+            cur_seen = {}
             
             for row in valid_parsed:
                 sym = row["symbol"]
@@ -528,11 +523,11 @@ class TVScannerApp:
                 if not self.ignore_lastseen:
                     if seen.get(sym) != sig:
                         new_alerts.append(row)
-                        seen[sym] = sig 
+                        cur_seen[sym] = sig 
                 else:
                     new_alerts.append(row)
 
-            self.config.save_seen(seen)
+            self.config.save_seen(cur_seen)
 
             if not new_alerts:
                 self.dprint("  No new alerts.")
@@ -540,9 +535,7 @@ class TVScannerApp:
 
             # Execute & Notify
             self.executor.place_orders(new_alerts)
-            if self.clear_superorders_flag:
-                self.executor.clear_super_orders()
-
+  
             buys  = [r for r in new_alerts if r["signal"] == "BUY"]
             sells = [r for r in new_alerts if r["signal"] == "SELL"]
             parts = []

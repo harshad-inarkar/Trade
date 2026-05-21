@@ -1,5 +1,6 @@
 # Global Config
-def_expiry_date  = "2026-05-26"
+place_order_mode= "ALERT"  # 'SUPER' 'FOREVER' 'ALERT' 
+#def_expiry_date  = "2026-05-26"
 def_trade_amount = 10000
 def_quantity     = 1
 def_order_mode   = 'NA'
@@ -7,9 +8,9 @@ def_order_mode   = 'NA'
 # ─────────────────────────────────────────────
 # Trade Level Percentages
 # ─────────────────────────────────────────────
-entry_price_perc = 0.1
-limit_price_perc = 0.2
-target_perc      = 4.0
+entry_price_perc = 0.13
+limit_price_perc = 0.5
+target_perc      = 5
 stop_loss_perc   = 0.7
 stop_trail_perc  = 0.5
 
@@ -18,12 +19,12 @@ stop_trail_perc  = 0.5
 # NSE Configs
 # ─────────────────────────────────────────────
 [nse.stocks.config]
-    order_mode   = "NA" # EQ / NA
+    order_mode   = "EQ" # EQ / NA
     trade_amount = 20000
     #expiry_date = "2026-05-26"
 
 [nse.indices.config]
-    order_mode = "NA"  # FUT NA
+    order_mode = "OPT"  # FUT NA
 
 [nse.indices.symbols.NIFTY]
     #expiry_date = "2026-05-12"
@@ -40,7 +41,7 @@ stop_trail_perc  = 0.5
 
 [mcx.comm.symbols.CRUDEOIL]
     symbol      = "CRUDEOILM"
-    quantity    = 10
+    quantity    = 5
     #expiry_date = "2026-05-14"
 
 [mcx.comm.symbols.NATURALGAS]
@@ -52,10 +53,11 @@ stop_trail_perc  = 0.5
 [mcx.comm.symbols.GOLD]
     symbol      = "GOLDM"
     quantity    = 1
-    expiry_date = "2026-05-29"
+    # expiry_date = "2026-05-29"
     #strike      = 140000
 
 [mcx.comm.symbols.SILVER]
+    # order_mode = "NA"
     symbol      = "SILVERM"
     quantity    = 1
     #strike      = 260000
