@@ -10,7 +10,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+:
 # Optional: Python compiled extensions
 *.so
 
