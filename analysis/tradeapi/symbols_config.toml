@@ -19,12 +19,12 @@ stop_trail_perc  = 0.5
 # NSE Configs
 # ─────────────────────────────────────────────
 [nse.stocks.config]
-    order_mode   = "EQ" # EQ / NA
+    order_mode   = "NA" # EQ / NA
     trade_amount = 20000
     #expiry_date = "2026-05-26"
 
 [nse.indices.config]
-    order_mode = "OPT"  # FUT NA
+    order_mode = "NA"  # FUT NA
 
 [nse.indices.symbols.NIFTY]
     #expiry_date = "2026-05-12"

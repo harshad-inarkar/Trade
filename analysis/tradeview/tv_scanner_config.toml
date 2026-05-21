@@ -1,5 +1,5 @@
 [settings]
-reload_interval = 3
+reload_interval = 1
 buffer_seconds = 5
 debug = true
 ignore_lastseen = false
