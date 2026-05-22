@@ -1,0 +1,37 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0
+// © harshad_inarkar
+//@version=6
+// ─────────────────────────────────────────────────────────────────────────────
+//  KSTH  —  KST oscillator strategy indicator
+//  Shared engine imported from TradeHLib.
+// ─────────────────────────────────────────────────────────────────────────────
+indicator(title = 'KSTH', shorttitle = 'KSTH')
+
+import harshad_inarkar/TradeHLib/13 as THL
+
+source = close
+
+// ── KST signal + plot values ──────────────────────────────────────────────────
+// calc_KST_raw returns [smoothkst, sig, status_code].
+// Gated behind barstate.isconfirmed so values only update on closed bars,
+// matching the original behaviour. var vars hold the last confirmed value
+// so plot() always shows a clean line rather than flickering on ticks.
+var float kst = 0.0
+var float sig = 0.0
+var color col = color(na)
+
+if barstate.isconfirmed
+    [k, s, kst_status_code] = THL.calc_generic_KST(source)
+    kst := k
+    sig := s
+
+    // Decode signal → colour for bgcolor
+    [_, co] = THL.decodeStratCode(kst_status_code)
+    col := co
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+plot(kst, color = color.new(color.aqua, 0), linewidth = 2, title = 'KST')
+plot(sig, color = color.new(color.red,  0), linewidth = 2, title = 'Signal')
+hline(0,  title = 'Zero', color = color.new(color.gray, 0))
+
+bgcolor(col)
