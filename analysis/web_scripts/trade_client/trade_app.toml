@@ -1,0 +1,31 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# trade_app.toml — Runtime configuration for the Dhan Trading Portal
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Uvicorn server settings ───────────────────────────────────────────────────
+[server]
+host      = "127.0.0.1"
+port      = 8000
+reload    = false          # Set to false to prevent double-loading
+log_level = "debug"         # debug | info | warning | error | critical
+
+# ── App-level settings ────────────────────────────────────────────────────────
+[app]
+title            = "Dhan Trading Portal"
+template_subdir  = "template_trade_client"  # relative to TEMPLATES_ROOT_DIR
+refresh_interval = 60                       # Page auto-refresh interval in seconds (0 to disable)
+
+# ── Position close defaults ────────────────────────────────────────────────────
+[close]
+reentry_order_mode   = "ALERT" # FOREVER | SUPER | MARKET
+reentry_product_type = "INTRADAY"     # CNC | INTRADAY | MARGIN
+
+# Automatically clean up orphaned super orders when a position is closed
+clean_orphaned_super_orders = true
+
+# ── Order-book filters ────────────────────────────────────────────────────────
+[orders]
+pending_statuses        = ["TRANSIT", "PENDING", "PART_TRADED"]
+forever_active_statuses = ["PENDING", "CONFIRM"]
+alert_active_statuses   = ["ACTIVE"]
+

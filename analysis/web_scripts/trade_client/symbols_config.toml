@@ -3,7 +3,7 @@ place_order_mode= "ALERT"  # 'SUPER' 'FOREVER' 'ALERT'
 #def_expiry_date  = "2026-05-26"
 def_trade_amount = 10000
 def_quantity     = 1
-def_order_mode   = 'NA'
+def_order_mode   = 'OPT'
 
 # ─────────────────────────────────────────────
 # Trade Level Percentages
@@ -19,7 +19,7 @@ stop_trail_perc  = 0.5
 # NSE Configs
 # ─────────────────────────────────────────────
 [nse.stocks.config]
-    order_mode   = "NA" # EQ / NA
+    order_mode   = "OPT" # EQ / NA
     trade_amount = 20000
     #expiry_date = "2026-05-26"
 

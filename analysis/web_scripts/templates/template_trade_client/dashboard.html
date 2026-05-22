@@ -9,7 +9,6 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet" />
 
 <style>
-/* ── VARIABLES ───────────────────────────────────────────────────────────── */
 :root {
   --bg:       #0b0f14;
   --surface:  #131920;
@@ -20,95 +19,149 @@
   --accent:   #00d4aa;
   --accent2:  #ff6b35;
   --accent3:  #f0c040;
+  --accent4:  #a78bfa; 
   --red:      #e05555;
-
   --mono: 'IBM Plex Mono', monospace;
   --sans: 'Space Grotesk', sans-serif;
   --radius: 4px;
+  --green: #1bbf49;
+
 }
 
-/* ── RESET & BASE ───────────────────────────────────────────────────────── */
+  /* Buy / Sell Indicator Boxes */
+  .box-B {
+    background: rgba(27, 191, 73, 0.15); color: var(--green);
+    border: 1px solid rgba(27, 191, 73, 0.3); font-weight: 700;
+    padding: 3px 8px; border-radius: 4px; font-family: var(--mono);
+    font-size: 0.75rem; display: inline-block; text-align: center; min-width: 28px;
+  }
+  .box-S {
+    background: rgba(224, 85, 85, 0.15); color: var(--red);
+    border: 1px solid rgba(224, 85, 85, 0.3); font-weight: 700;
+    padding: 3px 8px; border-radius: 4px; font-family: var(--mono);
+    font-size: 0.75rem; display: inline-block; text-align: center; min-width: 28px;
+  }
+  .box-- {
+    background: var(--surface2); color: var(--muted);
+    border: 1px solid var(--border); font-weight: 700;
+    padding: 3px 8px; border-radius: 4px; font-family: var(--mono);
+    font-size: 0.75rem; display: inline-block; text-align: center; min-width: 28px;
+  }
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 14px; }
 body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
-
-/* ── HEADER & META ───────────────────────────────────────────────────────── */
-header {
-  position: sticky; top: 0; z-index: 200;
-  background: rgba(11,15,20,.94); backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--border);
-  padding: 12px 28px; display: flex; justify-content: space-between; align-items: center;
-}
+header { position: sticky; top: 0; z-index: 200; background: rgba(11,15,20,.94); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); padding: 12px 28px; display: flex; justify-content: space-between; align-items: center; }
 .header-brand { display: flex; align-items: baseline; gap: 10px; }
 .logo { font-family: var(--mono); font-size: 1.05rem; font-weight: 600; letter-spacing: .12em; color: var(--accent); }
 .sub { font-size: .72rem; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
 
-.meta-bar {
-  display: flex; padding: 9px 28px; border-bottom: 1px solid var(--border);
-  background: var(--surface); gap: 18px; font-family: var(--mono); font-size: .72rem; color: var(--muted);
-}
+.meta-bar { display: flex; padding: 9px 28px; border-bottom: 1px solid var(--border); background: var(--surface); gap: 18px; font-family: var(--mono); font-size: .72rem; color: var(--muted); }
 .meta-bar strong { color: var(--text); margin-left: 6px; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; display: inline-block; margin-right: 6px;}
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-/* ── LAYOUT GRID ─────────────────────────────────────────────────────────── */
-.dashboard-grid {
-  display: grid; grid-template-columns: 320px 1fr; gap: 20px; padding: 20px 28px; align-items: start;
-}
+.dashboard-grid { display: grid; grid-template-columns: 320px 1fr; gap: 20px; padding: 20px 28px; align-items: start; }
 .data-stack { display: flex; flex-direction: column; gap: 20px; }
 
-/* ── PANELS ──────────────────────────────────────────────────────────────── */
-.panel {
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px;
-}
-.panel-header {
-  font-family: var(--mono); font-size: .85rem; color: var(--text);
-  border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;
-  text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
-}
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+.panel-header { font-family: var(--mono); font-size: .85rem; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
 
-/* ── FORMS ───────────────────────────────────────────────────────────────── */
 .order-form { display: flex; flex-direction: column; gap: 12px; }
 .form-group { display: flex; flex-direction: column; gap: 4px; }
 .order-form label { font-family: var(--mono); font-size: .65rem; color: var(--muted); text-transform: uppercase; }
-.order-form input, .order-form select {
-  font-family: var(--mono); font-size: .8rem; padding: 8px 12px;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--bg); color: var(--text); outline: none;
-}
+.order-form input, .order-form select { font-family: var(--mono); font-size: .8rem; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); outline: none; }
 .order-form input:focus, .order-form select:focus { border-color: var(--accent); }
 
 .btn-group { display: flex; gap: 10px; margin-top: 10px; }
-.btn {
-  flex: 1; font-family: var(--mono); font-size: .75rem; font-weight: 600; padding: 10px;
-  border: none; border-radius: var(--radius); cursor: pointer; transition: opacity .2s;
-  color: #000; letter-spacing: 0.05em; text-transform: uppercase;
-}
-.btn:hover { opacity: 0.8; }
-.btn-buy { background: var(--accent); }
-.btn-sell { background: var(--red); color: #fff;}
-.btn-action { background: var(--border); color: var(--text); font-size: 0.65rem; padding: 4px 10px; border: 1px solid transparent;}
-.btn-action:hover { background: var(--surface2); border-color: var(--red); color: var(--red); }
+.btn { flex: 1; font-family: var(--mono); font-size: .75rem; font-weight: 600; padding: 10px; border: none; border-radius: var(--radius); cursor: pointer; transition: opacity .2s, transform .1s; color: #000; letter-spacing: 0.05em; text-transform: uppercase; }
+.btn:hover  { opacity: 0.82; }
+.btn:active { transform: scale(0.97); }
+.btn-buy  { background: var(--accent); }
+.btn-sell { background: var(--red); color: #fff; }
 
-/* ── TABLES ──────────────────────────────────────────────────────────────── */
-.table-wrap { overflow-x: auto; }
+.btn-action { font-family: var(--mono); font-size: .65rem; font-weight: 600; padding: 4px 10px; border-radius: var(--radius); cursor: pointer; background: var(--surface2); color: var(--text); border: 1px solid var(--border); text-transform: uppercase; transition: background .15s, border-color .15s, color .15s; white-space: nowrap; }
+.btn-action:hover { background: var(--surface2); border-color: var(--red); color: var(--red); }
+.btn-close-mkt   { border-color: var(--red);    color: var(--red);    }
+.btn-close-mkt:hover   { background: rgba(224,85,85,.12); }
+.btn-reentry     { border-color: var(--accent3); color: var(--accent3); }
+.btn-reentry:hover     { background: rgba(240,192,64,.10); }
+.btn-cancel-normal  { border-color: var(--muted); }
+.btn-cancel-super   { border-color: var(--accent3); color: var(--accent3); }
+.btn-cancel-forever { border-color: var(--accent4); color: var(--accent4); }
+.btn-cancel-alert   { border-color: var(--accent2); color: var(--accent2); }
+
+/* Changed to visible so Re-entry absolute dropdown doesn't get clipped */
+.table-wrap { overflow: visible; } 
+
 .symbols-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .8rem; }
 .symbols-table thead tr { border-bottom: 2px solid var(--border); }
-.symbols-table th { padding: 12px 16px; text-align: left; font-size: .68rem; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+.symbols-table th { padding: 10px 14px; text-align: left; font-size: .65rem; font-weight: 600; color: var(--muted); text-transform: uppercase; }
 .symbols-table tbody tr { border-bottom: 1px solid var(--border); transition: background .15s; }
 .symbols-table tbody tr:hover { background: var(--surface2); }
-.symbols-table td { padding: 10px 16px; color: var(--text); }
+.symbols-table td { padding: 9px 14px; color: var(--text); vertical-align: middle; }
 
-.symbol-link {
-  font-family: var(--mono); font-size: .78rem; font-weight: 600; padding: 3px 10px; border-radius: 3px;
-  background: var(--surface2); border: 1px solid var(--border); color: var(--accent) !important; text-decoration: none;
-}
-.badge-type {
-  font-family: var(--mono); font-size: .65rem; padding: 2px 6px; border-radius: 3px;
-  background: var(--accent3); color: #000; font-weight: 600;
-}
+.symbol-badge { font-family: var(--mono); font-size: .76rem; font-weight: 600; padding: 3px 8px; border-radius: 3px; background: var(--surface2); border: 1px solid var(--border); color: var(--accent); display: inline-block;}
+.badge-type { font-family: var(--mono); font-size: .62rem; padding: 2px 7px; border-radius: 3px; font-weight: 600; letter-spacing: .04em; white-space: nowrap; }
+
+.badge-MARKET, .badge-LIMIT, .badge-STOP_LOSS, .badge-STOP_LOSS_MARKET { background: var(--surface2); color: var(--text);    border: 1px solid var(--border); }
+.badge-SUPER        { background: rgba(240,192,64,.15); color: var(--accent3); border: 1px solid rgba(240,192,64,.3); }
+.badge-FOREVER      { background: rgba(167,139,250,.15); color: var(--accent4); border: 1px solid rgba(167,139,250,.3); }
+.badge-ALERT        { background: rgba(255,107,53,.15);  color: var(--accent2); border: 1px solid rgba(255,107,53,.3); }
+
+details.reentry-panel { display: inline-block; position: relative; }
+details.reentry-panel > summary { list-style: none; cursor: pointer; }
+details.reentry-panel > summary::-webkit-details-marker { display: none; }
+.reentry-form-wrap { position: absolute; right: 0; top: calc(100% + 6px); z-index: 100; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; width: 240px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+.reentry-form-wrap label { font-family: var(--mono); font-size: .62rem; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 4px; margin-top: 10px; }
+.reentry-form-wrap label:first-child { margin-top: 0; }
+.reentry-form-wrap input, .reentry-form-wrap select { font-family: var(--mono); font-size: .78rem; padding: 7px 10px; width: 100%; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); outline: none; }
+.reentry-form-wrap input:focus, .reentry-form-wrap select:focus { border-color: var(--accent4); }
+.reentry-submit { margin-top: 12px; width: 100%; font-family: var(--mono); font-size: .7rem; font-weight: 600; padding: 8px; background: var(--accent4); color: #000; border: none; border-radius: var(--radius); cursor: pointer; text-transform: uppercase; letter-spacing: .04em; }
+.reentry-submit:hover { opacity: 0.85; }
+
+.action-cell { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: nowrap; }
+
+.pnl-positive { color: var(--accent); font-weight: 700; }
+.pnl-negative { color: var(--red); font-weight: 700; }
+.pnl-neutral  { color: var(--muted); font-weight: 700;}
 </style>
+
+{% if refresh_interval and refresh_interval > 0 %}
+<script>
+  const refreshSecs = parseInt("{{ refresh_interval }}", 10);
+  
+  setInterval(async () => {
+    // 1. Prevent refresh if you are currently focused on ANY input or dropdown
+    const activeTag = document.activeElement ? document.activeElement.tagName : '';
+    if (activeTag === 'INPUT' || activeTag === 'SELECT') {
+        return; 
+    }
+
+    try {
+      // 2. Silently fetch the latest HTML for the dashboard
+      const response = await fetch(window.location.href);
+      const html = await response.text();
+      
+      // 3. Parse it into a virtual DOM
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      
+      // 4. Extract ONLY the tables (data-stack) and swap them out
+      const newData = doc.querySelector('.data-stack');
+      const oldData = document.querySelector('.data-stack');
+      
+      if (newData && oldData) {
+        oldData.innerHTML = newData.innerHTML;
+      }
+    } catch (err) {
+      console.error('Auto-refresh failed:', err);
+    }
+  }, refreshSecs * 1000);
+</script>
+{% endif %}
 </head>
+
 <body>
 
 <header>
@@ -125,6 +178,7 @@ header {
 </div>
 
 <div class="dashboard-grid">
+
   <div class="panel">
     <div class="panel-header">Place Order</div>
     <form action="/place_order" method="post" class="order-form">
@@ -132,67 +186,195 @@ header {
         <label>Symbol</label>
         <input type="text" name="symbol" placeholder="e.g. TCS" required />
       </div>
-      <div class="form-group">
-        <label>Exchange Segment</label>
-        <select name="exchange">
-          <option value="NSE">NSE</option>
-          <option value="MCX">MCX</option>
-        </select>
+      
+      <div class="form-group" style="flex-direction: row; gap: 10px;">
+        <div style="flex:1;">
+          <label>Exchange</label>
+          <select name="exchange">
+            <option value="NSE">NSE</option>
+            <option value="MCX">MCX</option>
+          </select>
+        </div>
+        <div style="flex:1;">
+          <label>Inst Type</label>
+          <select name="inst_type">
+            <option value="">Config Default</option>
+            <option value="EQ">Equity (EQ)</option>
+            <option value="OPT">Options (OPT)</option>
+            <option value="FUT">Futures (FUT)</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group">
-        <label>Order Mode</label>
-        <select name="order_mode">
-          <option value="MARKET">Market</option>
-          <option value="SUPER">Super Order</option>
-          <option value="FOREVER">Forever (GTT)</option>
-          <option value="ALERT">Alert Trigger</option>
-        </select>
+      
+      <div class="form-group" style="flex-direction: row; gap: 10px;">
+        <div style="flex:1;">
+          <label>Order Mode</label>
+          <select name="order_mode">
+            <option value="MARKET">Market</option>
+            <option value="SUPER">Super Order</option>
+            <option value="FOREVER">Forever (GTT)</option>
+            <option value="ALERT">Alert Trigger</option>
+          </select>
+        </div>
+        <div style="flex:1;">
+          <label>Alert Target</label>
+          <select name="alert_trigger_base" title="Only applies if Alert Trigger is selected">
+            <option value="PARENT">Underlying Asset</option>
+            <option value="SELF">Same Symbol</option>
+          </select>
+        </div>
       </div>
+
+      <div class="form-group" style="flex-direction: row; gap: 10px;">
+        <div style="flex:1;">
+          <label>Strike (OPT)</label>
+          <input type="number" name="strike" value="0.0" step="0.05" style="width: 100%;" />
+        </div>
+        <div style="flex:1;">
+          <label>Expiry (YYYY-MM-DD)</label>
+          <input type="text" name="expiry" placeholder="Leave blank for Default" style="width: 100%;" />
+        </div>
+      </div>
+      
       <div class="form-group" style="flex-direction: row; gap: 10px;">
         <div style="flex:1;">
           <label>Qty</label>
           <input type="number" name="qty" value="1" min="1" style="width: 100%;" />
         </div>
         <div style="flex:1;">
-          <label>Trigger Price</label>
+          <label>Trigger / Entry Price</label>
           <input type="number" name="price" value="0.0" step="0.05" style="width: 100%;" />
         </div>
       </div>
+      
       <div class="btn-group">
-        <button type="submit" name="signal" value="BUY" class="btn btn-buy">BUY</button>
+        <button type="submit" name="signal" value="BUY"  class="btn btn-buy">BUY</button>
         <button type="submit" name="signal" value="SELL" class="btn btn-sell">SELL</button>
       </div>
     </form>
   </div>
 
   <div class="data-stack">
-    
+
     <div class="panel" style="padding: 0;">
-      <div class="panel-header" style="margin: 20px 20px 10px 20px;">Active Positions</div>
+      <div class="panel-header" style="margin: 18px 18px 10px 18px;">Active Positions</div>
       <div class="table-wrap">
         <table class="symbols-table">
           <thead>
             <tr>
-              <th style="width:40px">#</th>
-              <th>SYMBOL</th>
-              <th style="text-align: right;">ACTION</th>
+              <th style="width:36px">#</th>
+              <th>Symbol</th>
+              <th>Side</th>
+              <th>Qty</th>
+              <th>PnL</th>
+              <th style="text-align: right;">Action</th>
             </tr>
           </thead>
           <tbody>
             {% for pos in positions %}
             <tr>
               <td>{{ loop.index }}</td>
-              <td><span class="symbol-link">{{ pos.symbol }}</span></td>
-              <td style="text-align: right;">
-                <form action="/close_position" method="post" style="display:inline;">
-                  <input type="hidden" name="symbol" value="{{ pos.symbol }}">
-                  <button type="submit" class="btn btn-action">Close Pos</button>
-                </form>
+              <td>
+                <span class="symbol-badge">{{ pos.display_name }}</span>
+              </td>
+              <td>
+                {% set qty_num = pos.qty | int %}
+                {% set side = 'B' if qty_num > 0 else ('S' if qty_num < 0 else '-') %}
+                <span class="box-{{ side }}">{{ side }}</span>
+              </td>
+              <td style="font-family: var(--mono); font-size: .8rem;">
+                {{ qty_num | abs }}
+              </td>
+              <td>
+                <span class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+                  {{ "{:,.2f}".format(pos.pnl) }}
+                </span>
+              </td>
+              <td>
+                <div class="action-cell">
+                    <form action="/close_position" method="post">
+                        <input type="hidden" name="sec_id"       value="{{ pos.security_id }}">
+                        <input type="hidden" name="exchange_seg" value="{{ pos.exchange_seg }}">
+                        <input type="hidden" name="net_qty"      value="{{ pos.qty }}">
+                        <button type="submit" class="btn-action btn-close-mkt" title="Immediate market close">
+                          Close
+                        </button>
+                    </form>
+    
+                    <details class="reentry-panel">
+                      <summary class="btn-action btn-reentry" title="Close now and set a re-entry order">
+                        Re-entry ▸
+                      </summary>
+                      <div class="reentry-form-wrap">
+                        <form action="/close_reentry" method="post">
+                          <input type="hidden" name="sec_id"       value="{{ pos.security_id }}">
+                          <input type="hidden" name="exchange_seg" value="{{ pos.exchange_seg }}">
+                          <input type="hidden" name="net_qty"      value="{{ pos.qty }}">
+                          
+                          <input type="hidden" name="symbol"       value="{{ pos.base_symbol }}">
+                          <input type="hidden" name="exchange"     value="{{ pos.exchange }}">
+  
+                          <label>Re-entry Side</label>
+                          <select name="reentry_side">
+                            <option value="BUY">BUY (re-enter long)</option>
+                            <option value="SELL">SELL (re-enter short)</option>
+                          </select>
+  
+                          <label>Instrument</label>
+                          <select name="inst_type">
+                            <option value="">Config Default</option>
+                            <option value="EQ">Equity (EQ)</option>
+                            <option value="OPT">Options (OPT)</option>
+                            <option value="FUT">Futures (FUT)</option>
+                          </select>
+
+                          <label>Order Type</label>
+                          <select name="reentry_type">
+                            <option value="">Config Default</option>
+                            <option value="FOREVER">Forever (GTT)</option>
+                            <option value="ALERT">Alert Trigger</option>
+                            <option value="SUPER">Super Order</option>
+                            <option value="MARKET">Market</option>
+                          </select>
+                          
+                          <label>Alert Target (If Alert)</label>
+                          <select name="reentry_alert_base">
+                            <option value="PARENT">Underlying Asset</option>
+                            <option value="SELF">Same Symbol</option>
+                          </select>
+
+                          <div style="display: flex; gap: 10px; margin-top: 10px;">
+                            <div style="flex:1;">
+                              <label style="margin-top:0;">Strike (OPT)</label>
+                              <input type="number" name="strike" value="0.0" step="0.05" />
+                            </div>
+                            <div style="flex:1;">
+                              <label style="margin-top:0;">Expiry Date</label>
+                              <input type="text" name="expiry" placeholder="YYYY-MM-DD" />
+                            </div>
+                          </div>
+                          
+                          <label>Re-entry Trigger Price</label>
+                          <input type="number" name="reentry_price" placeholder="e.g. 2350.00" step="0.05" min="0" required />
+  
+                          <label>New Lot Qty</label>
+                          <input type="number" name="qty" value="1" min="1" />
+  
+                          <button type="submit" class="reentry-submit">
+                            Close &amp; Set Re-entry
+                          </button>
+                        </form>
+                      </div>
+                    </details>
+
+                </div>
               </td>
             </tr>
             {% else %}
             <tr>
-              <td colspan="3" style="text-align: center; color: var(--muted); padding: 40px;">No Active Positions.</td>
+              <td colspan="4" style="text-align: center; color: var(--muted); padding: 40px;">
+                No Active Positions.
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -201,43 +383,69 @@ header {
     </div>
 
     <div class="panel" style="padding: 0;">
-      <div class="panel-header" style="margin: 20px 20px 10px 20px;">Pending Orders</div>
-      <div class="table-wrap">
-        <table class="symbols-table">
-          <thead>
-            <tr>
-              <th style="width:40px">#</th>
-              <th>SYMBOL</th>
-              <th>ORDER ID</th>
-              <th>TYPE</th>
-              <th style="text-align: right;">ACTION</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for ord in active_orders %}
-            <tr>
-              <td>{{ loop.index }}</td>
-              <td><span class="symbol-link">{{ ord.symbol }}</span></td>
-              <td style="font-family: var(--mono); color: var(--muted); font-size: 0.75rem;">{{ ord.order_id }}</td>
-              <td><span class="badge-type">{{ ord.type }}</span></td>
-              <td style="text-align: right;">
-                <form action="/cancel_order" method="post" style="display:inline;">
-                  <input type="hidden" name="order_id" value="{{ ord.order_id }}">
-                  <input type="hidden" name="order_type" value="{{ ord.type }}">
-                  <input type="hidden" name="leg" value="{{ ord.leg }}">
-                  <button type="submit" class="btn btn-action">Cancel</button>
-                </form>
-              </td>
-            </tr>
-            {% else %}
-            <tr>
-              <td colspan="5" style="text-align: center; color: var(--muted); padding: 40px;">No Pending Orders.</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <div class="panel-header" style="margin: 18px 18px 10px 18px; display: flex; justify-content: space-between; align-items: center;">
+        <span>Pending Orders</span>
+        <div style="display: flex; gap: 8px;">
+          <form action="/clean_orphaned" method="post" style="margin: 0;">
+            <button type="submit" class="btn-action" style="border-color: var(--accent3); color: var(--accent3);" title="Clear Orphaned Super Orders">
+              Clear Orphaned
+            </button>
+          </form>
+          <form action="/cancel_all" method="post" style="margin: 0;" onsubmit="return confirm('Cancel ALL pending orders across all segments?');">
+            <button type="submit" class="btn-action" style="border-color: var(--red); color: var(--red);" title="Cancel ALL Pending Orders">
+              Clear All
+            </button>
+          </form>
+        </div>
       </div>
+    <div class="table-wrap">
+      <table class="symbols-table">
+        <thead>
+          <tr>
+            <th style="width:36px">#</th>
+            <th>Symbol</th>
+            <th>Type</th> <th>Side</th>
+            <th>Detail</th>
+            <th style="text-align: right;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ord in active_orders %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>
+              <span class="symbol-badge">{{ ord.symbol }}</span>
+            </td>
+            <td>
+              <span class="badge-type badge-{{ ord.type }}">{{ ord.type }}</span>
+            </td>
+            <td>
+              {% set oside = 'B' if ord.side == 'BUY' else ('S' if ord.side == 'SELL' else '-') %}
+              <span class="box-{{ oside }}">{{ oside }}</span>
+            </td>
+            <td style="color: var(--text); font-family: var(--mono); font-size: .72rem; white-space: nowrap;">
+              {{ ord.detail }}
+            </td>
+            <td style="text-align: right;">
+              <form action="/cancel_order" method="post" style="display:inline;">
+                <input type="hidden" name="order_id"   value="{{ ord.order_id }}">
+                <input type="hidden" name="order_type" value="{{ ord.type }}">
+                <input type="hidden" name="leg"        value="{{ ord.leg }}">
+                <button type="submit" class="btn-action btn-cancel-{{ ord.type | lower }}" title="Cancel this order">Cancel</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" style="text-align: center; color: var(--muted); padding: 40px;">No Pending Orders.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
+  </div>
 
-  </div> </div> </body>
+  </div>
+</div>
+</body>
 </html>
