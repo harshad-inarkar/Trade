@@ -93,6 +93,7 @@ class TVUpdaterApp:
         
         self.reload_interval = settings.get('reload_interval', 15)
         self.buffer_seconds  = settings.get('buffer_seconds', 15)
+        self.tv_focus_flag   = settings.get('tv_focus_flag', False)
         self.new_setup       = args.new_setup
         
         # Candidates path resolution
@@ -199,14 +200,33 @@ class TVUpdaterApp:
 
         original_pos = pyautogui.position()
         
+        # Boomerang logic 
+        is_on_desk_1 = False
+        try:
+            import Quartz
+            # Pulls only windows currently rendered on the active Desktop
+            window_list = Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
+            is_on_desk_1 = any(w.get(Quartz.kCGWindowOwnerName) == 'TradingView' for w in window_list)
+        except ImportError:
+            # Fallback if pyobjc-framework-Quartz is not installed
+            active_app = os.popen('osascript -e \'tell application "System Events" to get name of first application process whose frontmost is true\'').read().strip()
+            is_on_desk_1 = (active_app == 'TradingView')
+
+        if not is_on_desk_1:
+            pass
+            # pyautogui.hotkey('ctrl', '1')
+            # time.sleep(0.6) # Wait for macOS slide animation to finish
+
+
         # 2. Focus Window
-        self._focus_tradingview()
+        if self.tv_focus_flag:
+            self._focus_tradingview()
 
         # 3. Execution
         indicator_xy, textbox_xy, ok_xy = self.coords
 
         pyautogui.doubleClick(indicator_xy, interval=0.1)
-        time.sleep(0.8) # Wait for modal
+        time.sleep(0.3) # Wait for modal
 
         pyautogui.click(textbox_xy)
         pyautogui.hotkey('command', 'a')
@@ -221,6 +241,9 @@ class TVUpdaterApp:
         pyautogui.press('enter')
         pyautogui.click(ok_xy)
         
+        if not is_on_desk_1:
+            pyautogui.hotkey('ctrl', '2')
+
         # 4. Snap mouse back
         pyautogui.moveTo(original_pos)
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] TV Updated successfully.")

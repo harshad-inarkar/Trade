@@ -11,7 +11,6 @@ from utils.data.paths import TEMPLATES_ROOT_DIR
 from tradeapi.dhan_trade import DhanTrader, UIOverride
 
 _APP_CONFIG_PATH        = Path(__file__).parent / 'trade_app.toml'
-TRADEAPP_SYMBOLS_CONFIG = Path(__file__).parent / 'symbols_config.toml'
 
 class AppConfig:
     def __init__(self, path: Path):
@@ -19,8 +18,8 @@ class AppConfig:
         self.raw_cfg = self._load()
 
         srv = self.raw_cfg.get('server', {})
-        self.host      = srv.get('host', '127.0.0.1')
-        self.port      = int(srv.get('port', 8000))
+        self.host      = srv.get('host', '')
+        self.port      = int(srv.get('port',0))
         self.reload    = bool(srv.get('reload', False))
         self.log_level = srv.get('log_level', 'info')
 
@@ -28,6 +27,8 @@ class AppConfig:
         self.title            = app_cfg.get('title', 'Dhan Trading Portal')
         self.template_subdir  = app_cfg.get('template_subdir', 'template_trade_client')
         self.refresh_interval = int(app_cfg.get('refresh_interval', 15))
+        self.refresh_master_script = app_cfg.get('refresh_master_script', False)
+        self.reset_proxy_at_start = app_cfg.get('reset_proxy_at_start', False)
 
         cls_cfg = self.raw_cfg.get('close', {})
         self.reentry_order_mode          = cls_cfg.get('reentry_order_mode', 'FOREVER')
@@ -57,14 +58,15 @@ class TradePortalApp:
         self.templates = Jinja2Templates(directory=template_dir)
 
         print("[*] Initializing DhanTrader...")
-        self.trader = DhanTrader(symb_config=TRADEAPP_SYMBOLS_CONFIG, restart_proxy=True)
+        self.trader = DhanTrader(refresh_master_scrip=self.cfg.refresh_master_script, 
+                                 restart_proxy=self.cfg.reset_proxy_at_start)
         self.trader.begin_session()
 
         self._setup_routes()
 
     def _setup_routes(self):
         @self.app.get("/", response_class=HTMLResponse)
-        async def dashboard(request: Request):
+        async def dashboard(request: Request, view: str = None):
             positions = self.trader.get_active_positions()
             active_orders = []
 
@@ -112,31 +114,30 @@ class TradePortalApp:
             return self.templates.TemplateResponse("dashboard.html", {
                 "request": request, "positions": positions, "total_positions": len(positions),
                 "active_orders": active_orders, "total_orders": len(active_orders),
-                "refresh_interval": self.cfg.refresh_interval
+                "refresh_interval": self.cfg.refresh_interval,
+                "view": view # <-- Pass the flag to the template
             })
 
         @self.app.post("/place_order")
         async def place_order(
             symbol: str = Form(...), exchange: str = Form("NSE"), signal: str = Form(...), 
-            qty: int = Form(1), price: float = Form(0.0), order_mode: str = Form("MARKET"),
+            qty: int = Form(1), price: float = Form(0.0), limit_price: float = Form(0.0), order_mode: str = Form("MARKET"),
             inst_type: str = Form(""), alert_trigger_base: str = Form("PARENT"),
-            strike: float = Form(0.0), expiry: str = Form("")
+            strike: float = Form(0.0), expiry: str = Form(""), opt_type: str = Form(""),
         ):
-            # Package the UI Overrides explicitly
             overrides = UIOverride(
                 inst_type=inst_type, strike=strike, expiry=expiry, 
-                trigger_price=price, force_qty=True
+                trigger_price=price, force_qty=True, opt_type=opt_type, limit_price=limit_price, 
             )
             
             inst = self.trader.resolve_instrument(symbol, exchange, signal, qty, price, overrides=overrides)
-
             if inst:
                 sec_id, lot_size = self.trader.scrip.lookup_with_fallback(inst)
                 if sec_id:
                     match order_mode:
-                        case "MARKET":  self.trader.place_market_order(sec_id, lot_size, inst)
+                        case "MARKET":  self.trader.place_simple_order(sec_id, lot_size, inst)
                         case "SUPER":   self.trader.place_super_order(sec_id, lot_size, inst)
-                        case "FOREVER": self.trader.place_trigger_forever_order(sec_id, lot_size, inst, trigger_price=overrides.trigger_price)
+                        case "FOREVER": self.trader.place_trigger_forever_order(sec_id, lot_size, inst)
                         case "ALERT":   
                             fno_sig = signal if alert_trigger_base == "PARENT" else None
                             self.trader.place_trigger_alert_order(sec_id, lot_size, inst, fno_signal=fno_sig)
@@ -150,9 +151,9 @@ class TradePortalApp:
         async def close_reentry(
             symbol: str = Form(...), exchange: str = Form("NSE"), 
             sec_id: str = Form(...), exchange_seg: str = Form(...), net_qty: int = Form(...),
-            qty: int = Form(1), reentry_price: float = Form(0.0), reentry_side: str = Form("BUY"),
+            qty: int = Form(1), reentry_price: float = Form(0.0), reentry_limit_price: float = Form(0.0), reentry_side: str = Form("BUY"),
             inst_type: str = Form(""), reentry_type: str = Form(""), reentry_alert_base: str = Form("PARENT"),
-            strike: float = Form(0.0), expiry: str = Form("")
+            strike: float = Form(0.0), expiry: str = Form(""), opt_type: str = Form("")
         ):
             self.trader.close_position_by_secid(sec_id, exchange_seg, net_qty)
 
@@ -160,10 +161,10 @@ class TradePortalApp:
                 time.sleep(1)
                 self.trader.clean_orphaned_orders()
 
-            if reentry_price > 0:
+            if reentry_price > 0 or reentry_limit_price > 0:
                 overrides = UIOverride(
                     inst_type=inst_type, strike=strike, expiry=expiry, 
-                    trigger_price=reentry_price, force_qty=True
+                    trigger_price=reentry_price, force_qty=True, opt_type=opt_type, limit_price=reentry_limit_price
                 )
                 
                 inst_reentry = self.trader.resolve_instrument(symbol, exchange, reentry_side, qty, reentry_price, overrides=overrides)
@@ -172,12 +173,12 @@ class TradePortalApp:
                     if new_sec_id:
                         mode_to_use = reentry_type if reentry_type else self.cfg.reentry_order_mode
                         match mode_to_use:
-                            case "FOREVER": self.trader.place_trigger_forever_order(new_sec_id, lot_size, inst_reentry, trigger_price=overrides.trigger_price)
+                            case "FOREVER": self.trader.place_trigger_forever_order(new_sec_id, lot_size, inst_reentry)
                             case "SUPER":   self.trader.place_super_order(new_sec_id, lot_size, inst_reentry)
                             case "ALERT":   
                                 fno_sig = reentry_side if reentry_alert_base == "PARENT" else None
                                 self.trader.place_trigger_alert_order(new_sec_id, lot_size, inst_reentry, fno_signal=fno_sig)
-                            case _:         self.trader.place_market_order(new_sec_id, lot_size, inst_reentry)
+                            case _:         self.trader.place_simple_order(new_sec_id, lot_size, inst_reentry)
             
             return RedirectResponse(url="/", status_code=303)
 
@@ -206,7 +207,7 @@ class TradePortalApp:
         @self.app.post("/cancel_all")
         async def cancel_all():
             for o in self.trader.get_pending_orders(self.cfg.pending_statuses): self.trader.cancel_normal_order(o["order_id"])
-            for symbol, oid, leg in self.trader.get_active_super_orders(): self.trader.cancel_super_order(oid, leg)
+            for _, oid, leg, *_ in self.trader.get_active_super_orders(): self.trader.cancel_super_order(oid, leg)
             for o in self.trader.get_forever_orders(self.cfg.forever_active_statuses): self.trader.cancel_forever_order(o["order_id"])
             for o in self.trader.get_all_alerts(self.cfg.alert_active_statuses): self.trader.cancel_alert_order(o["order_id"])
             return RedirectResponse(url="/", status_code=303)

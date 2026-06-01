@@ -1,6 +1,7 @@
 [settings]
 reload_interval = 9
 buffer_seconds = -10
+tv_focus_flag = true
 
 [coordinates]
 indicator = [1076, 126]

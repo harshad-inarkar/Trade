@@ -1,5 +1,5 @@
 # Global Config
-place_order_mode= "ALERT"  # 'SUPER' 'FOREVER' 'ALERT' 
+place_order_mode= "NA"  # 'SUPER' 'FOREVER' 'ALERT' 
 #def_expiry_date  = "2026-05-26"
 def_trade_amount = 10000
 def_quantity     = 1
@@ -19,8 +19,8 @@ stop_trail_perc  = 0.5
 # NSE Configs
 # ─────────────────────────────────────────────
 [nse.stocks.config]
-    order_mode   = "NA" # EQ / NA
-    trade_amount = 20000
+    order_mode   = "NA" # EQ / FUT
+    trade_amount = 50000
     #expiry_date = "2026-05-26"
 
 [nse.indices.config]
@@ -30,8 +30,10 @@ stop_trail_perc  = 0.5
     #expiry_date = "2026-05-12"
 
 [nse.indices.symbols.MIDCPNIFTY]
-
 [nse.indices.symbols.BANKNIFTY]
+[nse.indices.symbols.FINNIFTY]
+
+
 
 # ─────────────────────────────────────────────
 # MCX Configs

@@ -1,6 +1,7 @@
 [settings]
 reload_interval = 1
 buffer_seconds = 5
+tv_focus_flag = true
 debug = true
 ignore_lastseen = false
 no_trade = false
@@ -11,6 +12,8 @@ candidate_files = ['candidates.txt', 'candidates_comm.txt', 'candidates_tv.txt',
 USOIL = "CRUDEOIL"
 CNXFINANCE = "FINNIFTY"
 NIFTY_MID_SELECT = "MIDCPNIFTY"
+NIFTYJR= "NIFTYNXT50"
+
 
 [coordinates]
 x1 = 1004

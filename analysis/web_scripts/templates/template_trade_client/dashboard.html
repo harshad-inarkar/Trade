@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet" />
 
 <style>
+
 :root {
   --bg:       #0b0f14;
   --surface:  #131920;
@@ -27,6 +28,14 @@
   --green: #1bbf49;
 
 }
+
+
+  /* Centered layout for Order Only view */
+  .dashboard-grid.order-only { 
+      grid-template-columns: 380px; 
+      justify-content: center; 
+      margin-top: 40px;
+  }
 
   /* Buy / Sell Indicator Boxes */
   .box-B {
@@ -175,13 +184,24 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
   <div><span class="dot"></span>API Live</div>
   <div>Positions: <strong>{{ total_positions }}</strong></div>
   <div>Open Orders: <strong>{{ total_orders }}</strong></div>
+<!-- NEW: View Toggle Link -->
+  <div style="margin-left: auto;">
+    {% if view == 'order' %}
+      <a href="/" style="color: var(--accent); text-decoration: none; font-family: var(--mono); font-weight: 600;">Show Full Dashboard</a>
+    {% else %}
+      <a href="/?view=order" style="color: var(--accent); text-decoration: none; font-family: var(--mono); font-weight: 600;">Place Order Only</a>
+    {% endif %}
+  </div>
+
+
 </div>
 
-<div class="dashboard-grid">
+<div class="dashboard-grid {% if view == 'order' %}order-only{% endif %}">
 
   <div class="panel">
     <div class="panel-header">Place Order</div>
     <form action="/place_order" method="post" class="order-form">
+      
       <div class="form-group">
         <label>Symbol</label>
         <input type="text" name="symbol" placeholder="e.g. TCS" required />
@@ -189,11 +209,13 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
       
       <div class="form-group" style="flex-direction: row; gap: 10px;">
         <div style="flex:1;">
-          <label>Exchange</label>
-          <select name="exchange">
-            <option value="NSE">NSE</option>
-            <option value="MCX">MCX</option>
-          </select>
+          <div style="display: flex; flex-direction: column;">
+            <label>Exchange</label>
+            <select name="exchange">
+              <option value="NSE">NSE</option>
+              <option value="MCX">MCX</option>
+            </select>
+          </div>
         </div>
         <div style="flex:1;">
           <label>Inst Type</label>
@@ -210,7 +232,7 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
         <div style="flex:1;">
           <label>Order Mode</label>
           <select name="order_mode">
-            <option value="MARKET">Market</option>
+            <option value="MARKET">Mark/Lim</option>
             <option value="SUPER">Super Order</option>
             <option value="FOREVER">Forever (GTT)</option>
             <option value="ALERT">Alert Trigger</option>
@@ -219,8 +241,8 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
         <div style="flex:1;">
           <label>Alert Target</label>
           <select name="alert_trigger_base" title="Only applies if Alert Trigger is selected">
-            <option value="PARENT">Underlying Asset</option>
-            <option value="SELF">Same Symbol</option>
+            <option value="PARENT">Underlying</option>
+            <option value="SELF">Same</option>
           </select>
         </div>
       </div>
@@ -231,19 +253,34 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
           <input type="number" name="strike" value="0.0" step="0.05" style="width: 100%;" />
         </div>
         <div style="flex:1;">
-          <label>Expiry (YYYY-MM-DD)</label>
-          <input type="text" name="expiry" placeholder="Leave blank for Default" style="width: 100%;" />
+          <label>Opt Type (OPT)</label>
+          <select name="opt_type">
+            <option value="">Auto (By Side)</option>
+            <option value="CE">Call (CE)</option>
+            <option value="PE">Put (PE)</option>
+          </select>
         </div>
       </div>
       
       <div class="form-group" style="flex-direction: row; gap: 10px;">
         <div style="flex:1;">
-          <label>Qty</label>
+          <label>Expiry (YYYY-MM-DD)</label>
+          <input type="text" name="expiry" placeholder="Default" style="width: 100%;" />
+        </div>
+        <div style="flex:1;">
+          <label>Qty (Lots / Shares)</label>
           <input type="number" name="qty" value="1" min="1" style="width: 100%;" />
         </div>
+      </div>
+      
+      <div class="form-group" style="flex-direction: row; gap: 10px;">
         <div style="flex:1;">
           <label>Trigger / Entry Price</label>
           <input type="number" name="price" value="0.0" step="0.05" style="width: 100%;" />
+        </div>
+        <div style="flex:1;">
+          <label>Limit Price</label>
+          <input type="number" name="limit_price" value="0.0" step="0.05" style="width: 100%;" />
         </div>
       </div>
       
@@ -254,6 +291,7 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
     </form>
   </div>
 
+  {% if view != 'order' %}
   <div class="data-stack">
 
     <div class="panel" style="padding: 0;">
@@ -320,22 +358,27 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
                             <option value="SELL">SELL (re-enter short)</option>
                           </select>
   
-                          <label>Instrument</label>
-                          <select name="inst_type">
-                            <option value="">Config Default</option>
-                            <option value="EQ">Equity (EQ)</option>
-                            <option value="OPT">Options (OPT)</option>
-                            <option value="FUT">Futures (FUT)</option>
-                          </select>
-
-                          <label>Order Type</label>
-                          <select name="reentry_type">
-                            <option value="">Config Default</option>
-                            <option value="FOREVER">Forever (GTT)</option>
-                            <option value="ALERT">Alert Trigger</option>
-                            <option value="SUPER">Super Order</option>
-                            <option value="MARKET">Market</option>
-                          </select>
+                          <div style="display: flex; gap: 10px; margin-top: 10px;">
+                              <div style="flex:1;">
+                                <label style="margin-top:0;">Instrument</label>
+                                <select name="inst_type">
+                                  <option value="">Config Default</option>
+                                  <option value="EQ">Equity (EQ)</option>
+                                  <option value="OPT">Options (OPT)</option>
+                                  <option value="FUT">Futures (FUT)</option>
+                                </select>
+                              </div>
+                              <div style="flex:1;">
+                                <label style="margin-top:0;">Order Type</label>
+                                <select name="reentry_type">
+                                  <option value="">Config Default</option>
+                                  <option value="FOREVER">Forever (GTT)</option>
+                                  <option value="ALERT">Alert Trigger</option>
+                                  <option value="SUPER">Super Order</option>
+                                  <option value="MARKET">Mark/Lim</option>
+                                </select>
+                              </div>
+                          </div>
                           
                           <label>Alert Target (If Alert)</label>
                           <select name="reentry_alert_base">
@@ -349,16 +392,36 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
                               <input type="number" name="strike" value="0.0" step="0.05" />
                             </div>
                             <div style="flex:1;">
-                              <label style="margin-top:0;">Expiry Date</label>
-                              <input type="text" name="expiry" placeholder="YYYY-MM-DD" />
+                              <label style="margin-top:0;">Opt Type (OPT)</label>
+                              <select name="opt_type">
+                                <option value="">Auto</option>
+                                <option value="CE">CE</option>
+                                <option value="PE">PE</option>
+                              </select>
                             </div>
                           </div>
                           
-                          <label>Re-entry Trigger Price</label>
-                          <input type="number" name="reentry_price" placeholder="e.g. 2350.00" step="0.05" min="0" required />
-  
-                          <label>New Lot Qty</label>
-                          <input type="number" name="qty" value="1" min="1" />
+                          <div style="display: flex; gap: 10px; margin-top: 10px;">
+                              <div style="flex:1;">
+                                <label style="margin-top:0;">Expiry Date</label>
+                                <input type="text" name="expiry" placeholder="YYYY-MM-DD" />
+                              </div>
+                              <div style="flex:1;">
+                                <label style="margin-top:0;">New Lot Qty</label>
+                                <input type="number" name="qty" value="1" min="1" />
+                              </div>
+                          </div>
+                          
+                          <div style="display: flex; gap: 10px; margin-top: 10px;">
+                              <div style="flex:1;">
+                                <label style="margin-top:0;">Trigger Price</label>
+                                <input type="number" name="reentry_price" placeholder="e.g. 2350" step="0.05" min="0" required />
+                              </div>
+                              <div style="flex:1;">
+                                <label style="margin-top:0;">Limit Price</label>
+                                <input type="number" name="reentry_limit_price" placeholder="e.g. 2355" step="0.05" min="0" />
+                              </div>
+                          </div>
   
                           <button type="submit" class="reentry-submit">
                             Close &amp; Set Re-entry
@@ -446,6 +509,7 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
   </div>
 
   </div>
+  {% endif %}
 </div>
 </body>
 </html>

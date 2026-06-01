@@ -14,10 +14,12 @@ log_level = "debug"         # debug | info | warning | error | critical
 title            = "Dhan Trading Portal"
 template_subdir  = "template_trade_client"  # relative to TEMPLATES_ROOT_DIR
 refresh_interval = 60                       # Page auto-refresh interval in seconds (0 to disable)
+refresh_master_script = false
+reset_proxy_at_start = false
 
 # ── Position close defaults ────────────────────────────────────────────────────
 [close]
-reentry_order_mode   = "ALERT" # FOREVER | SUPER | MARKET
+reentry_order_mode   = "ALERT" # ALERT | FOREVER | SUPER | MARKET
 reentry_product_type = "INTRADAY"     # CNC | INTRADAY | MARGIN
 
 # Automatically clean up orphaned super orders when a position is closed

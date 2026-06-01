@@ -23,6 +23,31 @@ from typing import Optional
 
 import numpy as np
 from PIL import Image
+import pyautogui
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# macOS Background App Registration
+# ─────────────────────────────────────────────────────────────────────────────
+if sys.platform == "darwin":
+    try:
+        import AppKit
+        
+        # Initialize the shared application instance
+        app = AppKit.NSApplication.sharedApplication()
+        
+        # Set activation policy to 'Accessory' (1) 
+        # This acts exactly like LSUIElement=1 (Hides Dock icon, runs in background)
+        app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
+        
+    except ImportError:
+        # Fails silently if pyobjc-framework-AppKit is not installed
+        pass
+
+# Safety mechanism
+pyautogui.FAILSAFE = True 
+
+
 
 # ─── Custom Imports ───────────────────────────────────────────────────────────
 from utils.utility import wait_next_wall_clock
@@ -393,11 +418,12 @@ class TVScannerApp:
         # Map TOML Settings
         settings = self.config.data.get('settings', {})
         self.reload_interval        = settings.get('reload_interval', 1)
-        self.buffer_seconds         = settings.get('buffer_seconds', 7)
+        self.buffer_seconds         = settings.get('buffer_seconds', 5)
         self.debug                  = settings.get('debug', True)
         self.ignore_lastseen        = settings.get('ignore_lastseen', True)
         self.no_trade               = settings.get('no_trade', False)
         self.rebuild_master         = settings.get('rebuild_master_scrip', False)
+        self.tv_focus_flag           = settings.get('tv_focus_flag', False)
 
 
         candidate_files = settings.get('candidate_files', [])
@@ -469,13 +495,31 @@ class TVScannerApp:
         t0 = time.time()
         self.dprint(f"\n── Scanning ──────────────────────────────────────")
 
-        self.focus_tradingview()
+        is_on_desk_1 = False
+        try:
+            import Quartz
+            # Pulls only windows currently rendered on the active Desktop
+            window_list = Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
+            is_on_desk_1 = any(w.get(Quartz.kCGWindowOwnerName) == 'TradingView' for w in window_list)
+        except ImportError:
+            # Fallback if pyobjc-framework-Quartz is not installed
+            active_app = os.popen('osascript -e \'tell application "System Events" to get name of first application process whose frontmost is true\'').read().strip()
+            is_on_desk_1 = (active_app == 'TradingView')
+
+        if not is_on_desk_1:
+            pass
+
+        if self.tv_focus_flag:
+            self.focus_tradingview()
 
         try:
             img_path = self.capture_screen()
         except RuntimeError as e:
             self.dprint(f"  screencapture failed: {e}")
             return
+        
+        if not is_on_desk_1:
+            pyautogui.hotkey('ctrl', '2')
 
         try:
             parsed = self.vision.process_image(img_path)

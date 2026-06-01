@@ -3,7 +3,6 @@ dhan_trade.py — Dhan HQ automated order placement (Object-Oriented).
 """
 
 import math
-import time
 import requests
 from requests.exceptions import RequestException
 import pandas as pd
@@ -116,26 +115,29 @@ def compute_quantity(trade_amount: float, price: float, lot_size: int, base_quan
 
 @dataclass
 class Instrument:
-    symb:         str
-    exch:         str
-    seg:          str
-    expiry_date:  str             = ''
-    signal:       str             = ''
-    quant:        int             = 1
-    entry_val:    float           = 0.0
-    trade_amount: float           = 0.0
-    strike:       Optional[float] = None
-    opt_type:     Optional[str]   = None
+    symb:          str
+    exch:          str
+    seg:           str
+    expiry_date:   str             = ''
+    signal:        str             = ''
+    quant:         int             = 1
+    entry_val:     float           = 0.0
+    trade_amount:  float           = 0.0
+    strike:        Optional[float] = None
+    opt_type:      Optional[str]   = None
+    trigger_price: float           = 0.0  # Added
+    limit_price:   float           = 0.0  # Added
 
 @dataclass
 class UIOverride:
-    """Encapsulates Web UI overrides to cleanly bypass config defaults."""
-    inst_type:     str   = ""
-    strike:        float = 0.0
-    expiry:        str   = ""
-    trigger_price: float = 0.0
-    force_qty:     bool  = False
-
+    inst_type:     str             = ""
+    strike:        float           = 0.0
+    expiry:        str             = ""
+    limit_price:   float           = 0.0
+    trigger_price: float           = 0.0
+    force_qty:     bool            = False
+    opt_type:      Optional[str]   = None
+    
 
 # ───────────────────────────────────────
 # Config Manager
@@ -181,12 +183,14 @@ class SymbolsConfig:
 # ScripMaster
 # ───────────────────────────────────────
 class ScripMaster:
-    def __init__(self, refresh_master_scrip: bool = False):
+    def __init__(self, session_obj,refresh_master_scrip: bool = False):
         self._eq_index     = None
         self._opt_index    = None
         self._expiry_index = None
         self._secid_info   = None
+        self.session = session_obj
         self._ensure_loaded(refresh_master_scrip)
+        
 
     def get_symbol_name(self, sec_id: str, fallback: str = "") -> str:
         if not self._secid_info: return fallback
@@ -216,7 +220,7 @@ class ScripMaster:
         frames = []
         for segment in INSTRUMENT_SEGMENTS:
             try:
-                resp = requests.get(INSTRUMENT_URL.format(segment=segment), timeout=30)
+                resp = self.session.request('GET',INSTRUMENT_URL.format(segment=segment), timeout=5)
                 resp.raise_for_status()
                 df = pd.read_csv(io.StringIO(resp.text), usecols=lambda c: c in SCRIP_COLS, low_memory=False)
                 if 'EXCH_ID' in df.columns and 'INSTRUMENT' in df.columns:
@@ -328,7 +332,6 @@ class DhanTrader:
         self.cfg = SymbolsConfig(symb_config)
         self._defaults_config = None
         self._set_defaults_config()
-        self.scrip = ScripMaster(refresh_master_scrip)
         self.traded_this_scan = set()
 
         self.proxy_manager = SSHProxyManager()
@@ -338,12 +341,15 @@ class DhanTrader:
         self.session = requests.Session()
         self._apply_proxy()
 
+        
         self.client_id, self.access_token = self._load_credentials(ACCESS_FILE_PATH)
         self.api_headers = {
             'access-token': self.access_token,
             'Content-Type': 'application/json',
             'Accept':       'application/json',
         }
+
+        self.scrip = ScripMaster(session_obj=self.session,refresh_master_scrip=refresh_master_scrip)
 
         self.entry_perc      = self.cfg.get('entry_price_perc', 0.1)
         self.limit_perc      = self.cfg.get('limit_price_perc', 0.2)
@@ -458,47 +464,57 @@ class DhanTrader:
         overrides = overrides or UIOverride()
         sym_cfg   = self._get_symbol_config(symb, exch)
 
-        # 1. Apply UI Overrides (Clean truthy fallbacks)
+        # 1. Apply UI Overrides
         ord_mode  = overrides.inst_type or sym_cfg.get('order_mode', 'EQ')
         trade_amt = 0.0 if overrides.force_qty else sym_cfg.get('trade_amount', 0.0)
         fin_quant = quant if (overrides.force_qty or quant > 1) else sym_cfg.get('quantity', 1)
 
-        # 2. Safely and efficiently parse expiry (Split ONLY once)
+        # 2. Safely parse expiry
         raw_exp   = str(overrides.expiry or sym_cfg.get('expiry_date', ''))
         exp_parts = raw_exp.split(maxsplit=1)
         expiry    = exp_parts[0] if exp_parts else ""
 
         # 3. Base assumptions
-        seg, opt_type, strike = 'EQUITY', None, None
+        seg, opt_type, strike = '', None, None
         fin_signal = signal
 
         # 4. Resolve Segment
         if exch == 'NSE':
             if sym_cfg.get('is_index'):
-                seg = 'OPTIDX' if ord_mode == 'OPT' else 'FUTIDX'
+                match ord_mode:
+                    case 'OPT': seg = 'OPTIDX'
+                    case 'FUT': seg = 'FUTIDX'
             else:
-                seg = 'EQUITY' if ord_mode == 'EQ' else ('OPTSTK' if ord_mode == 'OPT' else 'FUTSTK')
+                match ord_mode:
+                    case 'EQ':  seg = 'EQUITY'
+                    case 'OPT': seg = 'OPTSTK'
+                    case 'FUT': seg = 'FUTSTK'
         elif exch == 'MCX':
-            seg = 'OPTFUT' if ord_mode == 'OPT' else 'FUTCOM'
+            match ord_mode:
+                case 'OPT': seg = 'OPTFUT'
+                case 'FUT': seg = 'FUTCOM'
         else:
             return None
+        
+        if not seg: return None
 
         # 5. Resolve Options-Specific Data
         if ord_mode == 'OPT':
-            opt_type   = _signal_to_opt(signal)
-            fin_signal = 'BUY'  # We always buy options in this strategy
+            opt_type   = overrides.opt_type or _signal_to_opt(signal)
+            fin_signal = signal if overrides.opt_type else 'BUY'
             
             if overrides.strike > 0:
                 strike = overrides.strike
             else:
                 sig_key = 'call_strike' if signal == 'BUY' else 'put_strike'
-                # Chain fallbacks: specific signal -> default strike -> algorithmic calc
                 strike  = sym_cfg.get(sig_key) or sym_cfg.get('strike') or get_price_strike(symb, entry_val, signal)
 
+        # Injects the explicit trigger/limit overrides into the final Instrument object
         return Instrument(
             symb=symb, exch=exch, seg=seg, expiry_date=expiry,
             signal=fin_signal, quant=fin_quant, strike=strike,
-            opt_type=opt_type, entry_val=entry_val, trade_amount=trade_amt
+            opt_type=opt_type, entry_val=entry_val, trade_amount=trade_amt,
+            trigger_price=overrides.trigger_price, limit_price=overrides.limit_price
         )
 
     def get_instr_data(self, inst: Instrument) -> tuple[str, str]:
@@ -526,10 +542,7 @@ class DhanTrader:
         if resp and resp.status_code == 200:
             print(f'[✓] {label} Order placed successfully.')
         else:
-            print(f'[x] {label} Order Failed.\n{payload}')
-            if resp:
-                print(resp.content)
-
+            print(f'[x] {label} Order Failed.\n{payload}\n{resp.json() if resp is not None else ""}')
 
     def _base_payload(self, signal: str, exchange_seg: str, sec_id: str) -> dict:
         return {
@@ -572,10 +585,13 @@ class DhanTrader:
         levels = self._compute_price_levels(inst.entry_val, inst.signal)
         total_quant = compute_quantity(inst.trade_amount, levels.entry, lot_size, inst.quant)
         
+        # Pull explicitly from the modified inst
+        final_limit = inst.limit_price if inst.limit_price > 0 else levels.limit
+
         payload = self._base_payload(inst.signal, exchange_seg, sec_id) | {
             'orderType':     'LIMIT', 
             'quantity':      total_quant, 
-            'price':         levels.limit,
+            'price':         final_limit,
             'stopLossPrice': levels.stop_loss, 
             'trailingJump':  levels.trail,
         }
@@ -585,31 +601,64 @@ class DhanTrader:
         _, exchange_seg = self.get_instr_data(inst)
         payload = self._base_payload(inst.signal, exchange_seg, sec_id) | {'quantity': inst.quant * lot_size}
         self._post_order(ORDER_URL, payload, label='MARKET')
+    
+    def _get_ord_type(self,inst):
 
-    def place_forever_order(self, sec_id: str, signal: str, exchange_seg: str, quant: int, trigger_price: float, trigger_price1: float = 0, is_oco: bool = False, product_type: str = 'CNC'):
+        ord_type = 'MARKET'
+        
+        if inst.trigger_price > 0 and inst.limit_price > 0:
+            ord_type = 'STOP_LOSS'
+        elif inst.trigger_price > 0 and inst.limit_price == 0:
+            ord_type = 'STOP_LOSS_MARKET'
+        elif inst.trigger_price == 0 and inst.limit_price > 0:
+            ord_type = 'LIMIT'
+        
+        return ord_type
+    
+    def place_simple_order(self, sec_id: str, lot_size: int, inst: Instrument):
+        """Intelligently fires a Market, Limit, or Stop Loss order based on provided price parameters."""
+        _, exchange_seg = self.get_instr_data(inst)
+ 
+        ord_type = self._get_ord_type(inst)
+
+        payload = self._base_payload(inst.signal, exchange_seg, sec_id) | {
+            'quantity':     inst.quant * lot_size, 
+            'orderType':    ord_type, 
+            'price':        inst.limit_price, 
+            'triggerPrice': inst.trigger_price 
+        }
+        self._post_order(ORDER_URL, payload, label=ord_type)
+
+    def place_forever_order(self, sec_id: str, ord_type: str, signal: str, exchange_seg: str, quant: int, trigger_price: float, limit_price: float = 0.0, trigger_price1: float = 0, is_oco: bool = False, product_type: str = 'CNC'):
+        
         payload = self._base_payload(signal, exchange_seg, sec_id) | {
             'correlationId':     f'cond_{self.client_id}', 
             'orderFlag':         'OCO' if is_oco else 'SINGLE',
+            'orderType':         ord_type,
             'productType':       product_type, 
-            'validity':          'FOREVER', 
+            'validity':          'DAY', 
             'quantity':          quant, 
             'disclosedQuantity': 0,
             'triggerPrice':      trigger_price, 
+            'price':             limit_price,
             'price1':            0, 
             'triggerPrice1':     trigger_price1, 
             'quantity1':         quant if is_oco else 0,
         }
         self._post_order(FOREVER_ORDER_URL, payload, label='FOREVER')
 
-    def place_trigger_forever_order(self, sec_id: str, lot_size: int, inst: Instrument, trigger_price: float = 0.0):
+    def place_trigger_forever_order(self, sec_id: str, lot_size: int, inst: Instrument):
         _, exchange_seg = self.get_instr_data(inst)
         levels = self._compute_price_levels(inst.entry_val, inst.signal)
         total_quant = compute_quantity(inst.trade_amount, levels.entry, lot_size, inst.quant)
         
         product_type = 'MARGIN' if inst.seg in FUT_SEGMENTS else 'CNC'
-        trig_price = trigger_price if trigger_price > 0 else levels.entry
-        
-        self.place_forever_order(sec_id, inst.signal, exchange_seg, total_quant, trig_price, product_type=product_type)
+        trig_price   = inst.trigger_price if inst.trigger_price > 0 else levels.entry
+        ord_type = self._get_ord_type(inst)
+        if ord_type != 'MARKET':
+            ord_type = 'LIMIT'
+
+        self.place_forever_order(sec_id, ord_type, inst.signal, exchange_seg, total_quant, trig_price, limit_price=inst.limit_price, product_type=product_type)
 
     def place_trigger_alert_order(self, sec_id: str, lot_size: int, inst: Instrument, fno_signal: str = None):
         _, exchange_seg = self.get_instr_data(inst)
@@ -632,8 +681,6 @@ class DhanTrader:
         self._post_order(ALERT_ORDER_URL, payload, label='ALERT')
 
     # ── API Getters / Deleters ────────────────────────────────────────────────
-    # [Methods get_active_positions, get_pending_orders, get_active_super_orders, 
-    #  get_forever_orders, get_all_alerts, cancel_* functions remain EXACTLY as they are]
     def get_active_positions(self) -> list[dict]:
         resp = self._request_with_retry('GET', POSITIONS_URL, label='GET Positions')
         if resp is None or resp.status_code != 200: return []
@@ -644,7 +691,7 @@ class DhanTrader:
                 trade_sym = pos.get('tradingSymbol', '')
                 display_sym = self.scrip.get_symbol_name(sec_id, trade_sym)
                 base_sym = self.scrip.get_base_symbol(sec_id, trade_sym)
-                pnl = float(pos.get('realizedProfit', 0.0)) + float(pos.get('unrealizedProfit', 0.0))
+                pnl =  float(pos.get('unrealizedProfit', 0.0)) + float(pos.get('realizedProfit', 0.0))
                 exch = pos.get('exchangeSegment', 'NSE_EQ').split('_')[0]
                 active.append({'display_name': display_sym, 'base_symbol': base_sym, 'security_id': sec_id, 'exchange_seg': pos.get('exchangeSegment', 'NSE_EQ'), 'exchange': exch, 'pnl': pnl, 'qty': pos.get('netQty', 0)})
         return active
@@ -725,7 +772,7 @@ class DhanTrader:
         place_order_mode = self._defaults_config.get('place_order_mode')
         
         if inst.seg in OPT_SEGMENTS and inst.exch == 'MCX':
-            self.place_market_order(sec_id, lot_size, inst)
+            self.place_simple_order(sec_id, lot_size, inst)
             return
 
         if inst.seg in FNO_SEGMENTS:
@@ -744,18 +791,18 @@ class DhanTrader:
                         self.place_super_order(sec_id, lot_size, inst)
                         placed_order = True
                 case _:
-                    self.place_market_order(sec_id, lot_size, inst)
+                    self.place_simple_order(sec_id, lot_size, inst)
                     placed_order = True
             
             if not placed_order:
-                self.place_market_order(sec_id, lot_size, inst)
+                self.place_simple_order(sec_id, lot_size, inst)
             return
 
         match place_order_mode:
             case 'ALERT':   self.place_trigger_alert_order(sec_id, lot_size, inst)
             case 'SUPER':   self.place_super_order(sec_id, lot_size, inst)
             case 'FOREVER': self.place_trigger_forever_order(sec_id, lot_size, inst)
-            case _:         self.place_market_order(sec_id, lot_size, inst)
+            case _:         self.place_simple_order(sec_id, lot_size, inst)
 
     def fire_trade(self, symb: str, exch: str, signal: str, quant: int = 1, entry_val: float = 0):
         trade_key = f'{exch}:{symb}:{signal}'
@@ -804,5 +851,6 @@ if __name__ == '__main__':
     # trader.fire_trade('NIFTY', 'NSE', 'BUY',  entry_val=24000, quant=1)
     # trader.fire_trade('NIFTY', 'NSE', 'SELL', entry_val=23000, quant=1)
 
-    trader.get_all_alerts()
+    res= trader.get_forever_orders()
+    print(res)
     # trader.clean_orphaned_orders()
