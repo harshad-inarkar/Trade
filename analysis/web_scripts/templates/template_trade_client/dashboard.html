@@ -62,7 +62,7 @@ header { position: sticky; top: 0; z-index: 200; background: rgba(11,15,20,.94);
 .logo { font-family: var(--mono); font-size: 1.05rem; font-weight: 600; letter-spacing: .12em; color: var(--accent); }
 .sub { font-size: .72rem; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
 
-.meta-bar { display: flex; padding: 9px 28px; border-bottom: 1px solid var(--border); background: var(--surface); gap: 18px; font-family: var(--mono); font-size: .72rem; color: var(--muted); }
+.meta-bar { display: flex; padding: 9px 28px; border-bottom: 1px solid var(--border); background: var(--surface); gap: 18px; font-family: var(--mono); font-size: .72rem; color: var(--muted); align-items: center;}
 .meta-bar strong { color: var(--text); margin-left: 6px; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; display: inline-block; margin-right: 6px;}
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
@@ -88,14 +88,6 @@ header { position: sticky; top: 0; z-index: 200; background: rgba(11,15,20,.94);
 
 .btn-action { font-family: var(--mono); font-size: .65rem; font-weight: 600; padding: 4px 10px; border-radius: var(--radius); cursor: pointer; background: var(--surface2); color: var(--text); border: 1px solid var(--border); text-transform: uppercase; transition: background .15s, border-color .15s, color .15s; white-space: nowrap; }
 .btn-action:hover { background: var(--surface2); border-color: var(--red); color: var(--red); }
-.btn-close-mkt   { border-color: var(--red);    color: var(--red);    }
-.btn-close-mkt:hover   { background: rgba(224,85,85,.12); }
-.btn-reentry     { border-color: var(--accent3); color: var(--accent3); }
-.btn-reentry:hover     { background: rgba(240,192,64,.10); }
-.btn-cancel-normal  { border-color: var(--muted); }
-.btn-cancel-super   { border-color: var(--accent3); color: var(--accent3); }
-.btn-cancel-forever { border-color: var(--accent4); color: var(--accent4); }
-.btn-cancel-alert   { border-color: var(--accent2); color: var(--accent2); }
 
 /* Changed to visible so Re-entry absolute dropdown doesn't get clipped */
 .table-wrap { overflow: visible; } 
@@ -134,57 +126,85 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
 </style>
 
 <script>
-  document.addEventListener('input', async (e) => {
-      if (e.target && e.target.name === 'symbol' && e.target.tagName === 'INPUT') {
-          const val = e.target.value;
-          if (val.length >= 2) {
-              try {
-                  const res = await fetch(`/api/search_symbols?q=${val}`);
-                  const matches = await res.json();
+  let _symDebounce = null;
+
+  document.addEventListener('input', (e) => {
+      if (e.target?.name !== 'symbol' || e.target.tagName !== 'INPUT') return;
+      
+      clearTimeout(_symDebounce);
+      const input = e.target;
+      
+      _symDebounce = setTimeout(async () => {
+          const val = input.value.trim();
+          if (val.length < 2) return;
+          
+          try {
+              const res = await fetch(`/api/search_symbols?q=${encodeURIComponent(val)}`);
+              const matches = await res.json();
+              
+              if (!input.hasAttribute('list')) {
+                   input.setAttribute('list', 'symbol-suggestions');
+              }
+              
+              const datalist = document.getElementById('symbol-suggestions');
+              if (!datalist) return;
+              
+              datalist.innerHTML = matches
+                  .map(sym => `<option value="${sym}"></option>`)
+                  .join('');
                   
-                  if (!e.target.hasAttribute('list')) {
-                       e.target.setAttribute('list', 'symbol-suggestions');
-                  }
-                  
-                  const datalist = document.getElementById('symbol-suggestions');
-                  if (datalist) {
-                      datalist.innerHTML = '';
-                      matches.forEach(sym => {
-                          const opt = document.createElement('option');
-                          opt.value = sym;
-                          datalist.appendChild(opt);
-                      });
-                  }
-              } catch (err) {}
-          }
-      }
+          } catch (err) { /* silently ignore network errors */ }
+      }, 150);
   });
 </script>
 
+{% if view != 'order' %}
 <script>
-  setInterval(async () => {
-    try {
-        const res = await fetch('/api/live_data');
-        const data = await res.json();
-        
-        // Update Funds
-        const fundsEl = document.getElementById('live-funds');
-        if (fundsEl && data.funds !== undefined) {
-            fundsEl.innerText = '₹ ' + data.funds.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        }
-        
-        // Update PnLs without destroying DOM
-        for (const [sec_id, pos] of Object.entries(data.positions)) {
-            const pnlEl = document.getElementById('pnl-' + sec_id);
-            if (pnlEl) {
-                const pnlVal = parseFloat(pos.pnl);
-                pnlEl.innerText = pnlVal.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                pnlEl.className = pnlVal > 0 ? 'pnl-positive' : (pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
-            }
-        }
-    } catch(e) {}
-  }, 3000);
+  let liveIntervalId = null;
+
+  async function fetchLiveData() {
+      try {
+          const res = await fetch('/api/live_data');
+          const data = await res.json();
+          
+          // Update Funds
+          const fundsEl = document.getElementById('live-funds');
+          if (fundsEl && data.funds !== undefined) {
+              fundsEl.innerText = '₹ ' + data.funds.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+          }
+          
+          // Update PnLs without destroying DOM
+          for (const [sec_id, pos] of Object.entries(data.positions)) {
+              const pnlEl = document.getElementById('pnl-' + sec_id);
+              if (pnlEl) {
+                  const pnlVal = parseFloat(pos.pnl);
+                  pnlEl.innerText = pnlVal.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                  pnlEl.className = pnlVal > 0 ? 'pnl-positive' : (pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
+              }
+          }
+      } catch(e) {}
+  }
+
+  function startLiveDataUpdater() {
+      if (liveIntervalId) clearInterval(liveIntervalId);
+      const selectEl = document.getElementById('live-interval-select');
+      if (!selectEl) return;
+      
+      const ms = parseInt(selectEl.value, 10);
+      if (ms > 0) {
+          liveIntervalId = setInterval(fetchLiveData, ms);
+      }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+      const selectEl = document.getElementById('live-interval-select');
+      if (selectEl) {
+          selectEl.addEventListener('change', startLiveDataUpdater);
+          startLiveDataUpdater(); // Initialize immediately
+      }
+  });
 </script>
+{% endif %}
 
 {% if refresh_interval and refresh_interval > 0 %}
 <script>
@@ -228,6 +248,19 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
   <div>Open Orders: <strong>{{ total_orders }}</strong></div>
   <div>Funds: <strong id="live-funds">₹ {{ "{:,.2f}".format(funds) }}</strong></div>
 
+  {% if view != 'order' %}
+  <div style="display: flex; align-items: center; gap: 6px; margin-left: 15px;">
+    <span style="text-transform: uppercase; font-size: 0.65rem;">Polling Rate:</span>
+    <select id="live-interval-select" style="font-family: var(--mono); font-size: 0.7rem; padding: 2px 6px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); outline: none;">
+      <option value="1000">1 Sec</option>
+      <option value="3000" selected>3 Sec</option>
+      <option value="5000">5 Sec</option>
+      <option value="10000">10 Sec</option>
+      <option value="0">Off</option>
+    </select>
+  </div>
+  {% endif %}
+
   <div style="margin-left: auto;">
     {% if view == 'order' %}
       <a href="/" style="color: var(--accent); text-decoration: none; font-family: var(--mono); font-weight: 600;">Show Full Dashboard</a>
@@ -241,8 +274,7 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
 
   <div class="panel">
     <div class="panel-header">Place Order</div>
-    <form action="/place_order" method="post" class="order-form">
-      
+    <form action="/place_order{% if view == 'order' %}?view=order{% endif %}" method="post" class="order-form">      
       <div class="form-group">
         <label>Symbol</label>
         <input type="text" name="symbol" placeholder="e.g. TCS" autocomplete="off" required />
