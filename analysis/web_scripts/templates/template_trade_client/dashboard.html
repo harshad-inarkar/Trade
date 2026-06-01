@@ -9,7 +9,6 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet" />
 
 <style>
-
 :root {
   --bg:       #0b0f14;
   --surface:  #131920;
@@ -26,9 +25,7 @@
   --sans: 'Space Grotesk', sans-serif;
   --radius: 4px;
   --green: #1bbf49;
-
 }
-
 
   /* Centered layout for Order Only view */
   .dashboard-grid.order-only { 
@@ -136,42 +133,87 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
 .pnl-neutral  { color: var(--muted); font-weight: 700;}
 </style>
 
+<script>
+  document.addEventListener('input', async (e) => {
+      if (e.target && e.target.name === 'symbol' && e.target.tagName === 'INPUT') {
+          const val = e.target.value;
+          if (val.length >= 2) {
+              try {
+                  const res = await fetch(`/api/search_symbols?q=${val}`);
+                  const matches = await res.json();
+                  
+                  if (!e.target.hasAttribute('list')) {
+                       e.target.setAttribute('list', 'symbol-suggestions');
+                  }
+                  
+                  const datalist = document.getElementById('symbol-suggestions');
+                  if (datalist) {
+                      datalist.innerHTML = '';
+                      matches.forEach(sym => {
+                          const opt = document.createElement('option');
+                          opt.value = sym;
+                          datalist.appendChild(opt);
+                      });
+                  }
+              } catch (err) {}
+          }
+      }
+  });
+</script>
+
+<script>
+  setInterval(async () => {
+    try {
+        const res = await fetch('/api/live_data');
+        const data = await res.json();
+        
+        // Update Funds
+        const fundsEl = document.getElementById('live-funds');
+        if (fundsEl && data.funds !== undefined) {
+            fundsEl.innerText = '₹ ' + data.funds.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+        
+        // Update PnLs without destroying DOM
+        for (const [sec_id, pos] of Object.entries(data.positions)) {
+            const pnlEl = document.getElementById('pnl-' + sec_id);
+            if (pnlEl) {
+                const pnlVal = parseFloat(pos.pnl);
+                pnlEl.innerText = pnlVal.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                pnlEl.className = pnlVal > 0 ? 'pnl-positive' : (pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
+            }
+        }
+    } catch(e) {}
+  }, 3000);
+</script>
+
 {% if refresh_interval and refresh_interval > 0 %}
 <script>
   const refreshSecs = parseInt("{{ refresh_interval }}", 10);
   
   setInterval(async () => {
-    // 1. Prevent refresh if you are currently focused on ANY input or dropdown
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
-    if (activeTag === 'INPUT' || activeTag === 'SELECT') {
-        return; 
-    }
+    if (activeTag === 'INPUT' || activeTag === 'SELECT') { return; }
 
     try {
-      // 2. Silently fetch the latest HTML for the dashboard
       const response = await fetch(window.location.href);
       const html = await response.text();
-      
-      // 3. Parse it into a virtual DOM
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
       
-      // 4. Extract ONLY the tables (data-stack) and swap them out
       const newData = doc.querySelector('.data-stack');
       const oldData = document.querySelector('.data-stack');
-      
       if (newData && oldData) {
         oldData.innerHTML = newData.innerHTML;
       }
-    } catch (err) {
-      console.error('Auto-refresh failed:', err);
-    }
+    } catch (err) {}
   }, refreshSecs * 1000);
 </script>
 {% endif %}
+
 </head>
 
 <body>
+<datalist id="symbol-suggestions"></datalist>
 
 <header>
   <div class="header-brand">
@@ -184,7 +226,8 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
   <div><span class="dot"></span>API Live</div>
   <div>Positions: <strong>{{ total_positions }}</strong></div>
   <div>Open Orders: <strong>{{ total_orders }}</strong></div>
-<!-- NEW: View Toggle Link -->
+  <div>Funds: <strong id="live-funds">₹ {{ "{:,.2f}".format(funds) }}</strong></div>
+
   <div style="margin-left: auto;">
     {% if view == 'order' %}
       <a href="/" style="color: var(--accent); text-decoration: none; font-family: var(--mono); font-weight: 600;">Show Full Dashboard</a>
@@ -192,8 +235,6 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
       <a href="/?view=order" style="color: var(--accent); text-decoration: none; font-family: var(--mono); font-weight: 600;">Place Order Only</a>
     {% endif %}
   </div>
-
-
 </div>
 
 <div class="dashboard-grid {% if view == 'order' %}order-only{% endif %}">
@@ -204,7 +245,7 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
       
       <div class="form-group">
         <label>Symbol</label>
-        <input type="text" name="symbol" placeholder="e.g. TCS" required />
+        <input type="text" name="symbol" placeholder="e.g. TCS" autocomplete="off" required />
       </div>
       
       <div class="form-group" style="flex-direction: row; gap: 10px;">
@@ -324,7 +365,7 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
                 {{ qty_num | abs }}
               </td>
               <td>
-                <span class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+                <span id="pnl-{{ pos.security_id }}" class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
                   {{ "{:,.2f}".format(pos.pnl) }}
                 </span>
               </td>
@@ -435,7 +476,7 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
             </tr>
             {% else %}
             <tr>
-              <td colspan="4" style="text-align: center; color: var(--muted); padding: 40px;">
+              <td colspan="6" style="text-align: center; color: var(--muted); padding: 40px;">
                 No Active Positions.
               </td>
             </tr>
@@ -467,7 +508,8 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
           <tr>
             <th style="width:36px">#</th>
             <th>Symbol</th>
-            <th>Type</th> <th>Side</th>
+            <th>Type</th>
+            <th>Side</th>
             <th>Detail</th>
             <th style="text-align: right;">Action</th>
           </tr>

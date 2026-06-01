@@ -2,8 +2,8 @@ import tomllib
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Request, Form, Query
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 import uvicorn
 
@@ -68,9 +68,9 @@ class TradePortalApp:
         @self.app.get("/", response_class=HTMLResponse)
         async def dashboard(request: Request, view: str = None):
             positions = self.trader.get_active_positions()
+            funds = self.trader.get_funds() # Load initially
             active_orders = []
 
-            # Clean Detail Formatter
             def format_detail(o_type, qty, price, trig):
                 parts = []
                 if qty not in (None, "", 0): parts.append(f"Qty: {qty}")
@@ -114,10 +114,33 @@ class TradePortalApp:
             return self.templates.TemplateResponse("dashboard.html", {
                 "request": request, "positions": positions, "total_positions": len(positions),
                 "active_orders": active_orders, "total_orders": len(active_orders),
+                "funds": funds,
                 "refresh_interval": self.cfg.refresh_interval,
-                "view": view # <-- Pass the flag to the template
+                "view": view
             })
 
+        # --- NEW API ROUTES FOR LIGHTWEIGHT UPDATES ---
+        @self.app.get("/api/search_symbols")
+        async def search_symbols(q: str = Query("")):
+            if not q or len(q) < 2:
+                return JSONResponse([])
+            matches = self.trader.scrip.search_symbols(q)
+            return JSONResponse(matches)
+
+        @self.app.get("/api/live_data")
+        async def live_data():
+            positions = self.trader.get_active_positions()
+            funds = self.trader.get_funds()
+            
+            pnl_data = {}
+            for p in positions:
+                pnl_data[p['security_id']] = {
+                    "pnl": p['pnl'],
+                    "qty": p['qty']
+                }
+            return JSONResponse({"funds": funds, "positions": pnl_data})
+
+        # --- ACTION POST ROUTES ---
         @self.app.post("/place_order")
         async def place_order(
             symbol: str = Form(...), exchange: str = Form("NSE"), signal: str = Form(...), 
@@ -145,7 +168,6 @@ class TradePortalApp:
                 print(f'Could not resolve {exchange} {symbol}')
 
             return RedirectResponse(url="/", status_code=303)
-
 
         @self.app.post("/close_reentry")
         async def close_reentry(

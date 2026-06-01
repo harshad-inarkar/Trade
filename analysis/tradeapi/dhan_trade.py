@@ -34,6 +34,8 @@ SUPER_ORDER_URL        = 'https://api.dhan.co/v2/super/orders'
 FOREVER_ORDER_URL      = 'https://api.dhan.co/v2/forever/orders'
 FOREVER_ALL_URL        = 'https://api.dhan.co/v2/forever/orders'
 ALERT_ORDER_URL        = 'https://api.dhan.co/v2/alerts/orders'
+FUND_LIMIT_URL         = 'https://api.dhan.co/v2/fundlimit' # NEW: Funds URL
+
 
 INSTRUMENT_SEGMENTS = ['NSE_EQ', 'NSE_FNO', 'MCX_COMM', 'IDX_I']
 INSTRUMENT_URL      = 'https://api.dhan.co/v2/instrument/{segment}'
@@ -125,8 +127,8 @@ class Instrument:
     trade_amount:  float           = 0.0
     strike:        Optional[float] = None
     opt_type:      Optional[str]   = None
-    trigger_price: float           = 0.0  # Added
-    limit_price:   float           = 0.0  # Added
+    trigger_price: float           = 0.0
+    limit_price:   float           = 0.0
 
 @dataclass
 class UIOverride:
@@ -183,14 +185,28 @@ class SymbolsConfig:
 # ScripMaster
 # ───────────────────────────────────────
 class ScripMaster:
-    def __init__(self, session_obj,refresh_master_scrip: bool = False):
+    def __init__(self, session_obj, refresh_master_scrip: bool = False):
         self._eq_index     = None
         self._opt_index    = None
         self._expiry_index = None
         self._secid_info   = None
+        self._underlying_symbols = [] # NEW: Cache for autocomplete
         self.session = session_obj
         self._ensure_loaded(refresh_master_scrip)
         
+    def search_symbols(self, query: str, limit: int = 10) -> list[str]:
+        """Provides Google-like auto-complete suggestions based on underlying symbol."""
+        self._ensure_loaded()
+        if not self._underlying_symbols:
+            return []
+        
+        q = query.lower()
+        # Prioritize exact start matches (e.g. CRU -> CRUDEOIL)
+        starts = [s for s in self._underlying_symbols if s.lower().startswith(q)]
+        # Add 'contains' matches at the end (e.g. NAT -> NATURALGAS)
+        contains = [s for s in self._underlying_symbols if q in s.lower() and s not in starts]
+        
+        return (starts + contains)[:limit]
 
     def get_symbol_name(self, sec_id: str, fallback: str = "") -> str:
         if not self._secid_info: return fallback
@@ -258,6 +274,10 @@ class ScripMaster:
         self._opt_index    = opt_index
         self._expiry_index = expiry_index
         self._secid_info   = secid_info
+        
+        # Build unique underlying symbols list for Auto-Complete
+        unique_syms = set(v[2] for v in secid_info.values() if v[2])
+        self._underlying_symbols = sorted(list(unique_syms))
 
     @staticmethod
     def _fold_chunk(chunk: pd.DataFrame, eq_index: dict, opt_index: dict, expiry_index: dict, secid_info: dict, today_str: str) -> None:
@@ -681,6 +701,14 @@ class DhanTrader:
         self._post_order(ALERT_ORDER_URL, payload, label='ALERT')
 
     # ── API Getters / Deleters ────────────────────────────────────────────────
+    
+    def get_funds(self) -> float:
+        """Fetch current available trading funds from Dhan."""
+        resp = self._request_with_retry('GET', FUND_LIMIT_URL, label='GET Funds')
+        if not resp or resp.status_code != 200: return 0.0
+        data = resp.json()
+        return float(data.get('availabelBalance', data.get('availableBalance', 0.0)))
+    
     def get_active_positions(self) -> list[dict]:
         resp = self._request_with_retry('GET', POSITIONS_URL, label='GET Positions')
         if resp is None or resp.status_code != 200: return []
@@ -835,8 +863,6 @@ class DhanTrader:
             print(f'    Symbols: {cancelled}')
         else:
             print('\n[✓] Cleanup Complete. No orphaned orders found.')
-
-
 
 
 # ───────────────────────────────────────
