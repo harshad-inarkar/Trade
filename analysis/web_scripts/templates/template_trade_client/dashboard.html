@@ -274,7 +274,8 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
 
   <div class="panel">
     <div class="panel-header">Place Order</div>
-    <form action="/place_order{% if view == 'order' %}?view=order{% endif %}" method="post" class="order-form">      
+    <form action="/place_order{% if view == 'order' %}?view=order{% endif %}" method="post" class="order-form">
+      
       <div class="form-group">
         <label>Symbol</label>
         <input type="text" name="symbol" placeholder="e.g. TCS" autocomplete="off" required />
@@ -524,10 +525,10 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
         <div style="display: flex; gap: 8px;">
           <form action="/clean_orphaned" method="post" style="margin: 0;">
             <button type="submit" class="btn-action" style="border-color: var(--accent3); color: var(--accent3);" title="Clear Orphaned Super Orders">
-              Clear Orphaned
+              Clear Super
             </button>
           </form>
-          <form action="/cancel_all" method="post" style="margin: 0;" onsubmit="return confirm('Cancel ALL pending orders across all segments?');">
+          <form action="/cancel_all" method="post" style="margin: 0;">
             <button type="submit" class="btn-action" style="border-color: var(--red); color: var(--red);" title="Cancel ALL Pending Orders">
               Clear All
             </button>
