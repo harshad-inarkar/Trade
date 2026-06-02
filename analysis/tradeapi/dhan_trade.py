@@ -935,7 +935,7 @@ class DhanTrader:
                 base_sym = self.scrip.get_base_symbol(sec_id, trade_sym)
                 pnl = (
                     float(pos.get('unrealizedProfit', 0.0))
-                    + float(pos.get('realizedProfit', 0.0))
+                    #+ float(pos.get('realizedProfit', 0.0))
                 )
                 exch = pos.get('exchangeSegment', 'NSE_EQ').split('_')[0]
 
