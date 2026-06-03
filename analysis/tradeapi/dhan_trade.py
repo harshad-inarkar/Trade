@@ -108,6 +108,35 @@ def _get_today_str() -> str:
 _FALLBACK_STEPS = (1, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1_000, 5_000)
 
 
+MONTH_ALIASES = {
+    'JAN': 'JAN', 'JANUARY': 'JAN', '01': 'JAN',
+    'FEB': 'FEB', 'FEBRUARY': 'FEB', '02': 'FEB',
+    'MAR': 'MAR', 'MARCH': 'MAR', '03': 'MAR',
+    'APR': 'APR', 'APRIL': 'APR', '04': 'APR',
+    'MAY': 'MAY', '05': 'MAY',
+    'JUN': 'JUN', 'JUNE': 'JUN', '06': 'JUN',
+    'JUL': 'JUL', 'JULY': 'JUL', '07': 'JUL',
+    'AUG': 'AUG', 'AUGUST': 'AUG', '08': 'AUG',
+    'SEP': 'SEP', 'SEPTEMBER': 'SEP', '09': 'SEP',
+    'OCT': 'OCT', 'OCTOBER': 'OCT', '10': 'OCT',
+    'NOV': 'NOV', 'NOVEMBER': 'NOV', '11': 'NOV',
+    'DEC': 'DEC', 'DECEMBER': 'DEC', '12': 'DEC',
+}
+
+CALL_WORDS = {'CALL', 'CE', 'C'}
+PUT_WORDS  = {'PUT', 'PE', 'P'}
+
+FUT_WORDS = {
+    'FUT', 'FUTURE', 'FUTURES'
+}
+
+STOP_WORDS = {
+    'OF', 'THE', '&'
+}
+
+
+
+
 def _next_round_step(current_step: int) -> Optional[int]:
     for step in _FALLBACK_STEPS:
         if step > current_step:
@@ -218,48 +247,232 @@ class ScripMaster:
         self._opt_index    = None
         self._expiry_index = None
         self._secid_info   = None
-        self._underlying_symbols: list[str] = []
-        self._trigram_index: dict[str, set[str]] = defaultdict(set)
+        self._search_data: list[dict]  = []
+        self._display_to_data: dict[str, dict] = {} 
 
         self.session = session_obj
         self._ensure_loaded(refresh_master_scrip)
 
-    def search_symbols(self, query: str, limit: int = 30) -> list[str]:
-        """Provides auto-complete suggestions using bisect and trigrams."""
+    def search_symbols(self, query: str, limit: int = 30) -> list[dict]:
+        """
+        Smart flexible symbol search:
+        - Any word order
+        - Supports symbol + company name
+        - Supports month aliases
+        - Supports CALL/PUT/FUT
+        - Supports strike search
+        - Nearest expiry first
+        """
+
         self._ensure_loaded()
-        if not self._underlying_symbols or len(query) < 2:
+
+        if not self._search_data:
             return []
 
-        q = query.strip().upper()
+        query = query.strip().upper()
+        if len(query) < 2:
+            return []
 
-        # 1. Prefix matches via binary search (O(log n))
-        lo = bisect.bisect_left(self._underlying_symbols, q)
-        hi_query = q[:-1] + chr(ord(q[-1]) + 1)
-        hi = bisect.bisect_left(self._underlying_symbols, hi_query, lo)
+        parts = [
+            p.strip()
+            for p in query.replace('-', ' ').split()
+            if p.strip()
+        ]
 
-        prefix_hits = self._underlying_symbols[lo:hi]
+        symbol_tokens = set()
+        month_token = None
+        strike_token = None
+        opt_type = None
+        want_fut = False
 
-        if len(prefix_hits) >= limit:
-            return prefix_hits[:limit]
+        for tok in parts:
 
-        # 2. Substring matches via trigram intersection (O(1))
-        trigrams = [q[i:i+2] for i in range(len(q) - 1)]
-        if trigrams:
-            candidates = self._trigram_index.get(trigrams[0], set()).copy()
-            for tg in trigrams[1:]:
-                if not candidates:
-                    break
-                candidates &= self._trigram_index.get(tg, set())
+            if tok in STOP_WORDS:
+                continue
 
-            already_found = set(prefix_hits)
-            contains = sorted(
-                sym for sym in candidates
-                if sym not in already_found and q in sym
+            if tok in MONTH_ALIASES:
+                month_token = MONTH_ALIASES[tok]
+                continue
+
+            if tok in CALL_WORDS:
+                opt_type = 'CE'
+                continue
+
+            if tok in PUT_WORDS:
+                opt_type = 'PE'
+                continue
+
+            if tok in FUT_WORDS:
+                want_fut = True
+                continue
+
+            if tok.isdigit():
+                strike_token = tok
+                continue
+
+            tok = tok.upper()
+
+            symbol_tokens.add(tok)
+
+            if len(tok) >= 6:
+                symbol_tokens.add(tok[:3])
+
+        results = []
+
+        for item in self._search_data:
+
+            score = 0
+
+            item_tokens = item['_search_tokens']
+
+            # ─────────────────────────────
+            # Symbol / Company Match
+            # ─────────────────────────────
+            matched = 0
+            strong_match = False
+            company_match = False
+
+            sym_upper = item['symbol'].upper()
+
+            for tok in symbol_tokens:
+
+                if tok in item_tokens:
+                    matched += 1
+                    company_match = True
+
+                if (
+                    sym_upper == tok or
+                    sym_upper.startswith(tok) or
+                    tok.startswith(sym_upper)
+                ):
+                    strong_match = True
+
+            if symbol_tokens and not (strong_match or company_match):
+                continue
+
+            score += matched * 100
+
+            # ─────────────────────────────
+            # Option Type
+            # ─────────────────────────────
+            if opt_type:
+                if item['opt_type'] == opt_type:
+                    score += 120
+                else:
+                    continue
+
+            # ─────────────────────────────
+            # FUT Search
+            # ─────────────────────────────
+            if want_fut:
+                if item['inst_type'] == 'FUT':
+                    score += 150
+                else:
+                    continue
+
+            # ─────────────────────────────
+            # Strike Match
+            # ─────────────────────────────
+            if strike_token:
+
+                # default strike search => options only
+                if not opt_type and item['inst_type'] != 'OPT':
+                    continue
+
+                item_strike = item['strike']
+
+                if not item_strike:
+                    continue
+
+                strike_clean = (
+                    str(int(item_strike))
+                    if float(item_strike).is_integer()
+                    else str(item_strike)
+                )
+
+                if strike_clean == strike_token:
+                    score += 250
+                else:
+                    continue
+
+            # ─────────────────────────────
+            # Month Match
+            # ─────────────────────────────
+            if month_token:
+                if item['_month_tag'] == month_token:
+                    score += 180
+                else:
+                    continue
+
+            # ─────────────────────────────
+            # Exact Symbol Match
+            # ─────────────────────────────
+            sym = item['symbol'].upper()
+
+            for tok in symbol_tokens:
+
+                if sym == tok:
+                    score += 500
+
+                elif sym.startswith(tok):
+                    score += 250
+
+            # ─────────────────────────────
+            # Instrument Preference
+            # ─────────────────────────────
+            if item['inst_type'] == 'EQ':
+                score += 10
+
+            elif item['inst_type'] == 'FUT':
+                score += 25
+
+            else:
+                score += 40
+
+            # ─────────────────────────────
+            # Expiry Priority
+            # Current/Near Expiry first
+            # ─────────────────────────────
+            exp_sort = item['_expiry_sort']
+
+            if exp_sort:
+                try:
+                    exp_num = int(exp_sort.replace('-', ''))
+                    score += max(0, 100000000 - exp_num)
+                except Exception:
+                    pass
+
+            results.append((score, item))
+
+        results.sort(
+            key=lambda x: (
+                -x[0],
+                x[1]['_expiry_sort'],
+                x[1]['strike']
             )
-        else:
-            contains = []
+        )
 
-        return (prefix_hits + contains)[:limit]
+        final = []
+
+        for _, item in results[:limit]:
+
+            obj = dict(item)
+
+            # remove internal ranking fields
+            obj.pop('_search_tokens', None)
+            obj.pop('_expiry_sort', None)
+            obj.pop('_month_tag', None)
+            obj.pop('_sort_key', None)
+
+            # normalize strike
+            try:
+                obj['strike'] = float(obj.get('strike', 0))
+            except Exception:
+                obj['strike'] = 0.0
+
+            final.append(obj)
+
+        return final
 
     def get_symbol_name(self, sec_id: str, fallback: str = "") -> str:
         if not self._secid_info:
@@ -269,14 +482,7 @@ class ScripMaster:
         if not key:
             return fallback
 
-        exch_id, inst, underlying, exp, strike, opt_type = key
-
-        if inst in OPT_SEGMENTS:
-            return f"{underlying} {strike} {opt_type} {exp}"
-        if inst in FUT_SEGMENTS:
-            return f"{underlying} FUT {exp}"
-
-        return underlying
+        return key[6] if key[6] else fallback
 
     def get_base_symbol(self, sec_id: str, fallback: str = "") -> str:
         if not self._secid_info:
@@ -305,14 +511,12 @@ class ScripMaster:
                 )
                 resp.raise_for_status()
 
-                # We specifically load the INSTRUMENT_TYPE col now
                 df = pd.read_csv(
                     io.StringIO(resp.text),
                     usecols=lambda c: c in SCRIP_COLS,
                     low_memory=False,
                 )
 
-                # Apply explicit filtering rules
                 mask = pd.Series(True, index=df.index)
                 if 'EXCH_ID' in df.columns:
                     mask &= df['EXCH_ID'].isin(FILTER_EXCH)
@@ -332,10 +536,8 @@ class ScripMaster:
         today_str = _get_today_str()
         is_eq = df['INSTRUMENT'].isin(EQ_INDEX_INSTR)
 
-        # Extract the date part cleanly
         expiry_dates = df['SM_EXPIRY_DATE'].astype(str).str.split().str[0]
 
-        # Filter out expired contracts
         df = df[is_eq | (~is_eq & (expiry_dates >= today_str))].copy()
         df.to_csv(LOCAL_CSV, index=False)
 
@@ -353,7 +555,6 @@ class ScripMaster:
                 LOCAL_CSV, usecols=SCRIP_COLS, chunksize=50_000, low_memory=False
             ) as reader:
                 for chunk in reader:
-                    # Enforce instrument type constraint during load as well
                     if 'INSTRUMENT_TYPE' in chunk.columns:
                         chunk = chunk[chunk['INSTRUMENT_TYPE'].isin(FILTER_INST_TYPE)]
                     self._fold_chunk(
@@ -377,18 +578,170 @@ class ScripMaster:
         self._expiry_index = expiry_index
         self._secid_info   = secid_info
 
-        # Build unique underlying symbols list
-        self._underlying_symbols = sorted(
-            {str(v[2]).strip().upper() for v in secid_info.values() if v[2]}
-        )
+        # Build mapping of Symbol to Equity Company Name to allow cross-searching FNO
+        base_to_name = {}
+        for info in secid_info.values():
+            if info[1] in EQ_INDEX_INSTR and info[6]:
+                base_to_name[info[2]] = str(info[6]).strip().upper()
 
-        # Build trigram inverted index
-        self._trigram_index = defaultdict(set)
-        for sym in self._underlying_symbols:
-            for i in range(len(sym) - 1):
-                self._trigram_index[sym[i:i+2]].add(sym)
-                if i + 3 <= len(sym):
-                    self._trigram_index[sym[i:i+3]].add(sym)
+        search_entries = []
+        for info in secid_info.values():
+            exch_id, inst, underlying, exp, strike, opt_type, display_name = info
+            if not display_name:
+                continue
+                
+            display_str = str(display_name).strip()
+            
+            if inst in OPT_SEGMENTS:
+                inst_type = 'OPT'
+                inst_priority = 2
+                if not display_str.upper().startswith(underlying.upper()):
+                    display_str = f"{underlying} {display_str}"
+            elif inst in FUT_SEGMENTS:
+                inst_type = 'FUT'
+                inst_priority = 1
+                if not display_str.upper().startswith(underlying.upper()):
+                    display_str = f"{underlying} FUT {display_str}"
+            else:
+                inst_type = 'EQ'
+                inst_priority = 0
+                if display_str.upper() == underlying.upper():
+                    display_str = f"{underlying} - EQ"
+                elif display_str.upper().startswith(underlying.upper()):
+                    clean_name = display_str[len(underlying):].strip(' -()')
+                    display_str = f"{underlying} - EQ ({clean_name})" if clean_name else f"{underlying} - EQ"
+                else:
+                    display_str = f"{underlying} - EQ ({display_str})"
+
+            # Robust Month Parsing for Aliases (Detects "JUN", "JUNE", etc.)
+            exp_str = str(exp) if exp else ""
+            upper_exp = exp_str.upper()
+            month_tags = ""
+            if "-01-" in upper_exp or "-JAN" in upper_exp: month_tags = "JAN JANUARY 01"
+            elif "-02-" in upper_exp or "-FEB" in upper_exp: month_tags = "FEB FEBRUARY 02"
+            elif "-03-" in upper_exp or "-MAR" in upper_exp: month_tags = "MAR MARCH 03"
+            elif "-04-" in upper_exp or "-APR" in upper_exp: month_tags = "APR APRIL 04"
+            elif "-05-" in upper_exp or "-MAY" in upper_exp: month_tags = "MAY 05"
+            elif "-06-" in upper_exp or "-JUN" in upper_exp: month_tags = "JUN JUNE 06"
+            elif "-07-" in upper_exp or "-JUL" in upper_exp: month_tags = "JUL JULY 07"
+            elif "-08-" in upper_exp or "-AUG" in upper_exp: month_tags = "AUG AUGUST 08"
+            elif "-09-" in upper_exp or "-SEP" in upper_exp: month_tags = "SEP SEPTEMBER 09"
+            elif "-10-" in upper_exp or "-OCT" in upper_exp: month_tags = "OCT OCTOBER 10"
+            elif "-11-" in upper_exp or "-NOV" in upper_exp: month_tags = "NOV NOVEMBER 11"
+            elif "-12-" in upper_exp or "-DEC" in upper_exp: month_tags = "DEC DECEMBER 12"
+
+            # Opt Type normalization (Matches both "PE" and "PUT" regardless of broker mapping)
+            opt_safe_raw = str(opt_type).strip().upper() if opt_type else ""
+
+            opt_tags = ""
+
+            if opt_safe_raw.startswith("C"):
+                opt_safe = "CE"
+                opt_tags = "CE CALL CA C"
+
+            elif opt_safe_raw.startswith("P"):
+                opt_safe = "PE"
+                opt_tags = "PE PUT PA P"
+
+            else:
+                opt_safe = ""
+
+            # Strike normalization (Ensures "1040" matches even if float is "1040.0")
+            strike_val = strike or 0.0
+            strike_str = str(strike_val)
+            strike_clean = str(int(strike_val)) if float(strike_val).is_integer() else strike_str
+
+            comp_name = base_to_name.get(underlying, "")
+
+            underlying_u = underlying.upper()
+            display_u = display_str.upper()
+            comp_name_u = comp_name.upper()
+
+            all_text = f"""
+            {underlying_u}
+            {display_u}
+            {comp_name_u}
+            {exp_str}
+            {month_tags}
+            {inst_type}
+            {opt_safe}
+            {opt_tags}
+            {strike_str}
+            {strike_clean}
+            """
+
+            raw_tokens = [
+                t.strip().upper()
+                for t in all_text.replace('-', ' ').split()
+                if t.strip()
+            ]
+
+            tokens = set()
+
+            for tok in raw_tokens:
+
+                if tok in STOP_WORDS:
+                    continue
+
+                tokens.add(tok)
+
+                # trigram support
+                if len(tok) >= 3:
+                    tokens.add(tok[:3])
+
+            # useful aliases
+            joined = "".join(
+                t for t in raw_tokens
+                if t not in STOP_WORDS
+            )
+
+            tokens.add(joined)
+
+            # # SBI aliases
+            # if 'STATE' in tokens and 'BANK' in tokens:
+            #     tokens.add('STATEBANK')
+
+            # if 'STATE' in tokens and 'INDIA' in tokens:
+            #     tokens.add('SBI')
+
+            search_entries.append({
+                'display':        display_str,
+                'symbol':         underlying,
+                'inst_type':      inst_type,
+                'strike':         float(strike_val or 0),
+                'opt_type':       opt_safe,
+                'expiry':         exp_str,
+                'exch':           exch_id,
+
+                '_search_tokens': list(tokens),
+
+                '_expiry_sort':   exp_str,
+
+                '_month_tag': (
+                    month_tags.split()[0]
+                    if month_tags else ""
+                ),
+
+                '_sort_key': (
+                    inst_priority,
+                    exp_str,
+                    strike_val,
+                    underlying
+                )
+            })
+
+        # Pre-sort chronologically and by priority (EQ -> FUT -> OPT -> Near Expiry -> Strike)
+        search_entries.sort(
+        key=lambda x: (
+        x['_sort_key'][0],
+        x['_expiry_sort'],
+        x['strike'],
+        x['symbol']
+        )
+        )
+        self._search_data = search_entries
+        # CRITICAL FIX: Compress spaces in dictionary keys for robust reverse-lookup!
+        self._display_to_data = {" ".join(x['display'].upper().split()): x for x in search_entries}
 
     @staticmethod
     def _fold_chunk(
@@ -410,9 +763,12 @@ class ScripMaster:
             str_sec_id = str(row.SECURITY_ID)
             eq_index[(row.EXCH_ID, row.UNDERLYING_SYMBOL)] = (str_sec_id, int(row.LOT_SIZE))
 
+            display_raw = getattr(row, 'DISPLAY_NAME', None)
+            disp_name = row.UNDERLYING_SYMBOL if pd.isna(display_raw) or not display_raw else " ".join(str(display_raw).split())
+
             secid_info[str_sec_id] = (
                 row.EXCH_ID, row.INSTRUMENT, row.UNDERLYING_SYMBOL,
-                None, None, None
+                None, None, None, disp_name
             )
 
         # 2. Fold Derivatives
@@ -428,11 +784,17 @@ class ScripMaster:
                 strike   = float(row.STRIKE_PRICE)
                 opt_type = str(row.OPTION_TYPE).strip().upper()
 
+            display_raw = getattr(row, 'DISPLAY_NAME', None)
+            disp_name = row.UNDERLYING_SYMBOL if pd.isna(display_raw) or not display_raw else " ".join(str(display_raw).split())
+
             key = (row.EXCH_ID, row.INSTRUMENT, row.UNDERLYING_SYMBOL, exp, strike, opt_type)
             if key not in opt_index:
                 str_sec_id = str(row.SECURITY_ID)
                 opt_index[key] = (str_sec_id, int(row.LOT_SIZE))
-                secid_info[str_sec_id] = key
+                secid_info[str_sec_id] = (
+                    row.EXCH_ID, row.INSTRUMENT, row.UNDERLYING_SYMBOL,
+                    exp, strike, opt_type, disp_name
+                )
 
     def lookup(self, inst: Instrument) -> tuple[Optional[str], int]:
         self._ensure_loaded()
@@ -637,6 +999,24 @@ class DhanTrader:
         overrides: Optional[UIOverride] = None,
     ) -> Optional[Instrument]:
         overrides = overrides or UIOverride()
+
+        # --- Translate Display Name to Base Symbol safely ---
+        display_key = " ".join(symb.strip().upper().split())
+        if display_key in self.scrip._display_to_data:
+            data = self.scrip._display_to_data[display_key]
+            symb = data['symbol']
+            exch = data['exch']
+            
+            # Auto-fill missing overrides from the rich datalist selection
+            if not overrides.inst_type:
+                overrides.inst_type = data['inst_type']
+            if overrides.strike <= 0 and data['strike'] > 0:
+                overrides.strike = data['strike']
+            if not overrides.opt_type and data['opt_type']:
+                overrides.opt_type = data['opt_type']
+            if not overrides.expiry and data['expiry']:
+                overrides.expiry = data['expiry']
+
         sym_cfg   = self._get_symbol_config(symb, exch)
 
         ord_mode  = overrides.inst_type or sym_cfg.get('order_mode', 'EQ')
@@ -936,12 +1316,6 @@ class DhanTrader:
         return float(data.get('availabelBalance', data.get('availableBalance', 0.0)))
 
 
-    def get_active_positions_debug(self) -> list[dict]:
-        resp = self._request_with_retry('GET', POSITIONS_URL, label='GET Positions')
-        if resp is None or resp.status_code != 200:
-            return []
-        return resp.json()
-
     def get_active_positions(self) -> list[dict]:
         resp = self._request_with_retry('GET', POSITIONS_URL, label='GET Positions')
         if resp is None or resp.status_code != 200:
@@ -1213,14 +1587,5 @@ if __name__ == '__main__':
     trader = DhanTrader()
     trader.begin_session()
 
-    # trader.fire_trade('TCS',   'NSE', 'BUY',  entry_val=2400.0,  quant=1)
-    # trader.fire_trade('TCS',   'NSE', 'SELL', entry_val=2200.0,  quant=1)
-    # trader.fire_trade('NIFTY', 'NSE', 'BUY',  entry_val=24000.0, quant=1)
-    # trader.fire_trade('NIFTY', 'NSE', 'SELL', entry_val=23000.0, quant=1)
-
-    # res = trader.get_forever_orders()
-    # print(res)
-
-    res = trader.get_active_positions_debug()
+    res = trader.scrip.search_symbols("sbin 980 call jun")
     print(res)
-    # trader.clean_orphaned_orders()

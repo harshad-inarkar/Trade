@@ -19,7 +19,7 @@
   --accent:   #00d4aa;
   --accent2:  #ff6b35;
   --accent3:  #f0c040;
-  --accent4:  #a78bfa;
+  --accent4:  #a78bfa; 
   --red:      #e05555;
   --mono: 'IBM Plex Mono', monospace;
   --sans: 'Space Grotesk', sans-serif;
@@ -80,7 +80,7 @@ header { position: sticky; top: 0; z-index: 200; background: rgba(11,15,20,.94);
 .btn-action:hover { background: var(--surface2); border-color: var(--red); color: var(--red); }
 
 /* Changed to visible so Re-entry absolute dropdown doesn't get clipped */
-.table-wrap { overflow: visible; }
+.table-wrap { overflow: visible; } 
 
 .symbols-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .8rem; }
 .symbols-table thead tr { border-bottom: 2px solid var(--border); }
@@ -472,49 +472,108 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
   {% endif %}
 </div>
 
-<!-- SCRIPTS (Moved just before closing body per review) -->
-
-<!-- SYMBOL AUTOCOMPLETE LOGIC -->
 <script>
   let _symDebounce = null;
+  window._lastSearchResults = [];
 
   document.addEventListener('input', (e) => {
       if (e.target?.name !== 'symbol' || e.target.tagName !== 'INPUT') return;
       
-      clearTimeout(_symDebounce);
       const input = e.target;
-      
-      _symDebounce = setTimeout(async () => {
-          const val = input.value.trim();
-          if (val.length < 2) return;
+      const val = input.value.trim();
+
+      // 1. Intercept Selection and Auto-fill
+      const selected = window._lastSearchResults.find(x => x.display === val);
+      if (selected) {
+          input.value = selected.symbol; 
           
-          try {
-              const res = await fetch(`/api/search_symbols?q=${encodeURIComponent(val)}`);
-              const matches = await res.json();
+          const form = input.closest('form');
+          if (form) {
+              form.querySelector('[name="exchange"]').value = selected.exch;
+              form.querySelector('[name="inst_type"]').value = selected.inst_type;
               
-              if (!input.hasAttribute('list')) {
-                   input.setAttribute('list', 'symbol-suggestions');
+              if (selected.inst_type === 'OPT' || selected.inst_type === 'FUT') {
+                  form.querySelector('[name="expiry"]').value = selected.expiry;
+              } else {
+                  form.querySelector('[name="expiry"]').value = "";
               }
               
+              if (selected.inst_type === 'OPT') {
+                  form.querySelector('[name="strike"]').value = selected.strike;
+                  form.querySelector('[name="opt_type"]').value = selected.opt_type;
+              } else {
+                  form.querySelector('[name="strike"]').value = "0.0";
+                  form.querySelector('[name="opt_type"]').value = "";
+              }
+          }
+          return; 
+      }
+
+      // 2. Fetch Suggestions
+      if (val.length < 2) return;
+      
+      clearTimeout(_symDebounce);
+
+      _symDebounce = setTimeout(async () => {
+
+          const currentQuery = val.trim();
+
+          if (currentQuery.length < 2) {
+              return;
+          }
+
+          try {
+
+              const res = await fetch(
+                  `/api/search_symbols?q=${encodeURIComponent(currentQuery)}`
+              );
+
+              if (!res.ok) {
+                  return;
+              }
+
+              const matches = await res.json();
+
+              // prevent stale overwrite
+              if (input.value.trim() !== currentQuery) {
+                  return;
+              }
+
+              window._lastSearchResults = Array.isArray(matches)
+                  ? matches
+                  : [];
+
+              if (!input.hasAttribute('list')) {
+                  input.setAttribute('list', 'symbol-suggestions');
+              }
+
               const datalist = document.getElementById('symbol-suggestions');
-              if (!datalist) return;
-              
-              // Safe DOM replacement
+
+              if (!datalist) {
+                  return;
+              }
+
               datalist.replaceChildren(
-                  ...matches.map(sym => {
+                  ...window._lastSearchResults.map(item => {
+
                       const opt = document.createElement('option');
-                      opt.value = sym;
+
+                      opt.value = item.display || '';
+
                       return opt;
                   })
               );
-                  
-          } catch (err) { /* silently ignore network errors */ }
-      }, 150);
+
+          } catch (err) {
+
+              console.warn('symbol search failed', err);
+          }
+
+      }, 120);
   });
 </script>
 
 {% if view != 'order' %}
-<!-- LIGHTWEIGHT PNL & FUNDS UPDATER -->
 <script>
   let liveIntervalId = null;
 
@@ -523,13 +582,11 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
           const res = await fetch('/api/live_data');
           const data = await res.json();
           
-          // Update Funds safely using textContent
           const fundsEl = document.getElementById('live-funds');
           if (fundsEl && data.funds !== undefined) {
               fundsEl.textContent = '₹ ' + data.funds.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
           }
           
-          // Update PnLs safely using textContent without destroying DOM
           for (const [sec_id, pos] of Object.entries(data.positions)) {
               const pnlEl = document.getElementById('pnl-' + sec_id);
               if (pnlEl) {
@@ -558,13 +615,12 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
       const selectEl = document.getElementById('live-interval-select');
       if (selectEl) {
           selectEl.addEventListener('change', startLiveDataUpdater);
-          startLiveDataUpdater(); // Initialize immediately
+          startLiveDataUpdater(); 
       }
   });
 </script>
 {% endif %}
 
-<!-- FULL LAYOUT REFRESHER (Recursive setTimeout) -->
 {% if refresh_interval and refresh_interval > 0 %}
 <script>
   const refreshSecs = parseInt("{{ refresh_interval }}", 10);
@@ -588,7 +644,6 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
       setTimeout(autoRefresh, refreshSecs * 1000);
   }
   
-  // Kickoff self-scheduling loop
   setTimeout(autoRefresh, refreshSecs * 1000);
 </script>
 {% endif %}

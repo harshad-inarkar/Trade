@@ -10,6 +10,7 @@ from typing import Optional
 import uvicorn
 from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.encoders import jsonable_encoder
 from fastapi.templating import Jinja2Templates
 
 from tradeapi.dhan_trade import DhanTrader, UIOverride
@@ -168,12 +169,49 @@ class TradePortalApp:
                 "view":             view
             })
 
+
         @self.app.get("/api/search_symbols")
         async def search_symbols(q: str = Query("")):
-            if not q or len(q) < 2:
+
+            q = (q or "").strip()
+
+            if len(q) < 2:
                 return JSONResponse([])
-            matches = self.trader.scrip.search_symbols(q, limit=30)
-            return JSONResponse(matches)
+
+            try:
+
+                matches = self.trader.scrip.search_symbols(q, limit=30)
+
+                # remove internal fields from UI payload
+                clean = []
+
+                for m in matches:
+                    strike_val = m.get("strike", 0)
+
+                    try:
+                        strike_val = float(strike_val)
+                    except Exception:
+                        strike_val = 0.0
+
+                    clean.append({
+                        "display":   str(m.get("display", "")),
+                        "symbol":    str(m.get("symbol", "")),
+                        "inst_type": str(m.get("inst_type", "")),
+                        "strike":    strike_val,
+                        "opt_type":  str(m.get("opt_type", "")),
+                        "expiry":    str(m.get("expiry", "")),
+                        "exch":      str(m.get("exch", ""))
+                    })
+
+                return JSONResponse(
+                    content=jsonable_encoder(clean)
+                )
+
+            except Exception as exc:
+
+                print(f"[search_symbols API ERROR] q={q} err={exc}")
+
+                return JSONResponse([])
 
         @self.app.get("/api/live_data")
         async def live_data():
