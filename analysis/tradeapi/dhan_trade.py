@@ -78,6 +78,11 @@ UNDERLYING_SEG_MAP = MappingProxyType({
 EQ_INDEX_INSTR = frozenset({'EQUITY', 'INDEX'})
 
 
+class PriceCondition(Enum):
+    GREATER_THAN = 'GREATER_THAN'
+    LESS_THAN    = 'LESS_THAN'
+
+
 # ───────────────────────────────────────
 # Pure utility helpers
 # ───────────────────────────────────────
@@ -476,9 +481,6 @@ class ScripMaster:
 # Core Dhan API class
 # ───────────────────────────────────────
 class DhanTrader:
-    class PriceCondition(Enum):
-        GREATER_THAN = 'GREATER_THAN'
-        LESS_THAN    = 'LESS_THAN'
 
     def __init__(
         self,
@@ -487,8 +489,16 @@ class DhanTrader:
         restart_proxy: bool = False,
     ):
         self.cfg = SymbolsConfig(symb_config)
-        self._defaults_config = None
-        self._set_defaults_config()
+        
+        self.cfg.refresh()
+        self._defaults_config: MappingProxyType = MappingProxyType({
+            'expiry':           self.cfg.get('def_expiry_date', ''),
+            'quant':            self.cfg.get('def_quantity', 1),
+            'trade_amount':     self.cfg.get('def_trade_amount', 10000),
+            'order_mode':       self.cfg.get('def_order_mode', ''),
+            'place_order_mode': self.cfg.get('place_order_mode', 'MARKET')
+        })
+        
         self.traded_this_scan = set()
 
         self.proxy_manager = SSHProxyManager()
@@ -515,7 +525,7 @@ class DhanTrader:
         self.stop_loss_perc  = self.cfg.get('stop_loss_perc', 0.7)
         self.stop_trail_perc = self.cfg.get('stop_trail_perc', 0.5)
 
-    def _apply_proxy(self):
+    def _apply_proxy(self) -> None:
         try:
             proxy_cfg = self.proxy_manager.config.get('proxy', {})
             if proxy_host := proxy_cfg.get('proxy_host', ''):
@@ -535,15 +545,6 @@ class DhanTrader:
     def begin_session(self) -> None:
         self.cfg.refresh()
         self.traded_this_scan.clear()
-
-    def _set_defaults_config(self):
-        self._defaults_config = MappingProxyType({
-            'expiry':           self.cfg.get('def_expiry_date', ''),
-            'quant':            self.cfg.get('def_quantity', 1),
-            'trade_amount':     self.cfg.get('def_trade_amount', 10000),
-            'order_mode':       self.cfg.get('def_order_mode', ''),
-            'place_order_mode': self.cfg.get('place_order_mode', 'MARKET')
-        })
 
     def _compute_price_levels(
         self, raw_entry: float, signal: str, opt_bump: bool = False
@@ -633,7 +634,7 @@ class DhanTrader:
         signal: str,
         quant: int,
         entry_val: float,
-        overrides: UIOverride = None,
+        overrides: Optional[UIOverride] = None,
     ) -> Optional[Instrument]:
         overrides = overrides or UIOverride()
         sym_cfg   = self._get_symbol_config(symb, exch)
@@ -698,7 +699,10 @@ class DhanTrader:
         else:
             display_symb = f'{inst.symb} {inst.seg}'
 
-        exch_seg = 'IDX_I' if inst.seg == 'INDEX' else f'{inst.exch}_{SEG_EXCHANGE_SUFFIX[inst.seg]}'
+        exch_seg = (
+            'IDX_I' if inst.seg == 'INDEX' 
+            else f'{inst.exch}_{SEG_EXCHANGE_SUFFIX[inst.seg]}'
+        )
         return display_symb, exch_seg
 
     def _request_with_retry(
@@ -710,7 +714,9 @@ class DhanTrader:
         **kwargs,
     ) -> Optional[requests.Response]:
         try:
-            return self.session.request(method, url, headers=self.api_headers, timeout=10, **kwargs)
+            return self.session.request(
+                method, url, headers=self.api_headers, timeout=10, **kwargs
+            )
         except RequestException:
             if retry:
                 self.proxy_manager.restart()
@@ -775,7 +781,7 @@ class DhanTrader:
         self, trade_amount: float, price: float, lot_size: int, base_quant: int
     ) -> int:
         if trade_amount > 0 and price > 0:
-            lots = int(trade_amount // (price * lot_size)) + 1
+            lots = math.ceil(trade_amount / (price * lot_size))
             return lots * lot_size
         return base_quant * lot_size
 
@@ -783,7 +789,9 @@ class DhanTrader:
     def place_super_order(self, sec_id: str, lot_size: int, inst: Instrument) -> None:
         _, exchange_seg = self.get_instr_data(inst)
         levels = self._compute_price_levels(inst.entry_val, inst.signal)
-        total_quant = self._compute_quantity(inst.trade_amount, levels.entry, lot_size, inst.quant)
+        total_quant = self._compute_quantity(
+            inst.trade_amount, levels.entry, lot_size, inst.quant
+        )
 
         final_limit = inst.limit_price if inst.limit_price > 0 else levels.limit
 
@@ -814,7 +822,10 @@ class DhanTrader:
         return 'MARKET'
 
     def place_simple_order(self, sec_id: str, lot_size: int, inst: Instrument) -> None:
-        """Intelligently fires a Market, Limit, or Stop Loss order based on provided price parameters."""
+        """
+        Intelligently fires a Market, Limit, or Stop Loss order
+        based on the price parameters on the Instrument.
+        """
         _, exchange_seg = self.get_instr_data(inst)
         ord_type = self._get_ord_type(inst)
 
@@ -858,7 +869,9 @@ class DhanTrader:
     def place_trigger_forever_order(self, sec_id: str, lot_size: int, inst: Instrument) -> None:
         _, exchange_seg = self.get_instr_data(inst)
         levels = self._compute_price_levels(inst.entry_val, inst.signal)
-        total_quant = self._compute_quantity(inst.trade_amount, levels.entry, lot_size, inst.quant)
+        total_quant = self._compute_quantity(
+            inst.trade_amount, levels.entry, lot_size, inst.quant
+        )
 
         product_type = 'MARGIN' if inst.seg in FNO_SEGMENTS else 'CNC'
         trig_price   = inst.trigger_price if inst.trigger_price > 0 else levels.entry
@@ -883,16 +896,18 @@ class DhanTrader:
         _, exchange_seg = self.get_instr_data(inst)
         alert_signal = fno_signal or inst.signal
         levels = self._compute_price_levels(inst.entry_val, alert_signal)
-        total_quant = self._compute_quantity(inst.trade_amount, levels.entry, lot_size, inst.quant)
+        total_quant = self._compute_quantity(
+            inst.trade_amount, levels.entry, lot_size, inst.quant
+        )
 
         ord_payload = self._base_payload(inst.signal, exchange_seg, sec_id) | {
             'quantity': total_quant
         }
 
         if alert_signal == 'BUY':
-            condition = DhanTrader.PriceCondition.GREATER_THAN.value
+            condition = PriceCondition.GREATER_THAN.value
         else:
-            condition = DhanTrader.PriceCondition.LESS_THAN.value
+            condition = PriceCondition.LESS_THAN.value
 
         alert_sec_id, alert_exch_seg = sec_id, exchange_seg
         if fno_signal:
@@ -920,6 +935,13 @@ class DhanTrader:
         data = resp.json()
         return float(data.get('availabelBalance', data.get('availableBalance', 0.0)))
 
+
+    def get_active_positions_debug(self) -> list[dict]:
+        resp = self._request_with_retry('GET', POSITIONS_URL, label='GET Positions')
+        if resp is None or resp.status_code != 200:
+            return []
+        return resp.json()
+
     def get_active_positions(self) -> list[dict]:
         resp = self._request_with_retry('GET', POSITIONS_URL, label='GET Positions')
         if resp is None or resp.status_code != 200:
@@ -933,10 +955,10 @@ class DhanTrader:
 
                 display_sym = self.scrip.get_symbol_name(sec_id, trade_sym)
                 base_sym = self.scrip.get_base_symbol(sec_id, trade_sym)
-                pnl = (
-                    float(pos.get('unrealizedProfit', 0.0))
-                    #+ float(pos.get('realizedProfit', 0.0))
-                )
+                
+                # Only unrealized PnL is shown; realized is excluded (resets on close).
+                pnl = float(pos.get('unrealizedProfit', 0.0))
+                
                 exch = pos.get('exchangeSegment', 'NSE_EQ').split('_')[0]
 
                 entry = {
@@ -1106,7 +1128,7 @@ class DhanTrader:
         payload = self._base_payload(signal, exchange_seg, sec_id) | {'quantity': abs(net_qty)}
         self._post_order(ORDER_URL, payload, label='CLOSE_POS')
 
-    def place_order(self, sec_id: str, lot_size: int, inst: Instrument, signal: str) -> None:
+    def dispatch_order(self, sec_id: str, lot_size: int, inst: Instrument, signal: str) -> None:
         place_order_mode = self._defaults_config.get('place_order_mode')
 
         if inst.seg in OPT_SEGMENTS and inst.exch == 'MCX':
@@ -1164,7 +1186,7 @@ class DhanTrader:
         if sec_id is None:
             return
 
-        self.place_order(sec_id, lot_size, inst, signal)
+        self.dispatch_order(sec_id, lot_size, inst, signal)
 
     def clean_orphaned_orders(self) -> None:
         print('\n─── Starting Cleanup Cycle ───')
@@ -1196,6 +1218,9 @@ if __name__ == '__main__':
     # trader.fire_trade('NIFTY', 'NSE', 'BUY',  entry_val=24000.0, quant=1)
     # trader.fire_trade('NIFTY', 'NSE', 'SELL', entry_val=23000.0, quant=1)
 
-    res = trader.get_forever_orders()
+    # res = trader.get_forever_orders()
+    # print(res)
+
+    res = trader.get_active_positions_debug()
     print(res)
     # trader.clean_orphaned_orders()

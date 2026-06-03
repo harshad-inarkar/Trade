@@ -3,7 +3,6 @@ trade_app.py — Dhan Trading Portal (FastAPI)
 """
 
 import asyncio
-import time
 import tomllib
 from pathlib import Path
 from typing import Optional
