@@ -113,12 +113,55 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
 .pnl-positive { color: var(--accent); font-weight: 700; }
 .pnl-negative { color: var(--red); font-weight: 700; }
 .pnl-neutral  { color: var(--muted); font-weight: 700;}
+
+
+.symbol-search-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.symbol-search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+
+  max-height: 320px;
+  overflow-y: auto;
+
+  z-index: 9999;
+
+  display: none;
+
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+
+.symbol-search-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: .78rem;
+  color: var(--text);
+}
+
+.symbol-search-item:hover {
+  background: var(--surface2);
+  color: var(--accent);
+}
+
+
+
+
 </style>
 
 </head>
 
 <body>
-<datalist id="symbol-suggestions"></datalist>
 
 <header>
   <div class="header-brand">
@@ -163,7 +206,17 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
       
       <div class="form-group">
         <label>Symbol</label>
-        <input type="text" name="symbol" placeholder="e.g. TCS" autocomplete="off" required />
+        <div class="symbol-search-wrap">
+          <input
+              type="text"
+              name="symbol"
+              placeholder="e.g. TCS"
+              autocomplete="off"
+              required
+          />
+        
+          <div id="symbol-search-dropdown" class="symbol-search-dropdown"></div>
+        </div>
       </div>
       
       <div class="form-group" style="flex-direction: row; gap: 10px;">
@@ -473,104 +526,185 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
 </div>
 
 <script>
+
   let _symDebounce = null;
+  let _searchReqId = 0;
+  
   window._lastSearchResults = [];
-
-  document.addEventListener('input', (e) => {
-      if (e.target?.name !== 'symbol' || e.target.tagName !== 'INPUT') return;
-      
-      const input = e.target;
-      const val = input.value.trim();
-
-      // 1. Intercept Selection and Auto-fill
-      const selected = window._lastSearchResults.find(x => x.display === val);
-      if (selected) {
-          input.value = selected.symbol; 
-          
-          const form = input.closest('form');
-          if (form) {
-              form.querySelector('[name="exchange"]').value = selected.exch;
-              form.querySelector('[name="inst_type"]').value = selected.inst_type;
-              
-              if (selected.inst_type === 'OPT' || selected.inst_type === 'FUT') {
-                  form.querySelector('[name="expiry"]').value = selected.expiry;
-              } else {
-                  form.querySelector('[name="expiry"]').value = "";
-              }
-              
-              if (selected.inst_type === 'OPT') {
-                  form.querySelector('[name="strike"]').value = selected.strike;
-                  form.querySelector('[name="opt_type"]').value = selected.opt_type;
-              } else {
-                  form.querySelector('[name="strike"]').value = "0.0";
-                  form.querySelector('[name="opt_type"]').value = "";
-              }
-          }
-          return; 
+  
+  function hideSymbolDropdown() {
+  
+      const dropdown = document.getElementById(
+          'symbol-search-dropdown'
+      );
+  
+      if (dropdown) {
+          dropdown.style.display = 'none';
       }
-
-      // 2. Fetch Suggestions
-      if (val.length < 2) return;
-      
+  }
+  
+  function renderSymbolDropdown(items, input) {
+  
+      const dropdown = document.getElementById(
+          'symbol-search-dropdown'
+      );
+  
+      if (!dropdown) {
+          return;
+      }
+  
+      dropdown.innerHTML = '';
+  
+      if (!Array.isArray(items) || items.length === 0) {
+          dropdown.style.display = 'none';
+          return;
+      }
+  
+      items.forEach(item => {
+  
+          const row = document.createElement('div');
+  
+          row.className = 'symbol-search-item';
+  
+          row.textContent = item.display || '';
+  
+          row.addEventListener('mousedown', (e) => {
+  
+              e.preventDefault();
+  
+              input.value = item.symbol || '';
+  
+              const form = input.closest('form');
+  
+              if (form) {
+  
+                  form.querySelector('[name="exchange"]').value =
+                      item.exch || '';
+  
+                  form.querySelector('[name="inst_type"]').value =
+                      item.inst_type || '';
+  
+                  if (
+                      item.inst_type === 'OPT' ||
+                      item.inst_type === 'FUT'
+                  ) {
+                      form.querySelector('[name="expiry"]').value =
+                          item.expiry || '';
+                  } else {
+                      form.querySelector('[name="expiry"]').value = '';
+                  }
+  
+                  if (item.inst_type === 'OPT') {
+  
+                      form.querySelector('[name="strike"]').value =
+                          item.strike || 0;
+  
+                      form.querySelector('[name="opt_type"]').value =
+                          item.opt_type || '';
+  
+                  } else {
+  
+                      form.querySelector('[name="strike"]').value =
+                          '0.0';
+  
+                      form.querySelector('[name="opt_type"]').value =
+                          '';
+                  }
+              }
+  
+              hideSymbolDropdown();
+          });
+  
+          dropdown.appendChild(row);
+      });
+  
+      dropdown.style.display = 'block';
+  }
+  
+  document.addEventListener('input', (e) => {
+  
+      if (
+          e.target?.name !== 'symbol' ||
+          e.target.tagName !== 'INPUT'
+      ) {
+          return;
+      }
+  
+      const input = e.target;
+  
+      const val = input.value.trim();
+  
+      if (val.length < 2) {
+  
+          hideSymbolDropdown();
+  
+          return;
+      }
+  
       clearTimeout(_symDebounce);
-
+  
       _symDebounce = setTimeout(async () => {
-
-          const currentQuery = val.trim();
-
-          if (currentQuery.length < 2) {
-              return;
-          }
-
+  
+          const reqId = ++_searchReqId;
+  
           try {
-
+  
               const res = await fetch(
-                  `/api/search_symbols?q=${encodeURIComponent(currentQuery)}`
+                  `/api/search_symbols?q=${encodeURIComponent(val)}`
               );
-
+  
               if (!res.ok) {
                   return;
               }
-
+  
               const matches = await res.json();
-
-              // prevent stale overwrite
-              if (input.value.trim() !== currentQuery) {
+  
+              // ignore stale responses
+              if (reqId !== _searchReqId) {
                   return;
               }
-
-              window._lastSearchResults = Array.isArray(matches)
-                  ? matches
-                  : [];
-
-              if (!input.hasAttribute('list')) {
-                  input.setAttribute('list', 'symbol-suggestions');
-              }
-
-              const datalist = document.getElementById('symbol-suggestions');
-
-              if (!datalist) {
+  
+              // input changed while request in-flight
+              if (input.value.trim() !== val) {
                   return;
               }
-
-              datalist.replaceChildren(
-                  ...window._lastSearchResults.map(item => {
-
-                      const opt = document.createElement('option');
-
-                      opt.value = item.display || '';
-
-                      return opt;
-                  })
+  
+              window._lastSearchResults =
+                  Array.isArray(matches)
+                      ? matches
+                      : [];
+  
+              renderSymbolDropdown(
+                  window._lastSearchResults,
+                  input
               );
-
+  
           } catch (err) {
-
-              console.warn('symbol search failed', err);
+  
+              console.warn(
+                  'symbol search failed',
+                  err
+              );
           }
-
+  
       }, 120);
   });
+  
+  document.addEventListener('click', (e) => {
+  
+      const dropdown = document.getElementById(
+          'symbol-search-dropdown'
+      );
+  
+      if (!dropdown) {
+          return;
+      }
+  
+      if (!dropdown.contains(e.target)) {
+          hideSymbolDropdown();
+      }
+  });
+  
 </script>
 
 {% if view != 'order' %}
