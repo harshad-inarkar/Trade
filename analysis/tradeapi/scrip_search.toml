@@ -1,0 +1,66 @@
+# scrip_search.toml — Configuration for the Scrip Master Search Engine
+
+[search.stop_words]
+words = ["OF", "THE", "&", "LTD", "LIMITED", "CORP", "CORPORATION", "CO"]
+
+[search.aliases.call]
+words = ["CALL", "CE", "C", "CA"]
+
+[search.aliases.put]
+words = ["PUT", "PE", "P", "PA"]
+
+[search.aliases.fut]
+words = ["FUT", "FUTURE", "FUTURES"]
+
+[search.month_aliases]
+# Maps human inputs directly to the standardized 3-letter broker notation
+"JAN" = "JAN"
+"JANUARY" = "JAN"
+"01" = "JAN"
+"FEB" = "FEB"
+"FEBRUARY" = "FEB"
+"02" = "FEB"
+"MAR" = "MAR"
+"MARCH" = "MAR"
+"03" = "MAR"
+"APR" = "APR"
+"APRIL" = "APR"
+"04" = "APR"
+"MAY" = "MAY"
+"05" = "MAY"
+"JUN" = "JUN"
+"JUNE" = "JUN"
+"06" = "JUN"
+"JUL" = "JUL"
+"JULY" = "JUL"
+"07" = "JUL"
+"AUG" = "AUG"
+"AUGUST" = "AUG"
+"08" = "AUG"
+"SEP" = "SEP"
+"SEPTEMBER" = "SEP"
+"09" = "SEP"
+"OCT" = "OCT"
+"OCTOBER" = "OCT"
+"10" = "OCT"
+"NOV" = "NOV"
+"NOVEMBER" = "NOV"
+"11" = "NOV"
+"DEC" = "DEC"
+"DECEMBER" = "DEC"
+"12" = "DEC"
+
+[search.month_generation_tags]
+# Used internally to build the hidden Bag-of-Words index for each integer month
+1 = "JAN JANUARY 01"
+2 = "FEB FEBRUARY 02"
+3 = "MAR MARCH 03"
+4 = "APR APRIL 04"
+5 = "MAY 05"
+6 = "JUN JUNE 06"
+7 = "JUL JULY 07"
+8 = "AUG AUGUST 08"
+9 = "SEP SEPTEMBER 09"
+10 = "OCT OCTOBER 10"
+11 = "NOV NOVEMBER 11"
+12 = "DEC DECEMBER 12"
