@@ -8,9 +8,10 @@ from pathlib import Path
 import tomllib
 import uvicorn
 from fastapi import APIRouter, FastAPI, Form, Query, Request
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from tradeapi.dhan_trade import DhanTrader, UIOverride
 from utils.data.paths import TEMPLATES_ROOT_DIR
@@ -20,6 +21,34 @@ APP_CONFIG_PATH = BASE_DIR / "trade_app.toml"
 
 LOGGER = logging.getLogger(__name__)
 _MIN_QUERY_LEN = 2
+
+
+# ==========================================
+# Pydantic Response Schemas
+# ==========================================
+class SymbolSearchItem(BaseModel):
+    display: str
+    symbol: str
+    inst_type: str
+    strike: float
+    opt_type: str
+    expiry: str
+    exch: str
+
+
+class PositionData(BaseModel):
+    pnl: float
+    qty: int
+    display_name: str
+    exchange_seg: str
+
+
+class LiveDataResponse(BaseModel):
+    funds: float
+    position_count: int
+    closed_count: int
+    order_count: int
+    positions: dict[str, PositionData]
 
 
 def _format_order_detail(
@@ -260,6 +289,11 @@ class TradePortalApp:
         template_dir = Path(TEMPLATES_ROOT_DIR) / self.cfg.template_subdir
         self.templates = Jinja2Templates(directory=template_dir)
 
+        # Mount Static Directory
+        static_dir = template_dir / "static"
+        static_dir.mkdir(exist_ok=True)
+        self.app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
         LOGGER.info("Initializing DhanTrader...")
         self.trader = DhanTrader(
             refresh_master_scrip=self.cfg.refresh_master_script,
@@ -282,13 +316,13 @@ class TradePortalApp:
             "/api/search_symbols",
             self._search_symbols,
             methods=["GET"],
-            response_class=JSONResponse,
+            response_model=list[SymbolSearchItem],
         )
         router.add_api_route(
             "/api/live_data",
             self._live_data,
             methods=["GET"],
-            response_class=JSONResponse,
+            response_model=LiveDataResponse,
         )
         router.add_api_route(
             "/place_order",
@@ -350,11 +384,10 @@ class TradePortalApp:
             },
         )
 
-    async def _search_symbols(self, q: str = Query("")) -> JSONResponse:
+    async def _search_symbols(self, q: str = Query("")) -> list[SymbolSearchItem]:
         q = (q or "").strip()
         if len(q) < _MIN_QUERY_LEN:
-            return JSONResponse([])
-
+            return []
         try:
             matches = self.trader.scrip.search_symbols(q, limit=30)
             clean = []
@@ -377,14 +410,15 @@ class TradePortalApp:
                         "exch": str(match.get("exch", "")),
                     },
                 )
-            return JSONResponse(content=jsonable_encoder(clean))
 
         except Exception:
             LOGGER.exception("[search_symbols API ERROR] q=%s", q)
-            return JSONResponse([])
+            return []
+        else:
+            return clean
 
-    async def _live_data(self) -> JSONResponse:
-        return JSONResponse(self.dashboard.get_snapshot().live_payload())
+    async def _live_data(self) -> LiveDataResponse:
+        return self.dashboard.get_snapshot().live_payload()
 
     async def _place_order(
         self,
