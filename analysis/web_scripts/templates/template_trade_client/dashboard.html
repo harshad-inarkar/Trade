@@ -172,8 +172,8 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
 
 <div class="meta-bar">
   <div><span class="dot"></span>API Live</div>
-  <div>Positions: <strong>{{ total_positions }}</strong></div>
-  <div>Open Orders: <strong>{{ total_orders }}</strong></div>
+  <div>Positions: <strong id="live-position-count">{{ total_positions }}</strong></div>
+  <div>Open Orders: <strong id="live-order-count">{{ total_orders }}</strong></div>
   <div>Funds: <strong id="live-funds">₹ {{ "{:,.2f}".format(funds) }}</strong></div>
 
   {% if view != 'order' %}
@@ -322,7 +322,7 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
           </thead>
           <tbody>
             {% for pos in positions %}
-            <tr>
+            <tr data-position-row="{{ pos.security_id }}" data-position-qty="{{ pos.qty }}">
               <td>{{ loop.index }}</td>
               <td>
                 <span class="symbol-badge">{{ pos.display_name }}</span>
@@ -332,7 +332,10 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
                 {% set side = 'B' if qty_num > 0 else ('S' if qty_num < 0 else '-') %}
                 <span class="box-side box-{{ side }}">{{ side }}</span>
               </td>
-              <td style="font-family: var(--mono); font-size: .8rem;">
+              <td
+                id="qty-{{ pos.security_id }}"
+                style="font-family: var(--mono); font-size: .8rem;"
+              >
                 {{ qty_num | abs }}
               </td>
               <td>
@@ -710,27 +713,128 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
 {% if view != 'order' %}
 <script>
   let liveIntervalId = null;
+  let liveFetchInFlight = false;
+  let sectionRefreshInFlight = false;
+
+  function formatCurrency(value) {
+      return Number(value || 0).toLocaleString(
+          'en-IN',
+          {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+          }
+      );
+  }
+
+  function getRenderedPositionIds() {
+      return Array.from(
+          document.querySelectorAll('[data-position-row]')
+      ).map((row) => row.dataset.positionRow).sort();
+  }
+
+  function havePositionRowsChanged(livePositions) {
+      const liveIds = Object.keys(livePositions || {}).sort();
+      const renderedIds = getRenderedPositionIds();
+
+      if (liveIds.length !== renderedIds.length) {
+          return true;
+      }
+
+      if (liveIds.some((id, index) => id !== renderedIds[index])) {
+          return true;
+      }
+
+      return liveIds.some((id) => {
+          const row = document.querySelector(`[data-position-row="${id}"]`);
+          const liveQty = String((livePositions[id] || {}).qty ?? '');
+          return row && row.dataset.positionQty !== liveQty;
+      });
+  }
+
+  async function refreshDataStack() {
+      if (sectionRefreshInFlight) {
+          return;
+      }
+
+      sectionRefreshInFlight = true;
+
+      try {
+          const response = await fetch(window.location.href);
+          const html = await response.text();
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const newData = doc.querySelector('.data-stack');
+          const oldData = document.querySelector('.data-stack');
+
+          if (newData && oldData) {
+              oldData.innerHTML = newData.innerHTML;
+          }
+
+          const newPositionCount = doc.getElementById('live-position-count');
+          const oldPositionCount = document.getElementById('live-position-count');
+          if (newPositionCount && oldPositionCount) {
+              oldPositionCount.textContent = newPositionCount.textContent;
+          }
+
+          const newOrderCount = doc.getElementById('live-order-count');
+          const oldOrderCount = document.getElementById('live-order-count');
+          if (newOrderCount && oldOrderCount) {
+              oldOrderCount.textContent = newOrderCount.textContent;
+          }
+      } catch (e) {
+          console.warn('[data_stack] refresh failed:', e);
+      } finally {
+          sectionRefreshInFlight = false;
+      }
+  }
 
   async function fetchLiveData() {
+      if (liveFetchInFlight) {
+          return;
+      }
+
+      liveFetchInFlight = true;
+
       try {
           const res = await fetch('/api/live_data');
           const data = await res.json();
           
           const fundsEl = document.getElementById('live-funds');
           if (fundsEl && data.funds !== undefined) {
-              fundsEl.textContent = '₹ ' + data.funds.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+              fundsEl.textContent = '₹ ' + formatCurrency(data.funds);
+          }
+
+          const positionCountEl = document.getElementById('live-position-count');
+          if (positionCountEl && data.position_count !== undefined) {
+              positionCountEl.textContent = data.position_count;
+          }
+
+          const orderCountEl = document.getElementById('live-order-count');
+          if (orderCountEl && data.order_count !== undefined) {
+              orderCountEl.textContent = data.order_count;
+          }
+
+          if (havePositionRowsChanged(data.positions)) {
+              await refreshDataStack();
+              return;
           }
           
           for (const [sec_id, pos] of Object.entries(data.positions)) {
               const pnlEl = document.getElementById('pnl-' + sec_id);
               if (pnlEl) {
                   const pnlVal = parseFloat(pos.pnl);
-                  pnlEl.textContent = pnlVal.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                  pnlEl.textContent = formatCurrency(pnlVal);
                   pnlEl.className = pnlVal > 0 ? 'pnl-positive' : (pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
+              }
+
+              const qtyEl = document.getElementById('qty-' + sec_id);
+              if (qtyEl) {
+                  qtyEl.textContent = Math.abs(parseInt(pos.qty, 10) || 0);
               }
           }
       } catch (e) {
           console.warn('[live_data] fetch failed:', e);
+      } finally {
+          liveFetchInFlight = false;
       }
   }
 
@@ -764,15 +868,8 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
       const hasOpenReentry = !!document.querySelector('details.reentry-panel[open]');
       
       if (activeTag !== 'INPUT' && activeTag !== 'SELECT' && !hasOpenReentry) {
-          try {
-              const response = await fetch(window.location.href);
-              const html     = await response.text();
-              const doc      = new DOMParser().parseFromString(html, 'text/html');
-              const newData  = doc.querySelector('.data-stack');
-              const oldData  = document.querySelector('.data-stack');
-              if (newData && oldData) oldData.innerHTML = newData.innerHTML;
-          } catch (e) {
-              console.warn('[autoRefresh] fetch failed:', e);
+          if (typeof refreshDataStack === 'function') {
+              await refreshDataStack();
           }
       }
       setTimeout(autoRefresh, refreshSecs * 1000);

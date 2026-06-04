@@ -20,7 +20,7 @@ words = ["OF", "THE", "&", "LTD", "LIMITED", "CORP", "CORPORATION", "CO"]
 words = ["CALL", "CE", "C", "CA"]
 
 [search.aliases.put]
-words = ["PUT", "PE", "P", "PA"]
+words = ["PUT", "PE", "P", "PU"]
 
 [search.aliases.fut]
 words = ["FUT", "FUTURE", "FUTURES"]
