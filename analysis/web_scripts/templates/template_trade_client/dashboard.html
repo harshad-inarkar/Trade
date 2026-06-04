@@ -367,7 +367,7 @@ th.sort-desc::after { content: ' ↓'; font-size: 0.8em; color: var(--red); }
               <td>
                 {% set qty_num = pos.qty | int %}
                 {% set side = 'B' if qty_num > 0 else ('S' if qty_num < 0 else '-') %}
-                <span class="box-side box-{{ side }}">{{ side }}</span>
+                <span id="side-{{ pos.security_id }}" class="box-side box-{{ side }}">{{ side }}</span>
               </td>
               <td
                 id="qty-{{ pos.security_id }}"
@@ -615,25 +615,29 @@ th.sort-desc::after { content: ' ↓'; font-size: 0.8em; color: var(--red); }
       }
   }
 
-  function sortTable(tableId, colIndex, isNumeric) {
+  let currentSort = { active: { col: null, isNum: false, isAsc: true }, closed: { col: null, isNum: false, isAsc: true } };
+
+  function sortTable(tableId, colIndex, isNumeric, forceAsc = null) {
       const table = document.getElementById(tableId);
+      if (!table) return;
       const tbody = table.querySelector('tbody');
       const rows = Array.from(tbody.querySelectorAll('tr'));
-
       if (rows.length === 0 || (rows.length === 1 && rows[0].cells.length === 1)) return;
 
       const header = table.querySelectorAll('th')[colIndex];
-      const isAsc = header.classList.contains('sort-asc');
+      let isAsc = forceAsc !== null ? forceAsc : !header.classList.contains('sort-asc');
 
       table.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
-      header.classList.add(isAsc ? 'sort-desc' : 'sort-asc');
+      header.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
 
-      const dir = isAsc ? -1 : 1;
+      const stateKey = tableId === 'table-active' ? 'active' : 'closed';
+      currentSort[stateKey] = { col: colIndex, isNum: isNumeric, isAsc: isAsc };
+
+      const dir = isAsc ? 1 : -1;
 
       rows.sort((a, b) => {
           let aCol = a.querySelectorAll('td')[colIndex];
           let bCol = b.querySelectorAll('td')[colIndex];
-          
           let aText = aCol ? aCol.textContent.trim() : '';
           let bText = bCol ? bCol.textContent.trim() : '';
 
@@ -657,10 +661,8 @@ th.sort-desc::after { content: ' ↓'; font-size: 0.8em; color: var(--red); }
 </script>
 
 <script>
-
   let _symDebounce = null;
   let _searchReqId = 0;
-  
   window._lastSearchResults = [];
   
   function hideSymbolDropdown() {
@@ -748,7 +750,6 @@ th.sort-desc::after { content: ' ↓'; font-size: 0.8em; color: var(--red); }
       if (!dropdown) return;
       if (!dropdown.contains(e.target)) hideSymbolDropdown();
   });
-  
 </script>
 
 {% if view != 'order' %}
@@ -764,14 +765,19 @@ th.sort-desc::after { content: ' ↓'; font-size: 0.8em; color: var(--red); }
       );
   }
 
-  function havePositionCountsChanged(data) {
+  function haveCoreCountsChanged(data) {
       const posCountEl = document.getElementById('live-position-count');
       const closedCountEl = document.getElementById('live-closed-count');
+      const orderCountEl = document.getElementById('live-order-count');
 
       const currentPosCount = posCountEl ? parseInt(posCountEl.textContent, 10) : 0;
       const currentClosedCount = closedCountEl ? parseInt(closedCountEl.textContent, 10) : 0;
+      const currentOrderCount = orderCountEl ? parseInt(orderCountEl.textContent, 10) : 0;
 
-      return (currentPosCount !== data.position_count) || (currentClosedCount !== data.closed_count);
+      // Triggers a DOM structural reload if ANY array length changes
+      return (currentPosCount !== data.position_count) || 
+             (currentClosedCount !== data.closed_count) ||
+             (currentOrderCount !== data.order_count);
   }
 
   async function refreshDataStack() {
@@ -803,6 +809,14 @@ th.sort-desc::after { content: ' ↓'; font-size: 0.8em; color: var(--red); }
           
           togglePositions(viewToRestore);
 
+          // RESTORE SORTING STATE AFTER DOM SWAP
+          if (currentSort.active.col !== null) {
+              sortTable('table-active', currentSort.active.col, currentSort.active.isNum, currentSort.active.isAsc);
+          }
+          if (currentSort.closed.col !== null) {
+              sortTable('table-closed', currentSort.closed.col, currentSort.closed.isNum, currentSort.closed.isAsc);
+          }
+
       } catch (e) {
           console.warn('[data_stack] refresh failed:', e);
       } finally {
@@ -823,12 +837,13 @@ th.sort-desc::after { content: ' ↓'; font-size: 0.8em; color: var(--red); }
               fundsEl.textContent = '₹ ' + formatCurrency(data.funds);
           }
 
-          if (havePositionCountsChanged(data)) {
+          if (haveCoreCountsChanged(data)) {
               await refreshDataStack();
               return;
           }
           
           for (const [sec_id, pos] of Object.entries(data.positions)) {
+              // Dynamically update PnL numbers
               const pnlEl = document.getElementById('pnl-' + sec_id);
               if (pnlEl) {
                   const pnlVal = parseFloat(pos.pnl);
@@ -836,9 +851,19 @@ th.sort-desc::after { content: ' ↓'; font-size: 0.8em; color: var(--red); }
                   pnlEl.className = pnlVal > 0 ? 'pnl-positive' : (pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
               }
 
+              // Dynamically update Qty numbers
               const qtyEl = document.getElementById('qty-' + sec_id);
               if (qtyEl) {
                   qtyEl.textContent = Math.abs(parseInt(pos.qty, 10) || 0);
+              }
+
+              // Dynamically update Buy/Sell badge
+              const sideEl = document.getElementById('side-' + sec_id);
+              if (sideEl) {
+                  const q = parseInt(pos.qty, 10) || 0;
+                  const side = q > 0 ? 'B' : (q < 0 ? 'S' : '-');
+                  sideEl.textContent = side;
+                  sideEl.className = 'box-side box-' + side;
               }
           }
       } catch (e) {
