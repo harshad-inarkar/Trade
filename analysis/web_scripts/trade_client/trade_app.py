@@ -257,7 +257,7 @@ class TradePortalApp:
             )
 
             if inst:
-                sec_id, lot_size = self.trader.scrip.lookup_with_fallback(inst)
+                sec_id, lot_size = self.trader.lookup_with_fallback(inst)
                 if sec_id:
                     match order_mode:
                         case "MARKET":
@@ -317,7 +317,7 @@ class TradePortalApp:
                 )
 
                 if inst_reentry:
-                    new_sec_id, lot_size = self.trader.scrip.lookup_with_fallback(inst_reentry)
+                    new_sec_id, lot_size = self.trader.lookup_with_fallback(inst_reentry)
                     if new_sec_id:
                         mode_to_use = reentry_type if reentry_type else self.cfg.reentry_order_mode
                         match mode_to_use:

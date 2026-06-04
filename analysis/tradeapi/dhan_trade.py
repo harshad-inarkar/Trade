@@ -2,47 +2,28 @@
 dhan_trade.py — Dhan HQ automated order placement (Object-Oriented).
 """
 
-# stdlib
 import math
 import tomllib
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Optional
 
-# third-party
 import requests
 from requests.exceptions import RequestException
 
-# local
-from tradeapi.price_strike_calc import get_price_strike
-from tradeapi.scrip_master import (
-    ScripMaster, 
-    Instrument, 
-    OPT_SEGMENTS, 
-    FUT_SEGMENTS, 
-    FNO_SEGMENTS, 
-    UNDERLYING_SEG_MAP, 
-    SEG_EXCHANGE_SUFFIX
-)
+from tradeapi.price_strike_calc import get_price_strike, get_strike_interval
+from tradeapi.scrip_master import ScripMaster, _get_today_str
 from utils.network.start_proxy import SSHProxyManager
 
 
-# ───────────────────────────────────────
-# Paths & Pure Constants
-# ───────────────────────────────────────
+__all__ = ["DhanTrader", "UIOverride", "Instrument", "PriceLevels"]
+
 BASE_DIR         = Path(__file__).parent
 SYMBOLS_CONFIG   = BASE_DIR / 'symbols_config.toml'
 ACCESS_FILE_PATH = BASE_DIR / 'access_token.toml'
-
-ORDER_URL         = 'https://api.dhan.co/v2/orders'
-POSITIONS_URL     = 'https://api.dhan.co/v2/positions'
-SUPER_ORDER_URL   = 'https://api.dhan.co/v2/super/orders'
-FOREVER_ORDER_URL = 'https://api.dhan.co/v2/forever/orders'
-ALERT_ORDER_URL   = 'https://api.dhan.co/v2/alerts/orders'
-FUND_LIMIT_URL    = 'https://api.dhan.co/v2/fundlimit'
+API_CONFIG_PATH  = BASE_DIR / 'dhan_trade.toml'
 
 
 class PriceCondition(Enum):
@@ -50,9 +31,43 @@ class PriceCondition(Enum):
     LESS_THAN    = 'LESS_THAN'
 
 
-# ───────────────────────────────────────
-# Pure utility helpers
-# ───────────────────────────────────────
+@dataclass
+class PriceLevels:
+    entry:      float
+    limit:      float
+    stop_loss:  float
+    stop_limit: float
+    target:     float
+    trail:      float
+
+
+@dataclass
+class Instrument:
+    symb:          str
+    exch:          str
+    seg:           str
+    expiry_date:   str             = ''
+    signal:        str             = ''
+    quant:         int             = 1
+    entry_val:     float           = 0.0
+    trade_amount:  float           = 0.0
+    strike:        Optional[float] = None
+    opt_type:      Optional[str]   = None
+    trigger_price: float           = 0.0
+    limit_price:   float           = 0.0
+
+
+@dataclass
+class UIOverride:
+    inst_type:     str             = ""
+    strike:        float           = 0.0
+    expiry:        str             = ""
+    limit_price:   float           = 0.0
+    trigger_price: float           = 0.0
+    force_qty:     bool            = False
+    opt_type:      Optional[str]   = None
+
+
 def _signal_to_opt(signal: str) -> str:
     return 'CE' if signal == 'BUY' else 'PE'
 
@@ -68,37 +83,6 @@ def _adjust_price(base: float, perc: float, signal: str, opt_bump: bool = False)
     return math.floor(base * (1 - perc / 100))
 
 
-def _get_today_str() -> str:
-    return datetime.now().strftime('%Y-%m-%d')
-
-
-# ───────────────────────────────────────
-# Data Classes
-# ───────────────────────────────────────
-@dataclass
-class PriceLevels:
-    entry:      float
-    limit:      float
-    stop_loss:  float
-    stop_limit: float
-    target:     float
-    trail:      float
-
-
-@dataclass
-class UIOverride:
-    inst_type:     str             = ""
-    strike:        float           = 0.0
-    expiry:        str             = ""
-    limit_price:   float           = 0.0
-    trigger_price: float           = 0.0
-    force_qty:     bool            = False
-    opt_type:      Optional[str]   = None
-
-
-# ───────────────────────────────────────
-# Config Manager
-# ───────────────────────────────────────
 class SymbolsConfig:
     def __init__(self, path: Path):
         self._path = path
@@ -109,7 +93,7 @@ class SymbolsConfig:
         self.refresh()
         return self._config.get(key, default)
 
-    def refresh(self, retry=True):
+    def refresh(self, retry=True) -> None:
         try:
             mtime = self._path.stat().st_mtime
         except OSError:
@@ -124,8 +108,7 @@ class SymbolsConfig:
         if self._mtime == mtime:
             return
 
-        if self._mtime is not None:
-            print('Symbols config file changed — reloading.')
+        print('Symbols config file changed — reloading.')
         self._mtime = mtime
 
         try:
@@ -137,20 +120,48 @@ class SymbolsConfig:
             print(f'{rtry_str}Failed to parse {self._path} TOML config: {exc}')
 
 
-# ───────────────────────────────────────
-# Core Dhan API class
-# ───────────────────────────────────────
-class DhanTrader:
+class DhanAPIConfig:
+    """Loads execution logic mappings and API endpoints."""
+    def __init__(self, path: Path):
+        self.urls: dict[str, str] = {}
+        self.segments: dict[str, list[str]] = {}
+        self.opt_segments: frozenset[str] = frozenset()
+        self.fut_segments: frozenset[str] = frozenset()
+        self.fno_segments: frozenset[str] = frozenset()
+        self.maps: dict[str, dict[str, str]] = {}
+        self.fallback_steps: list[int] = []
 
+        self._load(path)
+
+    def _load(self, path: Path) -> None:
+        if not path.exists():
+            print(f"[!] Warning: {path} not found. Using defaults.")
+            return
+
+        with open(path, 'rb') as f:
+            data = tomllib.load(f)
+
+        self.urls = data.get('urls', {})
+        self.segments = data.get('segments', {})
+        self.opt_segments = frozenset(self.segments.get('opt_segments', []))
+        self.fut_segments = frozenset(self.segments.get('fut_segments', []))
+        self.fno_segments = frozenset(self.segments.get('fno_segments', []))
+        
+        self.maps = data.get('maps', {})
+        self.fallback_steps = data.get('fallback', {}).get('steps', [])
+
+
+class DhanTrader:
     def __init__(
         self,
-        symb_config=SYMBOLS_CONFIG,
+        symb_config: Path = SYMBOLS_CONFIG,
         refresh_master_scrip: bool = False,
         restart_proxy: bool = False,
     ):
+        self.api_cfg = DhanAPIConfig(API_CONFIG_PATH)
         self.cfg = SymbolsConfig(symb_config)
-        
         self.cfg.refresh()
+        
         self._defaults_config: MappingProxyType = MappingProxyType({
             'expiry':           self.cfg.get('def_expiry_date', ''),
             'quant':            self.cfg.get('def_quantity', 1),
@@ -234,7 +245,7 @@ class DhanTrader:
 
         if exch == 'NSE':
             nse_cfg = self.cfg.get('nse', {})
-
+            
             indices = nse_cfg.get('indices', {})
             grp_cfg_indices = indices.get('config', {})
             if symb in indices.get('symbols', {}):
@@ -298,10 +309,8 @@ class DhanTrader:
     ) -> Optional[Instrument]:
         overrides = overrides or UIOverride()
 
-        # --- Translate Display Name to Base Symbol safely ---
-        display_key = " ".join(symb.strip().upper().split())
-        if display_key in self.scrip._display_to_data:
-            data = self.scrip._display_to_data[display_key]
+        data = self.scrip.get_data_by_display_name(symb)
+        if data:
             symb = data['symbol']
             exch = data['exch']
             
@@ -369,18 +378,56 @@ class DhanTrader:
         )
 
     def get_instr_data(self, inst: Instrument) -> tuple[str, str]:
-        if inst.seg in OPT_SEGMENTS:
+        if inst.seg in self.api_cfg.opt_segments:
             display_symb = f'{inst.symb} {inst.strike} {inst.opt_type} {inst.expiry_date}'
-        elif inst.seg in FUT_SEGMENTS:
+        elif inst.seg in self.api_cfg.fut_segments:
             display_symb = f'{inst.symb} Fut {inst.expiry_date}'
         else:
             display_symb = f'{inst.symb} {inst.seg}'
 
-        exch_seg = (
-            'IDX_I' if inst.seg == 'INDEX' 
-            else f'{inst.exch}_{SEG_EXCHANGE_SUFFIX[inst.seg]}'
-        )
+        seg_suffix = self.api_cfg.maps.get('seg_exchange_suffix', {}).get(inst.seg, '')
+        exch_seg = 'IDX_I' if inst.seg == 'INDEX' else f'{inst.exch}_{seg_suffix}'
         return display_symb, exch_seg
+
+    def _get_fallback_strike(self, base: str, strike: float, opt_type: str) -> Optional[float]:
+        fb_step = None
+        for step in self.api_cfg.fallback_steps:
+            if step > get_strike_interval(base, strike):
+                fb_step = step
+                break
+
+        if fb_step is None:
+            return None
+
+        if opt_type == 'CE':
+            new_strike = math.floor(strike / fb_step) * fb_step
+        else:
+            new_strike = math.ceil(strike / fb_step) * fb_step
+
+        return float(new_strike) if new_strike != strike else None
+
+    def lookup_with_fallback(self, inst: Instrument) -> tuple[Optional[str], int]:
+        sec_id, lot_size = self.scrip.lookup(
+            inst.exch, inst.seg, inst.symb, inst.expiry_date, inst.strike, inst.opt_type
+        )
+        if sec_id is not None:
+            return sec_id, lot_size
+
+        if inst.seg not in self.api_cfg.opt_segments:
+            return None, 0
+
+        fb_strike = self._get_fallback_strike(inst.symb, inst.strike, inst.opt_type)
+        if fb_strike:
+            original_strike = inst.strike
+            inst.strike = fb_strike
+            sec_id, lot_size = self.scrip.lookup(
+                inst.exch, inst.seg, inst.symb, inst.expiry_date, inst.strike, inst.opt_type
+            )
+            if sec_id is not None:
+                return sec_id, lot_size
+            inst.strike = original_strike
+
+        return None, 0
 
     def _request_with_retry(
         self,
@@ -402,7 +449,7 @@ class DhanTrader:
                 )
             return None
 
-    def _post_order(self, url: str, payload: dict, label: str = ''):
+    def _post_order(self, url: str, payload: dict, label: str = '') -> None:
         resp = self._request_with_retry('POST', url, label=label, json=payload)
         if resp and resp.status_code == 200:
             print(f'[✓] {label} Order placed successfully.')
@@ -479,15 +526,14 @@ class DhanTrader:
             'stopLossPrice': levels.stop_loss,
             'trailingJump':  levels.trail,
         }
-        self._post_order(SUPER_ORDER_URL, payload, label='SUPER')
+        self._post_order(self.api_cfg.urls.get('super_order', ''), payload, label='SUPER')
 
     def place_market_order(self, sec_id: str, lot_size: int, inst: Instrument) -> None:
-        """Public helper to explicitly place a standalone MARKET order."""
         _, exchange_seg = self.get_instr_data(inst)
         payload = self._base_payload(inst.signal, exchange_seg, sec_id) | {
             'quantity': inst.quant * lot_size
         }
-        self._post_order(ORDER_URL, payload, label='MARKET')
+        self._post_order(self.api_cfg.urls.get('order', ''), payload, label='MARKET')
 
     def _get_ord_type(self, inst: Instrument) -> str:
         if inst.trigger_price > 0 and inst.limit_price > 0:
@@ -508,7 +554,7 @@ class DhanTrader:
             'price':        inst.limit_price,
             'triggerPrice': inst.trigger_price
         }
-        self._post_order(ORDER_URL, payload, label=ord_type)
+        self._post_order(self.api_cfg.urls.get('order', ''), payload, label=ord_type)
 
     def place_forever_order(
         self,
@@ -537,7 +583,7 @@ class DhanTrader:
             'triggerPrice1':     trigger_price1,
             'quantity1':         quant if is_oco else 0,
         }
-        self._post_order(FOREVER_ORDER_URL, payload, label='FOREVER')
+        self._post_order(self.api_cfg.urls.get('forever_order', ''), payload, label='FOREVER')
 
     def place_trigger_forever_order(self, sec_id: str, lot_size: int, inst: Instrument) -> None:
         _, exchange_seg = self.get_instr_data(inst)
@@ -546,7 +592,7 @@ class DhanTrader:
             inst.trade_amount, levels.entry, lot_size, inst.quant
         )
 
-        product_type = 'MARGIN' if inst.seg in FNO_SEGMENTS else 'CNC'
+        product_type = 'MARGIN' if inst.seg in self.api_cfg.fno_segments else 'CNC'
         trig_price   = inst.trigger_price if inst.trigger_price > 0 else levels.entry
         ord_type     = self._get_ord_type(inst)
 
@@ -584,31 +630,36 @@ class DhanTrader:
 
         alert_sec_id, alert_exch_seg = sec_id, exchange_seg
         if fno_signal:
-            parent_seg = UNDERLYING_SEG_MAP.get(inst.seg, inst.seg)
-            parent_instr = Instrument(symb=inst.symb, exch=inst.exch, seg=parent_seg)
-            alert_sec_id, _ = self.scrip.lookup(parent_instr)
+            parent_seg = self.api_cfg.maps.get('underlying_seg_map', {}).get(inst.seg, inst.seg)
+            
+            # Lookup requires the separated parameters
+            alert_sec_id, _ = self.scrip.lookup(
+                inst.exch, parent_seg, inst.symb, 
+                inst.expiry_date, inst.strike, inst.opt_type
+            )
 
             if not alert_sec_id:
                 return
-            _, alert_exch_seg = self.get_instr_data(parent_instr)
+            
+            parent_suffix = self.api_cfg.maps.get('seg_exchange_suffix', {}).get(parent_seg, '')
+            alert_exch_seg = 'IDX_I' if parent_seg == 'INDEX' else f'{inst.exch}_{parent_suffix}'
 
         payload = self._build_alert_payload(
             alert_exch_seg, alert_sec_id, condition, levels.entry,
             _get_today_str(), 'Main Order', [ord_payload]
         )
-        self._post_order(ALERT_ORDER_URL, payload, label='ALERT')
-
+        self._post_order(self.api_cfg.urls.get('alert_order', ''), payload, label='ALERT')
 
     # ── API Getters / Deleters ────────────────────────────────────────────────
     def get_funds(self) -> float:
-        resp = self._request_with_retry('GET', FUND_LIMIT_URL, label='GET Funds')
+        resp = self._request_with_retry('GET', self.api_cfg.urls.get('fund_limit', ''), label='GET Funds')
         if not resp or resp.status_code != 200:
             return 0.0
         data = resp.json()
         return float(data.get('availabelBalance', data.get('availableBalance', 0.0)))
 
     def get_active_positions(self) -> list[dict]:
-        resp = self._request_with_retry('GET', POSITIONS_URL, label='GET Positions')
+        resp = self._request_with_retry('GET', self.api_cfg.urls.get('positions', ''), label='GET Positions')
         if resp is None or resp.status_code != 200:
             return []
 
@@ -620,10 +671,7 @@ class DhanTrader:
 
                 display_sym = self.scrip.get_symbol_name(sec_id, trade_sym)
                 base_sym = self.scrip.get_base_symbol(sec_id, trade_sym)
-                
-                # Only unrealized PnL is shown; realized is excluded (resets on close).
                 pnl = float(pos.get('unrealizedProfit', 0.0))
-                
                 exch = pos.get('exchangeSegment', 'NSE_EQ').split('_')[0]
 
                 entry = {
@@ -642,7 +690,7 @@ class DhanTrader:
         self,
         pending_statuses: tuple[str, ...] = ('TRANSIT', 'PENDING', 'PART_TRADED'),
     ) -> list[dict]:
-        resp = self._request_with_retry('GET', ORDER_URL, label='GET Orders')
+        resp = self._request_with_retry('GET', self.api_cfg.urls.get('order', ''), label='GET Orders')
         if not resp or resp.status_code != 200:
             return []
 
@@ -667,7 +715,7 @@ class DhanTrader:
         return results
 
     def get_active_super_orders(self) -> set[tuple]:
-        resp = self._request_with_retry('GET', SUPER_ORDER_URL, label='GET Super Orders')
+        resp = self._request_with_retry('GET', self.api_cfg.urls.get('super_order', ''), label='GET Super Orders')
         if not resp or resp.status_code != 200:
             return set()
 
@@ -702,7 +750,7 @@ class DhanTrader:
         self,
         active_statuses: tuple[str, ...] = ('PENDING', 'CONFIRM'),
     ) -> list[dict]:
-        resp = self._request_with_retry('GET', FOREVER_ORDER_URL, label='GET Forever Orders')
+        resp = self._request_with_retry('GET', self.api_cfg.urls.get('forever_order', ''), label='GET Forever Orders')
         if not resp or resp.status_code != 200:
             return []
 
@@ -729,7 +777,7 @@ class DhanTrader:
         return results
 
     def get_all_alerts(self, active_statuses: tuple[str, ...] = ('ACTIVE',)) -> list[dict]:
-        resp = self._request_with_retry('GET', ALERT_ORDER_URL, label='GET Alert Orders')
+        resp = self._request_with_retry('GET', self.api_cfg.urls.get('alert_order', ''), label='GET Alert Orders')
         if not resp or resp.status_code != 200:
             return []
 
@@ -765,24 +813,24 @@ class DhanTrader:
 
     def cancel_normal_order(self, order_id: str) -> bool:
         return self._request_with_retry(
-            'DELETE', f'{ORDER_URL}/{order_id}', label=f'Cancel {order_id}'
+            'DELETE', f"{self.api_cfg.urls.get('order', '')}/{order_id}", label=f'Cancel {order_id}'
         ) is not None
 
     def cancel_super_order(self, order_id: str, order_leg: str = 'ENTRY_LEG') -> bool:
         return self._request_with_retry(
             'DELETE',
-            f'{SUPER_ORDER_URL}/{order_id}/{order_leg}',
+            f"{self.api_cfg.urls.get('super_order', '')}/{order_id}/{order_leg}",
             label=f'Cancel {order_id}'
         ) is not None
 
     def cancel_forever_order(self, order_id: str) -> bool:
         return self._request_with_retry(
-            'DELETE', f'{FOREVER_ORDER_URL}/{order_id}', label=f'Cancel {order_id}'
+            'DELETE', f"{self.api_cfg.urls.get('forever_order', '')}/{order_id}", label=f'Cancel {order_id}'
         ) is not None
 
     def cancel_alert_order(self, alert_id: str) -> bool:
         return self._request_with_retry(
-            'DELETE', f'{ALERT_ORDER_URL}/{alert_id}', label=f'Cancel {alert_id}'
+            'DELETE', f"{self.api_cfg.urls.get('alert_order', '')}/{alert_id}", label=f'Cancel {alert_id}'
         ) is not None
 
     def close_position_by_secid(self, sec_id: str, exchange_seg: str, net_qty: int) -> None:
@@ -791,16 +839,16 @@ class DhanTrader:
 
         signal = 'SELL' if net_qty > 0 else 'BUY'
         payload = self._base_payload(signal, exchange_seg, sec_id) | {'quantity': abs(net_qty)}
-        self._post_order(ORDER_URL, payload, label='CLOSE_POS')
+        self._post_order(self.api_cfg.urls.get('order', ''), payload, label='CLOSE_POS')
 
     def dispatch_order(self, sec_id: str, lot_size: int, inst: Instrument, signal: str) -> None:
         place_order_mode = self._defaults_config.get('place_order_mode')
 
-        if inst.seg in OPT_SEGMENTS and inst.exch == 'MCX':
+        if inst.seg in self.api_cfg.opt_segments and inst.exch == 'MCX':
             self.place_simple_order(sec_id, lot_size, inst)
             return
 
-        if inst.seg in FNO_SEGMENTS:
+        if inst.seg in self.api_cfg.fno_segments:
             placed_order = False
             match place_order_mode:
                 case 'ALERT':
@@ -808,11 +856,11 @@ class DhanTrader:
                         self.place_trigger_alert_order(sec_id, lot_size, inst, fno_signal=signal)
                         placed_order = True
                 case 'FOREVER':
-                    if inst.seg not in OPT_SEGMENTS:
+                    if inst.seg not in self.api_cfg.opt_segments:
                         self.place_trigger_forever_order(sec_id, lot_size, inst)
                         placed_order = True
                 case 'SUPER':
-                    if inst.seg not in OPT_SEGMENTS:
+                    if inst.seg not in self.api_cfg.opt_segments:
                         self.place_super_order(sec_id, lot_size, inst)
                         placed_order = True
                 case _:
@@ -847,7 +895,7 @@ class DhanTrader:
         if inst is None:
             return
 
-        sec_id, lot_size = self.scrip.lookup_with_fallback(inst)
+        sec_id, lot_size = self.lookup_with_fallback(inst)
         if sec_id is None:
             return
 

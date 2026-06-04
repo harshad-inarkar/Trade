@@ -1,0 +1,70 @@
+# scrip_master.toml — Master Scrip & Search Configuration
+
+[master]
+instrument_segments = ["NSE_EQ", "NSE_FNO", "MCX_COMM", "IDX_I"]
+instrument_url      = "https://api.dhan.co/v2/instrument/{segment}"
+filter_exch         = ["NSE", "MCX"]
+filter_seg          = ["EQUITY", "INDEX", "OPTSTK", "OPTIDX", "OPTFUT", "FUTIDX", "FUTCOM", "FUTSTK"]
+filter_inst_type    = ["ES", "EQ", "OP", "FUT", "OPTFUT", "FUTCOM", "INDEX"]
+scrip_cols          = [
+    "EXCH_ID", "INSTRUMENT", "INSTRUMENT_TYPE", "UNDERLYING_SYMBOL", 
+    "DISPLAY_NAME", "SECURITY_ID", "UNDERLYING_SECURITY_ID", "LOT_SIZE", 
+    "SM_EXPIRY_DATE", "STRIKE_PRICE", "OPTION_TYPE"
+]
+eq_index_instr      = ["EQUITY", "INDEX"]
+
+[search.stop_words]
+words = ["OF", "THE", "&", "LTD", "LIMITED", "CORP", "CORPORATION", "CO"]
+
+[search.aliases.call]
+words = ["CALL", "CE", "C", "CA"]
+
+[search.aliases.put]
+words = ["PUT", "PE", "P", "PA"]
+
+[search.aliases.fut]
+words = ["FUT", "FUTURE", "FUTURES"]
+
+[search.aliases.month.jan]
+words = ["JAN", "JANUARY", "01"]
+
+[search.aliases.month.feb]
+words = ["FEB", "FEBRUARY", "02"]
+
+[search.aliases.month.mar]
+words = ["MAR", "MARCH", "03"]
+
+[search.aliases.month.apr]
+words = ["APR", "APRIL", "04"]
+
+[search.aliases.month.may]
+words = ["MAY", "05"]
+
+[search.aliases.month.jun]
+words = ["JUN", "JUNE", "06"]
+
+[search.aliases.month.jul]
+words = ["JUL", "JULY", "07"]
+
+[search.aliases.month.aug]
+words = ["AUG", "AUGUST", "08"]
+
+[search.aliases.month.sep]
+words = ["SEP", "SEPTEMBER", "09"]
+
+[search.aliases.month.oct]
+words = ["OCT", "OCTOBER", "10"]
+
+[search.aliases.month.nov]
+words = ["NOV", "NOVEMBER", "11"]
+
+[search.aliases.month.dec]
+words = ["DEC", "DECEMBER", "12"]
+
+[search.scoring]
+exact_symbol_bonus     = 1000.0
+symbol_prefix_bonus    = 400.0
+company_idf_factor     = 100.0
+all_tokens_coherence   = 200.0
+expiry_proximity_scale = 0.0
+eq_base_bonus          = 50.0

@@ -1,0 +1,33 @@
+# dhan_trade.toml — Execution Engine Configuration
+
+[urls]
+order         = "https://api.dhan.co/v2/orders"
+positions     = "https://api.dhan.co/v2/positions"
+super_order   = "https://api.dhan.co/v2/super/orders"
+forever_order = "https://api.dhan.co/v2/forever/orders"
+alert_order   = "https://api.dhan.co/v2/alerts/orders"
+fund_limit    = "https://api.dhan.co/v2/fundlimit"
+
+[segments]
+opt_segments = ["OPTSTK", "OPTIDX", "OPTFUT"]
+fut_segments = ["FUTIDX", "FUTCOM", "FUTSTK"]
+fno_segments = ["OPTSTK", "OPTIDX", "OPTFUT", "FUTIDX", "FUTCOM", "FUTSTK"]
+
+[maps.underlying_seg_map]
+OPTSTK = "EQUITY"
+FUTSTK = "EQUITY"
+OPTFUT = "FUTCOM"
+OPTIDX = "INDEX"
+FUTIDX = "INDEX"
+
+[maps.seg_exchange_suffix]
+EQUITY = "EQ"
+OPTFUT = "COMM"
+FUTCOM = "COMM"
+OPTIDX = "FNO"
+OPTSTK = "FNO"
+FUTIDX = "FNO"
+FUTSTK = "FNO"
+
+[fallback]
+steps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1000, 5000]
