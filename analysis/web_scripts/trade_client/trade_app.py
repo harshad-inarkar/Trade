@@ -100,12 +100,17 @@ class DashboardSnapshot:
     """Data needed by the dashboard and live-data endpoint."""
 
     positions: list[dict]
+    closed_positions: list[dict]
     funds: float
     active_orders: list[dict]
 
     @property
     def total_positions(self) -> int:
         return len(self.positions)
+
+    @property
+    def total_closed(self) -> int:
+        return len(self.closed_positions)
 
     @property
     def total_orders(self) -> int:
@@ -124,9 +129,21 @@ class DashboardSnapshot:
                 "exchange_seg": position.get("exchange_seg", ""),
             }
 
+        for position in self.closed_positions:
+            security_id = str(position.get("security_id", ""))
+            if not security_id:
+                continue
+            positions[security_id] = {
+                "pnl": position.get("pnl", 0.0),
+                "qty": position.get("qty", 0),
+                "display_name": position.get("display_name", ""),
+                "exchange_seg": position.get("exchange_seg", ""),
+            }
+
         return {
             "funds": self.funds,
             "position_count": self.total_positions,
+            "closed_count": self.total_closed,
             "order_count": self.total_orders,
             "positions": positions,
         }
@@ -140,10 +157,10 @@ class DashboardService:
         self.config = config
 
     def get_snapshot(self) -> DashboardSnapshot:
-        positions = self.trader.get_active_positions()
+        active_pos, closed_pos = self.trader.get_positions()
         funds = self.trader.get_funds()
         active_orders = self._get_active_orders()
-        return DashboardSnapshot(positions, funds, active_orders)
+        return DashboardSnapshot(active_pos, closed_pos, funds, active_orders)
 
     def _get_active_orders(self) -> list[dict]:
         active_orders: list[dict] = []
@@ -322,7 +339,9 @@ class TradePortalApp:
             {
                 "request": request,
                 "positions": snapshot.positions,
+                "closed_positions": snapshot.closed_positions,
                 "total_positions": snapshot.total_positions,
+                "total_closed": snapshot.total_closed,
                 "active_orders": snapshot.active_orders,
                 "total_orders": snapshot.total_orders,
                 "funds": snapshot.funds,

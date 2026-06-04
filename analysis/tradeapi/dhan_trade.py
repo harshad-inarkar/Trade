@@ -834,42 +834,88 @@ class DhanTrader:
             return 0.0
         return float(data.get("availabelBalance", data.get("availableBalance", 0.0)))
 
-    def get_active_positions(self) -> list[dict]:
+    def get_positions(self) -> tuple[list[dict], list[dict]]:
+        """Returns isolated lists of Active and Closed positions with true net PnL."""
         resp = self._request_with_retry(
             "GET",
             self.api_cfg.urls.get("positions", ""),
             label="GET Positions",
         )
         if resp is None or resp.status_code != HTTPStatus.OK:
-            return []
+            return [], []
 
         try:
             resp_data = resp.json()
         except ValueError:
-            return []
+            return [], []
 
-        active = []
+        # 1. Aggregate positions by securityId to club INTRADAY and NORMAL together
+        aggregated = {}
         for pos in resp_data:
-            if pos.get("netQty", 0) != 0 and pos.get("tradingSymbol"):
-                sec_id = str(pos.get("securityId", ""))
+            if not pos.get("tradingSymbol"):
+                continue
+
+            sec_id = str(pos.get("securityId", ""))
+
+            if sec_id not in aggregated:
                 trade_sym = pos.get("tradingSymbol", "")
                 display_sym = self.scrip.get_symbol_name(sec_id, trade_sym)
                 base_sym = self.scrip.get_base_symbol(sec_id, trade_sym)
-
-                pnl = float(pos.get("unrealizedProfit", 0.0))
                 exch = pos.get("exchangeSegment", "NSE_EQ").split("_")[0]
 
-                active.append(
-                    {
-                        "display_name": display_sym,
-                        "base_symbol": base_sym,
-                        "security_id": sec_id,
-                        "exchange_seg": pos.get("exchangeSegment", "NSE_EQ"),
-                        "exchange": exch,
-                        "pnl": pnl,
-                        "qty": pos.get("netQty", 0),
-                    },
-                )
+                aggregated[sec_id] = {
+                    "display_name": display_sym,
+                    "base_symbol": base_sym,
+                    "security_id": sec_id,
+                    "exchange_seg": pos.get("exchangeSegment", "NSE_EQ"),
+                    "exchange": exch,
+                    "realizedProfit": 0.0,
+                    "unrealizedProfit": 0.0,
+                    "netQty": 0,
+                    "buyQty": 0,
+                    "sellQty": 0,
+                }
+
+            aggregated[sec_id]["realizedProfit"] += float(
+                pos.get("realizedProfit", 0.0),
+            )
+            aggregated[sec_id]["unrealizedProfit"] += float(
+                pos.get("unrealizedProfit", 0.0),
+            )
+            aggregated[sec_id]["netQty"] += int(pos.get("netQty", 0))
+            aggregated[sec_id]["buyQty"] += int(pos.get("buyQty", 0))
+            aggregated[sec_id]["sellQty"] += int(pos.get("sellQty", 0))
+
+        active = []
+        closed = []
+
+        # 2. Separate into Active and Closed
+        for agg in aggregated.values():
+            qty = agg["netQty"]
+
+            entry = {
+                "display_name": agg["display_name"],
+                "base_symbol": agg["base_symbol"],
+                "security_id": agg["security_id"],
+                "exchange_seg": agg["exchange_seg"],
+                "exchange": agg["exchange"],
+                "qty": qty,
+            }
+
+            if qty != 0:
+                # Active position shows strictly Unrealized PnL
+                entry["pnl"] = agg["unrealizedProfit"]
+                active.append(entry)
+            elif agg["buyQty"] > 0 or agg["sellQty"] > 0:
+                # Closed position shows strictly Realized PnL
+                entry["pnl"] = agg["realizedProfit"]
+                closed.append(entry)
+
+        return active, closed
+
+    def get_active_positions(self) -> list[dict]:
+        """Legacy helper matching old return structures."""
+        active, _ = self.get_positions()
         return active
 
     def get_pending_orders(
@@ -1165,7 +1211,7 @@ class DhanTrader:
 
     def clean_orphaned_orders(self) -> None:
         LOGGER.info("Starting Cleanup Cycle")
-        active_positions = self.get_active_positions()
+        active_positions, _ = self.get_positions()
         active_symbols = {pos.get("display_name") for pos in active_positions}
         active_super_orders = self.get_active_super_orders()
 

@@ -529,8 +529,13 @@ class ScripMaster:
             return "PE", "PE PUT PA P"
         return "", ""
 
-    def _build_name_tokens(self, underlying: str, comp_name: str) -> frozenset[str]:
-        name_src = f"{underlying} {comp_name}"
+    def _build_name_tokens(
+        self,
+        underlying: str,
+        comp_name: str,
+        display_name: str,
+    ) -> frozenset[str]:
+        name_src = f"{underlying} {comp_name} {display_name}"
         raw_name = [
             t.upper()
             for t in name_src.replace("-", " ").split()
@@ -539,7 +544,8 @@ class ScripMaster:
         name_token_set: set[str] = set()
         for tok in raw_name:
             name_token_set.add(tok)
-            for plen in range(3, min(len(tok), 5)):
+            # FIX: Generate all prefixes from 3 characters up to the full length
+            for plen in range(3, len(tok)):
                 name_token_set.add(tok[:plen])
         return frozenset(name_token_set)
 
@@ -575,6 +581,7 @@ class ScripMaster:
             name_token_set = self._build_name_tokens(
                 underlying,
                 base_to_name.get(underlying, ""),
+                str(display_name),
             )
 
             entries.append(

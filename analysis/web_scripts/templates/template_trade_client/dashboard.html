@@ -79,7 +79,6 @@ header { position: sticky; top: 0; z-index: 200; background: rgba(11,15,20,.94);
 .btn-action { font-family: var(--mono); font-size: .65rem; font-weight: 600; padding: 4px 10px; border-radius: var(--radius); cursor: pointer; background: var(--surface2); color: var(--text); border: 1px solid var(--border); text-transform: uppercase; transition: background .15s, border-color .15s, color .15s; white-space: nowrap; }
 .btn-action:hover { background: var(--surface2); border-color: var(--red); color: var(--red); }
 
-/* Changed to visible so Re-entry absolute dropdown doesn't get clipped */
 .table-wrap { overflow: visible; } 
 
 .symbols-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .8rem; }
@@ -113,6 +112,38 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
 .pnl-positive { color: var(--accent); font-weight: 700; }
 .pnl-negative { color: var(--red); font-weight: 700; }
 .pnl-neutral  { color: var(--muted); font-weight: 700;}
+
+/* Toggle Tabs & Sorting */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.btn-tab {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: .8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 14px 20px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  outline: none;
+}
+.btn-tab:hover { color: var(--text); }
+.btn-tab.active {
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+}
+
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--text); }
+th.sort-asc::after { content: ' ↑'; font-size: 0.8em; color: var(--accent); }
+th.sort-desc::after { content: ' ↓'; font-size: 0.8em; color: var(--red); }
 
 
 .symbol-search-wrap {
@@ -154,9 +185,6 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
   color: var(--accent);
 }
 
-
-
-
 </style>
 
 </head>
@@ -172,7 +200,7 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
 
 <div class="meta-bar">
   <div><span class="dot"></span>API Live</div>
-  <div>Positions: <strong id="live-position-count">{{ total_positions }}</strong></div>
+  <div>Positions: <strong id="hdr-live-position-count">{{ total_positions }}</strong></div>
   <div>Open Orders: <strong id="live-order-count">{{ total_orders }}</strong></div>
   <div>Funds: <strong id="live-funds">₹ {{ "{:,.2f}".format(funds) }}</strong></div>
 
@@ -307,16 +335,25 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
   <div class="data-stack">
 
     <div class="panel" style="padding: 0;">
-      <div class="panel-header" style="margin: 18px 18px 10px 18px;">Active Positions</div>
-      <div class="table-wrap">
-        <table class="symbols-table">
+      
+      <div class="tabs">
+        <button id="tab-active" class="btn-tab active" onclick="togglePositions('active')">
+            Active (<span id="live-position-count">{{ total_positions }}</span>)
+        </button>
+        <button id="tab-closed" class="btn-tab" onclick="togglePositions('closed')">
+            Closed (<span id="live-closed-count">{{ total_closed }}</span>)
+        </button>
+      </div>
+
+      <div class="table-wrap" id="view-active">
+        <table class="symbols-table" id="table-active">
           <thead>
             <tr>
               <th style="width:36px">#</th>
-              <th>Symbol</th>
-              <th>Side</th>
-              <th>Qty</th>
-              <th>PnL</th>
+              <th class="sortable" onclick="sortTable('table-active', 1, false)">Symbol</th>
+              <th class="sortable" onclick="sortTable('table-active', 2, false)">Side</th>
+              <th class="sortable" onclick="sortTable('table-active', 3, true)">Qty</th>
+              <th class="sortable" onclick="sortTable('table-active', 4, true)">PnL</th>
               <th style="text-align: right;">Action</th>
             </tr>
           </thead>
@@ -458,6 +495,40 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
           </tbody>
         </table>
       </div>
+
+      <div class="table-wrap" id="view-closed" style="display: none;">
+        <table class="symbols-table" id="table-closed">
+          <thead>
+            <tr>
+              <th style="width:36px">#</th>
+              <th class="sortable" onclick="sortTable('table-closed', 1, false)">Symbol</th>
+              <th class="sortable" onclick="sortTable('table-closed', 2, true)">Realized PnL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pos in closed_positions %}
+            <tr data-position-row="{{ pos.security_id }}" data-position-qty="{{ pos.qty }}">
+              <td>{{ loop.index }}</td>
+              <td>
+                <span class="symbol-badge">{{ pos.display_name }}</span>
+              </td>
+              <td>
+                <span id="pnl-{{ pos.security_id }}" class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+                  {{ "{:,.2f}".format(pos.pnl) }}
+                </span>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="3" style="text-align: center; color: var(--muted); padding: 40px;">
+                No Closed Positions.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
     </div>
 
     <div class="panel" style="padding: 0;">
@@ -529,6 +600,63 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
 </div>
 
 <script>
+  function togglePositions(view) {
+      const viewActive = document.getElementById('view-active');
+      const viewClosed = document.getElementById('view-closed');
+      const tabActive = document.getElementById('tab-active');
+      const tabClosed = document.getElementById('tab-closed');
+
+      if (viewActive && viewClosed && tabActive && tabClosed) {
+          viewActive.style.display = view === 'active' ? 'block' : 'none';
+          viewClosed.style.display = view === 'closed' ? 'block' : 'none';
+          
+          tabActive.classList.toggle('active', view === 'active');
+          tabClosed.classList.toggle('active', view === 'closed');
+      }
+  }
+
+  function sortTable(tableId, colIndex, isNumeric) {
+      const table = document.getElementById(tableId);
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+
+      if (rows.length === 0 || (rows.length === 1 && rows[0].cells.length === 1)) return;
+
+      const header = table.querySelectorAll('th')[colIndex];
+      const isAsc = header.classList.contains('sort-asc');
+
+      table.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+      header.classList.add(isAsc ? 'sort-desc' : 'sort-asc');
+
+      const dir = isAsc ? -1 : 1;
+
+      rows.sort((a, b) => {
+          let aCol = a.querySelectorAll('td')[colIndex];
+          let bCol = b.querySelectorAll('td')[colIndex];
+          
+          let aText = aCol ? aCol.textContent.trim() : '';
+          let bText = bCol ? bCol.textContent.trim() : '';
+
+          if (isNumeric) {
+              let aNum = parseFloat(aText.replace(/[^0-9.-]+/g,"")) || 0;
+              let bNum = parseFloat(bText.replace(/[^0-9.-]+/g,"")) || 0;
+              return (aNum - bNum) * dir;
+          } else {
+              return aText.localeCompare(bText) * dir;
+          }
+      });
+
+      rows.forEach((row, index) => {
+          let firstCell = row.querySelector('td');
+          if (firstCell && !isNaN(parseInt(firstCell.textContent))) {
+              firstCell.textContent = index + 1;
+          }
+          tbody.appendChild(row);
+      });
+  }
+</script>
+
+<script>
 
   let _symDebounce = null;
   let _searchReqId = 0;
@@ -536,176 +664,89 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
   window._lastSearchResults = [];
   
   function hideSymbolDropdown() {
-  
-      const dropdown = document.getElementById(
-          'symbol-search-dropdown'
-      );
-  
-      if (dropdown) {
-          dropdown.style.display = 'none';
-      }
+      const dropdown = document.getElementById('symbol-search-dropdown');
+      if (dropdown) dropdown.style.display = 'none';
   }
   
   function renderSymbolDropdown(items, input) {
-  
-      const dropdown = document.getElementById(
-          'symbol-search-dropdown'
-      );
-  
-      if (!dropdown) {
-          return;
-      }
+      const dropdown = document.getElementById('symbol-search-dropdown');
+      if (!dropdown) return;
   
       dropdown.innerHTML = '';
-  
       if (!Array.isArray(items) || items.length === 0) {
           dropdown.style.display = 'none';
           return;
       }
   
       items.forEach(item => {
-  
           const row = document.createElement('div');
-  
           row.className = 'symbol-search-item';
-  
           row.textContent = item.display || '';
   
           row.addEventListener('mousedown', (e) => {
-  
               e.preventDefault();
-  
               input.value = item.symbol || '';
-  
               const form = input.closest('form');
   
               if (form) {
+                  form.querySelector('[name="exchange"]').value = item.exch || '';
+                  form.querySelector('[name="inst_type"]').value = item.inst_type || '';
   
-                  form.querySelector('[name="exchange"]').value =
-                      item.exch || '';
-  
-                  form.querySelector('[name="inst_type"]').value =
-                      item.inst_type || '';
-  
-                  if (
-                      item.inst_type === 'OPT' ||
-                      item.inst_type === 'FUT'
-                  ) {
-                      form.querySelector('[name="expiry"]').value =
-                          item.expiry || '';
+                  if (item.inst_type === 'OPT' || item.inst_type === 'FUT') {
+                      form.querySelector('[name="expiry"]').value = item.expiry || '';
                   } else {
                       form.querySelector('[name="expiry"]').value = '';
                   }
   
                   if (item.inst_type === 'OPT') {
-  
-                      form.querySelector('[name="strike"]').value =
-                          item.strike || 0;
-  
-                      form.querySelector('[name="opt_type"]').value =
-                          item.opt_type || '';
-  
+                      form.querySelector('[name="strike"]').value = item.strike || 0;
+                      form.querySelector('[name="opt_type"]').value = item.opt_type || '';
                   } else {
-  
-                      form.querySelector('[name="strike"]').value =
-                          '0.0';
-  
-                      form.querySelector('[name="opt_type"]').value =
-                          '';
+                      form.querySelector('[name="strike"]').value = '0.0';
+                      form.querySelector('[name="opt_type"]').value = '';
                   }
               }
-  
               hideSymbolDropdown();
           });
-  
           dropdown.appendChild(row);
       });
-  
       dropdown.style.display = 'block';
   }
   
   document.addEventListener('input', (e) => {
-  
-      if (
-          e.target?.name !== 'symbol' ||
-          e.target.tagName !== 'INPUT'
-      ) {
-          return;
-      }
-  
+      if (e.target?.name !== 'symbol' || e.target.tagName !== 'INPUT') return;
       const input = e.target;
-  
       const val = input.value.trim();
   
       if (val.length < 2) {
-  
           hideSymbolDropdown();
-  
           return;
       }
   
       clearTimeout(_symDebounce);
-  
       _symDebounce = setTimeout(async () => {
-  
           const reqId = ++_searchReqId;
-  
           try {
-  
-              const res = await fetch(
-                  `/api/search_symbols?q=${encodeURIComponent(val)}`
-              );
-  
-              if (!res.ok) {
-                  return;
-              }
+              const res = await fetch(`/api/search_symbols?q=${encodeURIComponent(val)}`);
+              if (!res.ok) return;
   
               const matches = await res.json();
+              if (reqId !== _searchReqId) return;
+              if (input.value.trim() !== val) return;
   
-              // ignore stale responses
-              if (reqId !== _searchReqId) {
-                  return;
-              }
-  
-              // input changed while request in-flight
-              if (input.value.trim() !== val) {
-                  return;
-              }
-  
-              window._lastSearchResults =
-                  Array.isArray(matches)
-                      ? matches
-                      : [];
-  
-              renderSymbolDropdown(
-                  window._lastSearchResults,
-                  input
-              );
+              window._lastSearchResults = Array.isArray(matches) ? matches : [];
+              renderSymbolDropdown(window._lastSearchResults, input);
   
           } catch (err) {
-  
-              console.warn(
-                  'symbol search failed',
-                  err
-              );
+              console.warn('symbol search failed', err);
           }
-  
       }, 120);
   });
   
   document.addEventListener('click', (e) => {
-  
-      const dropdown = document.getElementById(
-          'symbol-search-dropdown'
-      );
-  
-      if (!dropdown) {
-          return;
-      }
-  
-      if (!dropdown.contains(e.target)) {
-          hideSymbolDropdown();
-      }
+      const dropdown = document.getElementById('symbol-search-dropdown');
+      if (!dropdown) return;
+      if (!dropdown.contains(e.target)) hideSymbolDropdown();
   });
   
 </script>
@@ -719,67 +760,49 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
   function formatCurrency(value) {
       return Number(value || 0).toLocaleString(
           'en-IN',
-          {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2
-          }
+          { minimumFractionDigits: 2, maximumFractionDigits: 2 }
       );
   }
 
-  function getRenderedPositionIds() {
-      return Array.from(
-          document.querySelectorAll('[data-position-row]')
-      ).map((row) => row.dataset.positionRow).sort();
-  }
+  function havePositionCountsChanged(data) {
+      const posCountEl = document.getElementById('live-position-count');
+      const closedCountEl = document.getElementById('live-closed-count');
 
-  function havePositionRowsChanged(livePositions) {
-      const liveIds = Object.keys(livePositions || {}).sort();
-      const renderedIds = getRenderedPositionIds();
+      const currentPosCount = posCountEl ? parseInt(posCountEl.textContent, 10) : 0;
+      const currentClosedCount = closedCountEl ? parseInt(closedCountEl.textContent, 10) : 0;
 
-      if (liveIds.length !== renderedIds.length) {
-          return true;
-      }
-
-      if (liveIds.some((id, index) => id !== renderedIds[index])) {
-          return true;
-      }
-
-      return liveIds.some((id) => {
-          const row = document.querySelector(`[data-position-row="${id}"]`);
-          const liveQty = String((livePositions[id] || {}).qty ?? '');
-          return row && row.dataset.positionQty !== liveQty;
-      });
+      return (currentPosCount !== data.position_count) || (currentClosedCount !== data.closed_count);
   }
 
   async function refreshDataStack() {
-      if (sectionRefreshInFlight) {
-          return;
-      }
-
+      if (sectionRefreshInFlight) return;
       sectionRefreshInFlight = true;
 
       try {
           const response = await fetch(window.location.href);
           const html = await response.text();
           const doc = new DOMParser().parseFromString(html, 'text/html');
+          
           const newData = doc.querySelector('.data-stack');
           const oldData = document.querySelector('.data-stack');
+
+          const activeTab = document.querySelector('.btn-tab.active');
+          const viewToRestore = activeTab ? (activeTab.id === 'tab-active' ? 'active' : 'closed') : 'active';
 
           if (newData && oldData) {
               oldData.innerHTML = newData.innerHTML;
           }
 
-          const newPositionCount = doc.getElementById('live-position-count');
-          const oldPositionCount = document.getElementById('live-position-count');
-          if (newPositionCount && oldPositionCount) {
-              oldPositionCount.textContent = newPositionCount.textContent;
-          }
+          const newHdrCount = doc.getElementById('hdr-live-position-count');
+          const oldHdrCount = document.getElementById('hdr-live-position-count');
+          if (newHdrCount && oldHdrCount) oldHdrCount.textContent = newHdrCount.textContent;
 
           const newOrderCount = doc.getElementById('live-order-count');
           const oldOrderCount = document.getElementById('live-order-count');
-          if (newOrderCount && oldOrderCount) {
-              oldOrderCount.textContent = newOrderCount.textContent;
-          }
+          if (newOrderCount && oldOrderCount) oldOrderCount.textContent = newOrderCount.textContent;
+          
+          togglePositions(viewToRestore);
+
       } catch (e) {
           console.warn('[data_stack] refresh failed:', e);
       } finally {
@@ -788,10 +811,7 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
   }
 
   async function fetchLiveData() {
-      if (liveFetchInFlight) {
-          return;
-      }
-
+      if (liveFetchInFlight) return;
       liveFetchInFlight = true;
 
       try {
@@ -803,17 +823,7 @@ details.reentry-panel > summary::-webkit-details-marker { display: none; }
               fundsEl.textContent = '₹ ' + formatCurrency(data.funds);
           }
 
-          const positionCountEl = document.getElementById('live-position-count');
-          if (positionCountEl && data.position_count !== undefined) {
-              positionCountEl.textContent = data.position_count;
-          }
-
-          const orderCountEl = document.getElementById('live-order-count');
-          if (orderCountEl && data.order_count !== undefined) {
-              orderCountEl.textContent = data.order_count;
-          }
-
-          if (havePositionRowsChanged(data.positions)) {
+          if (havePositionCountsChanged(data)) {
               await refreshDataStack();
               return;
           }
