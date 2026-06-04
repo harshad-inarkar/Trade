@@ -114,19 +114,29 @@ def _get_fallback_strike(base: str, strike: float, opt_type: str) -> Optional[fl
 # Config Loading
 # ───────────────────────────────────────
 class SearchConfig:
-    """Loads and encapsulates TOML search settings."""
+    """Loads and encapsulates TOML search settings including scoring weights."""
+
     def __init__(self, path: Path):
-        self.stop_words: set[str] = set()
-        self.call_words: set[str] = set()
-        self.put_words: set[str]  = set()
-        self.fut_words: set[str]  = set()
+        self.stop_words: set[str]       = set()
+        self.call_words: set[str]       = set()
+        self.put_words:  set[str]       = set()
+        self.fut_words:  set[str]       = set()
         self.month_aliases: dict[str, str] = {}
-        self.gen_tags: dict[int, str] = {}
+        self.gen_tags:   dict[int, str] = {}
+
+        # Scoring weights (all tuneable via TOML)
+        self.exact_symbol_bonus:    float = 1000.0
+        self.symbol_prefix_bonus:   float = 400.0
+        self.company_idf_factor:    float = 100.0
+        self.all_tokens_coherence:  float = 200.0
+        self.expiry_proximity_scale: float = 0.0
+        self.eq_base_bonus:         float = 50.0
+
         self._load(path)
 
     def _load(self, path: Path) -> None:
         if not path.exists():
-            print(f"[!] Warning: {path} not found. Using empty defaults.")
+            print(f"[!] Warning: {path} not found. Using defaults.")
             return
 
         with open(path, 'rb') as f:
@@ -135,40 +145,84 @@ class SearchConfig:
         self.stop_words = set(data.get('stop_words', {}).get('words', []))
         aliases = data.get('aliases', {})
         self.call_words = set(aliases.get('call', {}).get('words', []))
-        self.put_words  = set(aliases.get('put', {}).get('words', []))
-        self.fut_words  = set(aliases.get('fut', {}).get('words', []))
-        self.month_aliases = data.get('month_aliases', {})
+        self.put_words  = set(aliases.get('put',  {}).get('words', []))
+        self.fut_words  = set(aliases.get('fut',  {}).get('words', []))
+        self.month_aliases = {k.upper(): v.upper()
+                              for k, v in data.get('month_aliases', {}).items()}
 
         raw_gen_tags = data.get('month_generation_tags', {})
-        self.gen_tags = {
-            int(k): str(v).upper() for k, v in raw_gen_tags.items()
-        }
+        self.gen_tags = {int(k): str(v).upper() for k, v in raw_gen_tags.items()}
+
+        sc = data.get('scoring', {})
+        self.exact_symbol_bonus    = float(sc.get('exact_symbol_bonus',    self.exact_symbol_bonus))
+        self.symbol_prefix_bonus   = float(sc.get('symbol_prefix_bonus',   self.symbol_prefix_bonus))
+        self.company_idf_factor    = float(sc.get('company_idf_factor',    self.company_idf_factor))
+        self.all_tokens_coherence  = float(sc.get('all_tokens_coherence',  self.all_tokens_coherence))
+        self.expiry_proximity_scale = float(sc.get('expiry_proximity_scale', self.expiry_proximity_scale))
+        self.eq_base_bonus         = float(sc.get('eq_base_bonus',         self.eq_base_bonus))
 
 
 # ───────────────────────────────────────
 # ScripMaster Engine
 # ───────────────────────────────────────
 class ScripMaster:
+    """
+    Manages instrument data, lookup indexes, and the search engine.
+
+    Search engine design
+    ────────────────────
+    Index time  (_commit_indexes)
+      • _name_inv_index : token → sorted list[int] of entry indices
+          Built from {underlying} + {company_name} tokens (minus stop-words),
+          plus 3- and 4-char prefix tokens so partial typing still hits.
+      • _idf             : token → float IDF weight
+          IDF = log(N / df) + 1.  Rare tokens (unique tickers) score much
+          higher than common ones ("BANK", "LTD").
+
+    Query time  (search_symbols)
+      1. Classify tokens → name_tokens | month | strike | opt_type | want_fut
+      2. AND-intersect posting lists for all name_tokens  → small candidate set.
+         Falls back to OR-union if AND returns nothing (handles typos / partial).
+      3. Hard-filter candidates on structured fields (month / strike / opt_type).
+      4. IDF-weighted score per candidate; sort score DESC, expiry ASC.
+    """
+
     def __init__(
-        self, 
-        session_obj: requests.Session, 
-        refresh_master_scrip: bool = False
+        self,
+        session_obj: requests.Session,
+        refresh_master_scrip: bool = False,
     ):
-        self._eq_index     = None
-        self._opt_index    = None
-        self._expiry_index = None
-        self._secid_info   = None
-        self._search_data: list[dict]  = []
+        self._eq_index:     Optional[dict] = None
+        self._opt_index:    Optional[dict] = None
+        self._expiry_index: Optional[dict] = None
+        self._secid_info:   Optional[dict] = None
+        self._search_data:  list[dict]     = []
         self._display_to_data: dict[str, dict] = {}
+
+        # ── Search engine indexes ─────────────────────────────────────
+        # token → sorted list of entry-indices (built from name/company tokens)
+        self._name_inv_index: dict[str, list[int]] = {}
+        # token → IDF weight
+        self._idf:            dict[str, float]     = {}
 
         self.session = session_obj
         self.cfg = SearchConfig(SEARCH_CONFIG_PATH)
-        
+
         self._ensure_loaded(refresh_master_scrip)
 
     def search_symbols(self, query: str, limit: int = 30) -> list[dict]:
-        self._ensure_loaded()
+        """
+        Return up to *limit* instrument suggestions for *query*.
 
+        Token classification
+        ────────────────────
+        month      → hard filter on _month_tag    (e.g. "JUN", "JUNE", "06")
+        strike     → hard filter on _strike_int   (e.g. "960", "940.0")
+        opt_type   → hard filter on opt_type      (CE aliases → "CE")
+        want_fut   → hard filter on inst_type     ("FUT")
+        name_tokens→ everything else; scored via IDF-weighted inverted index
+        """
+        self._ensure_loaded()
         if not self._search_data:
             return []
 
@@ -176,13 +230,14 @@ class ScripMaster:
         if len(query) < 2:
             return []
 
-        parts = [p.strip() for p in query.replace('-', ' ').split() if p.strip()]
+        parts = [p for p in query.replace('-', ' ').split() if p]
 
-        symbol_tokens = set()
-        month_token  = None
-        strike_token = None
-        opt_type     = None
-        want_fut     = False
+        # ── Token classification ──────────────────────────────────────────
+        name_tokens: list[str] = []
+        month_token: Optional[str] = None
+        strike_int:  Optional[int] = None
+        opt_type:    Optional[str] = None   # 'CE' or 'PE'
+        want_fut:    bool = False
 
         for tok in parts:
             if tok in self.cfg.stop_words:
@@ -199,123 +254,119 @@ class ScripMaster:
             if tok in self.cfg.fut_words:
                 want_fut = True
                 continue
-            if tok.isdigit():
-                strike_token = tok
+            # Numeric → strike price
+            try:
+                v = float(tok)
+                if v > 0:
+                    strike_int = int(v) if v.is_integer() else int(round(v))
                 continue
+            except ValueError:
+                pass
+            name_tokens.append(tok)
 
-            tok = tok.upper()
-            symbol_tokens.add(tok)
-            if len(tok) >= 6:
-                symbol_tokens.add(tok[:3])
+        # ── Candidate retrieval via AND-intersection of posting lists ─────
+        # We always try AND first; fall back to OR when AND is empty so that
+        # partial / slightly wrong queries still return something.
+        def _posting(tok: str) -> set[int]:
+            """Return entry-index set for tok, or empty set."""
+            return set(self._name_inv_index.get(tok, []))
 
-        results = []
+        def _intersect(tokens: list[str]) -> tuple[set[int], bool]:
+            """
+            Attempt AND intersection.  Returns (index_set, used_and).
+            Falls back to OR union when AND is empty.
+            """
+            if not tokens:
+                return set(range(len(self._search_data))), False
 
-        for item in self._search_data:
-            score = 0
-            item_tokens = item['_search_tokens']
+            # Sort by posting-list length (smallest first) → faster intersection
+            sorted_toks = sorted(tokens, key=lambda t: len(self._name_inv_index.get(t, [])))
+            result = _posting(sorted_toks[0])
+            for t in sorted_toks[1:]:
+                result &= _posting(t)
+                if not result:
+                    break
 
-            # Symbol/Company Match
+            if result:
+                return result, True   # AND succeeded
+
+            # AND was empty → OR fallback
+            union: set[int] = set()
+            for t in tokens:
+                union |= _posting(t)
+            return union, False       # OR fallback
+
+        candidate_idx, used_and = _intersect(name_tokens)
+        candidates = [self._search_data[i] for i in candidate_idx]
+
+        # ── Hard structural filters ───────────────────────────────────────
+        if opt_type:
+            candidates = [c for c in candidates if c['opt_type'] == opt_type]
+        elif want_fut:
+            candidates = [c for c in candidates if c['inst_type'] == 'FUT']
+
+        if month_token:
+            candidates = [c for c in candidates if c['_month_tag'] == month_token]
+
+        if strike_int is not None:
+            candidates = [c for c in candidates if c['_strike_int'] == strike_int]
+
+        if not candidates:
+            return []
+
+        # ── IDF-weighted scoring ──────────────────────────────────────────
+        cfg = self.cfg
+
+        def _score(entry: dict) -> float:
+            sym  = entry['symbol']
+            ntok = entry['_name_tokens']   # frozenset[str]
+            s    = 0.0
             matched = 0
-            strong_match = False
-            company_match = False
-            sym_upper = item['symbol'].upper()
 
-            for tok in symbol_tokens:
-                if tok in item_tokens:
-                    matched += 1
-                    company_match = True
-                if (sym_upper == tok or 
-                    sym_upper.startswith(tok) or 
-                    tok.startswith(sym_upper)):
-                    strong_match = True
+            for tok in name_tokens:
+                if tok not in ntok:
+                    continue
+                matched += 1
+                idf = self._idf.get(tok, 1.0)
 
-            if symbol_tokens and not (strong_match or company_match):
-                continue
-
-            score += matched * 100
-
-            # Filter Matches
-            if opt_type:
-                if item['opt_type'] == opt_type:
-                    score += 120
+                if sym == tok:
+                    # Exact ticker match — completely dominates
+                    s += cfg.exact_symbol_bonus + idf * cfg.company_idf_factor
+                elif sym.startswith(tok) or tok.startswith(sym):
+                    # Prefix overlap (e.g. "SBI" matches "SBIN")
+                    s += cfg.symbol_prefix_bonus + idf * cfg.company_idf_factor
                 else:
-                    continue
+                    # Company-name match; weighted by how rare the word is
+                    s += idf * cfg.company_idf_factor
 
-            if want_fut:
-                if item['inst_type'] == 'FUT':
-                    score += 150
-                else:
-                    continue
+            # Coherence bonus: reward when every query token actually matched
+            if used_and and matched == len(name_tokens) and name_tokens:
+                s += cfg.all_tokens_coherence
 
-            if strike_token:
-                if not opt_type and item['inst_type'] != 'OPT':
-                    continue
-                item_strike = item['strike']
-                if not item_strike:
-                    continue
-                strike_clean = (
-                    str(int(item_strike))
-                    if float(item_strike).is_integer()
-                    else str(item_strike)
-                )
-                if strike_clean == strike_token:
-                    score += 250
-                else:
-                    continue
-
-            if month_token:
-                if item['_month_tag'] == month_token:
-                    score += 180
-                else:
-                    continue
-
-            # Exact Match Boost
-            for tok in symbol_tokens:
-                if sym_upper == tok:
-                    score += 500
-                elif sym_upper.startswith(tok):
-                    score += 250
-
-            # Instrument Priority
-            if item['inst_type'] == 'EQ':
-                score += 10
-            elif item['inst_type'] == 'FUT':
-                score += 25
-            else:
-                score += 40
-
-            # Expiry Priority (Nearer is Better)
-            exp_sort = item['_expiry_sort']
-            if exp_sort:
+            # Expiry proximity (nearer expiry = slightly higher score)
+            exp = entry['_expiry_sort']
+            if exp:
                 try:
-                    exp_num = int(exp_sort.replace('-', ''))
-                    score += max(0, 100000000 - exp_num)
+                    s += cfg.expiry_proximity_scale * (99_999_999 - int(exp.replace('-', '')))
                 except Exception:
                     pass
+            elif not (month_token or strike_int or opt_type or want_fut):
+                # Generic query with no structured filter → float equities up
+                s += cfg.eq_base_bonus
 
-            results.append((score, item))
+            return s
 
-        results.sort(
-            key=lambda x: (
-                -x[0],
-                x[1]['_expiry_sort'],
-                x[1]['strike']
-            )
-        )
+        scored = [(  _score(e), e) for e in candidates]
+        scored.sort(key=lambda x: (-x[0], x[1]['_expiry_sort'], x[1]['strike']))
 
+        # ── Strip internal fields before returning ────────────────────────
         final = []
-        for _, item in results[:limit]:
-            obj = dict(item)
-            obj.pop('_search_tokens', None)
-            obj.pop('_expiry_sort', None)
-            obj.pop('_month_tag', None)
-            obj.pop('_sort_key', None)
-
+        for _, item in scored[:limit]:
+            obj = {k: v for k, v in item.items() if not k.startswith('_')}
             try:
                 obj['strike'] = float(obj.get('strike', 0))
             except Exception:
                 obj['strike'] = 0.0
-
             final.append(obj)
 
         return final
@@ -420,133 +471,131 @@ class ScripMaster:
         self._expiry_index = expiry_index
         self._secid_info   = secid_info
 
-        base_to_name = {}
+        # symbol → company display name (equities/indices only)
+        base_to_name: dict[str, str] = {}
         for info in secid_info.values():
             if info[1] in EQ_INDEX_INSTR and info[6]:
                 base_to_name[info[2]] = str(info[6]).strip().upper()
 
-        search_entries = []
+        stop = self.cfg.stop_words
+
+        search_entries: list[dict] = []
+
         for info in secid_info.values():
             exch_id, inst, underlying, exp, strike, opt_type, display_name = info
             if not display_name:
                 continue
-                
+
             display_str = str(display_name).strip()
-            
+
             if inst in OPT_SEGMENTS:
-                inst_type = 'OPT'
+                inst_type     = 'OPT'
                 inst_priority = 2
                 if not display_str.upper().startswith(underlying.upper()):
                     display_str = f"{underlying} {display_str}"
             elif inst in FUT_SEGMENTS:
-                inst_type = 'FUT'
+                inst_type     = 'FUT'
                 inst_priority = 1
                 if not display_str.upper().startswith(underlying.upper()):
                     display_str = f"{underlying} FUT {display_str}"
             else:
-                inst_type = 'EQ'
+                inst_type     = 'EQ'
                 inst_priority = 0
                 if display_str.upper() == underlying.upper():
                     display_str = f"{underlying} - EQ"
                 elif display_str.upper().startswith(underlying.upper()):
-                    clean_name = display_str[len(underlying):].strip(' -()')
-                    suffix = f" ({clean_name})" if clean_name else ""
-                    display_str = f"{underlying} - EQ{suffix}"
+                    clean = display_str[len(underlying):].strip(' -()')
+                    display_str = f"{underlying} - EQ ({clean})" if clean else f"{underlying} - EQ"
                 else:
                     display_str = f"{underlying} - EQ ({display_str})"
 
+            # ── Structured fields (used for hard filtering) ──────────────
             exp_str = str(exp) if exp else ""
-            upper_exp = exp_str.upper()
-            
-            # Map Month Tags dynamically using TOML config
-            month_tags = ""
+            month_tag = ""
             for m_int in range(1, 13):
-                m_str = f"-{m_int:02d}-"
-                if m_str in upper_exp:
-                    month_tags = self.cfg.gen_tags.get(m_int, "")
+                if f"-{m_int:02d}-" in exp_str:
+                    tags = self.cfg.gen_tags.get(m_int, "")
+                    month_tag = tags.split()[0] if tags else ""
                     break
-            
-            if not month_tags:
-                for k, v in self.cfg.month_aliases.items():
-                    if f"-{k}" in upper_exp:
-                        month_tags = v
-                        break
 
             opt_safe_raw = str(opt_type).strip().upper() if opt_type else ""
-            opt_tags = ""
-
             if opt_safe_raw.startswith("C"):
                 opt_safe = "CE"
-                opt_tags = "CE CALL CA C"
             elif opt_safe_raw.startswith("P"):
                 opt_safe = "PE"
-                opt_tags = "PE PUT PA P"
             else:
                 opt_safe = ""
 
-            strike_val = strike or 0.0
-            strike_str = str(strike_val)
-            strike_clean = (
-                str(int(strike_val)) 
-                if float(strike_val).is_integer() 
-                else strike_str
-            )
+            strike_val = float(strike or 0.0)
+            strike_int = int(strike_val) if strike_val and float(strike_val).is_integer() else None
 
+            # ── Name tokens (IDF index) ───────────────────────────────────
+            # Built ONLY from underlying symbol + company name, minus stop-words.
+            # Keeps structured noise (month/strike/CE/PE) OUT of the IDF space
+            # so that "BANK" in a company name can't accidentally match "BAN"
+            # from a strike like "24800".
             comp_name = base_to_name.get(underlying, "")
-            underlying_u = underlying.upper()
-            display_u = display_str.upper()
-            comp_name_u = comp_name.upper()
-
-            all_text = (
-                f"{underlying_u} {display_u} {comp_name_u} {exp_str} "
-                f"{month_tags} {inst_type} {opt_safe} {opt_tags} "
-                f"{strike_str} {strike_clean}"
-            )
-
-            raw_tokens = [
-                t.strip().upper()
-                for t in all_text.replace('-', ' ').split()
-                if t.strip()
+            name_src  = f"{underlying} {comp_name}"
+            raw_name  = [
+                t.upper() for t in name_src.replace('-', ' ').split()
+                if t.strip() and t.upper() not in stop
             ]
 
-            tokens = set()
-            for tok in raw_tokens:
-                if tok in self.cfg.stop_words:
-                    continue
-                tokens.add(tok)
-                if len(tok) >= 3:
-                    tokens.add(tok[:3])
-
-            joined = "".join(t for t in raw_tokens if t not in self.cfg.stop_words)
-            tokens.add(joined)
+            name_token_set: set[str] = set()
+            for tok in raw_name:
+                name_token_set.add(tok)
+                # Prefix tokens so partial typing hits (e.g. "SBI" → SBIN,
+                # "STA" → STATE, "STAT" → STATE)
+                for plen in range(3, min(len(tok), 5)):   # 3-char and 4-char
+                    name_token_set.add(tok[:plen])
 
             search_entries.append({
-                'display':        display_str,
-                'symbol':         underlying,
-                'inst_type':      inst_type,
-                'strike':         float(strike_val or 0),
-                'opt_type':       opt_safe,
-                'expiry':         exp_str,
-                'exch':           exch_id,
-                '_search_tokens': list(tokens),
-                '_expiry_sort':   exp_str,
-                '_month_tag':     month_tags.split()[0] if month_tags else "",
-                '_sort_key':      (inst_priority, exp_str, strike_val, underlying)
+                'display':       display_str,
+                'symbol':        underlying,
+                'inst_type':     inst_type,
+                'strike':        strike_val,
+                'opt_type':      opt_safe,
+                'expiry':        exp_str,
+                'exch':          exch_id,
+                # internal
+                '_name_tokens':  frozenset(name_token_set),
+                '_month_tag':    month_tag,
+                '_strike_int':   strike_int,
+                '_expiry_sort':  exp_str,
+                '_sort_key':     (inst_priority, exp_str, strike_val, underlying),
             })
 
-        search_entries.sort(
-            key=lambda x: (
-                x['_sort_key'][0],
-                x['_expiry_sort'],
-                x['strike'],
-                x['symbol']
-            )
-        )
+        # Default sort: EQ first, then nearest expiry, then strike
+        search_entries.sort(key=lambda x: x['_sort_key'])
         self._search_data = search_entries
-        
+
         self._display_to_data = {
-            " ".join(x['display'].upper().split()): x 
+            " ".join(x['display'].upper().split()): x
             for x in search_entries
+        }
+
+        # ── Build inverted index + IDF ────────────────────────────────────
+        N = len(search_entries)
+
+        # doc_freq[tok] = number of entries containing tok
+        # posting[tok]  = sorted list of entry indices
+        doc_freq: dict[str, int]       = defaultdict(int)
+        posting:  dict[str, list[int]] = defaultdict(list)
+
+        for i, entry in enumerate(search_entries):
+            for tok in entry['_name_tokens']:
+                posting[tok].append(i)   # already unique per entry (frozenset)
+                doc_freq[tok] += 1
+
+        # Freeze posting lists as plain lists (already built in order 0..N-1)
+        self._name_inv_index = dict(posting)
+
+        # IDF = log(N / df) + 1  (Lucene-style smoothed IDF)
+        # Rare tokens (unique tickers) → high IDF.  "BANK" (common) → low IDF.
+        self._idf = {
+            tok: math.log(N / df) + 1.0
+            for tok, df in doc_freq.items()
+            if df > 0
         }
 
     def _fold_chunk(
