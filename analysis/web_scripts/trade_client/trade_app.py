@@ -1,21 +1,25 @@
 """FastAPI dashboard for the Dhan trading portal."""
 
 import asyncio
-import tomllib
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
+import tomllib
 import uvicorn
 from fastapi import FastAPI, Form, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from tradeapi.dhan_trade import DhanTrader, UIOverride
 from utils.data.paths import TEMPLATES_ROOT_DIR
 
-APP_CONFIG_PATH = Path(__file__).parent / "trade_app.toml"
+BASE_DIR = Path(__file__).parent
+
+APP_CONFIG_PATH = BASE_DIR / "trade_app.toml"
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _format_order_detail(
@@ -56,36 +60,42 @@ class AppConfig:
         app_cfg = self.raw_cfg.get("app", {})
         self.title: str = app_cfg.get("title", "Dhan Trading Portal")
         self.template_subdir: str = app_cfg.get(
-            "template_subdir", "template_trade_client"
+            "template_subdir",
+            "template_trade_client",
         )
         self.refresh_interval: int = app_cfg.get("refresh_interval", 15)
         self.refresh_master_script: bool = app_cfg.get(
-            "refresh_master_script", False
+            "refresh_master_script",
+            False,
         )
         self.reset_proxy_at_start: bool = app_cfg.get(
-            "reset_proxy_at_start", False
+            "reset_proxy_at_start",
+            False,
         )
 
         cls_cfg = self.raw_cfg.get("close", {})
         self.reentry_order_mode: str = cls_cfg.get(
-            "reentry_order_mode", "FOREVER"
+            "reentry_order_mode",
+            "FOREVER",
         )
         self.reentry_product_type: str = cls_cfg.get(
-            "reentry_product_type", "CNC"
+            "reentry_product_type",
+            "CNC",
         )
         self.clean_orphaned_super_orders: bool = cls_cfg.get(
-            "clean_orphaned_super_orders", False
+            "clean_orphaned_super_orders",
+            False,
         )
 
         ord_cfg = self.raw_cfg.get("orders", {})
         self.pending_statuses: tuple[str, ...] = tuple(
-            ord_cfg.get("pending_statuses", ["TRANSIT", "PENDING", "PART_TRADED"])
+            ord_cfg.get("pending_statuses", ["TRANSIT", "PENDING", "PART_TRADED"]),
         )
         self.forever_active_statuses: tuple[str, ...] = tuple(
-            ord_cfg.get("forever_active_statuses", ["PENDING", "CONFIRM"])
+            ord_cfg.get("forever_active_statuses", ["PENDING", "CONFIRM"]),
         )
         self.alert_active_statuses: tuple[str, ...] = tuple(
-            ord_cfg.get("alert_active_statuses", ["ACTIVE"])
+            ord_cfg.get("alert_active_statuses", ["ACTIVE"]),
         )
 
     def _load(self) -> dict:
@@ -93,10 +103,7 @@ class AppConfig:
             with self.path.open("rb") as config_file:
                 return tomllib.load(config_file)
         except Exception as exc:
-            print(
-                f"[!] Could not load config from {self.path}: {exc}. "
-                "Using defaults."
-            )
+            LOGGER.error("Could not load config from %s: %s", self.path, exc)
             return {}
 
 
@@ -173,15 +180,21 @@ class DashboardService:
                 ),
             }
             for order in self.trader.get_pending_orders(
-                self.config.pending_statuses
+                self.config.pending_statuses,
             )
         ]
 
     def _get_super_orders(self) -> list[dict]:
         orders = []
-        for symbol, order_id, leg, txn, qty, price, trig in (
-            self.trader.get_active_super_orders()
-        ):
+        for (
+            symbol,
+            order_id,
+            leg,
+            txn,
+            qty,
+            price,
+            trig,
+        ) in self.trader.get_active_super_orders():
             detail = _format_order_detail(qty, price, trig)
             if leg and leg != "ENTRY_LEG":
                 detail += f" ({leg})"
@@ -194,7 +207,7 @@ class DashboardService:
                     "type": "SUPER",
                     "side": txn,
                     "detail": detail,
-                }
+                },
             )
         return orders
 
@@ -213,7 +226,7 @@ class DashboardService:
                 ),
             }
             for order in self.trader.get_forever_orders(
-                self.config.forever_active_statuses
+                self.config.forever_active_statuses,
             )
         ]
 
@@ -232,7 +245,7 @@ class DashboardService:
                 ),
             }
             for order in self.trader.get_all_alerts(
-                self.config.alert_active_statuses
+                self.config.alert_active_statuses,
             )
         ]
 
@@ -259,7 +272,7 @@ class TradePortalApp:
 
     def _setup_routes(self) -> None:
         @self.app.get("/", response_class=HTMLResponse)
-        async def dashboard(request: Request, view: Optional[str] = None):
+        async def dashboard(request: Request, view: str | None = None):
             snapshot = self.dashboard.get_snapshot()
             return self.templates.TemplateResponse(
                 "dashboard.html",
@@ -291,7 +304,7 @@ class TradePortalApp:
 
                     try:
                         strike_val = float(strike_val)
-                    except Exception:
+                    except (ValueError, TypeError):
                         strike_val = 0.0
 
                     clean.append(
@@ -303,13 +316,13 @@ class TradePortalApp:
                             "opt_type": str(match.get("opt_type", "")),
                             "expiry": str(match.get("expiry", "")),
                             "exch": str(match.get("exch", "")),
-                        }
+                        },
                     )
 
                 return JSONResponse(content=jsonable_encoder(clean))
 
             except Exception as exc:
-                print(f"[search_symbols API ERROR] q={q} err={exc}")
+                LOGGER.error("[search_symbols API ERROR] q=%s err=%s", q, exc)
                 return JSONResponse([])
 
         @self.app.get("/api/live_data")
@@ -330,7 +343,7 @@ class TradePortalApp:
             strike: float = Form(0.0),
             expiry: str = Form(""),
             opt_type: str = Form(""),
-            view: Optional[str] = Query(None),
+            view: str | None = Query(None),
         ):
             overrides = UIOverride(
                 inst_type=inst_type,
@@ -356,20 +369,25 @@ class TradePortalApp:
                 if sec_id:
                     match order_mode:
                         case "MARKET":
-                            self.trader.place_simple_order(sec_id, lot_size, inst)
+                            self.trader.place_market_order(sec_id, lot_size, inst)
                         case "SUPER":
                             self.trader.place_super_order(sec_id, lot_size, inst)
                         case "FOREVER":
                             self.trader.place_trigger_forever_order(
-                                sec_id, lot_size, inst
+                                sec_id,
+                                lot_size,
+                                inst,
                             )
                         case "ALERT":
                             fno_sig = signal if alert_trigger_base == "PARENT" else None
                             self.trader.place_trigger_alert_order(
-                                sec_id, lot_size, inst, fno_signal=fno_sig
+                                sec_id,
+                                lot_size,
+                                inst,
+                                fno_signal=fno_sig,
                             )
             else:
-                print(f"Could not resolve {exchange} {symbol}")
+                LOGGER.warning("Could not resolve %s %s", exchange, symbol)
 
             redirect_url = "/?view=order" if view == "order" else "/"
             return RedirectResponse(url=redirect_url, status_code=303)
@@ -420,22 +438,22 @@ class TradePortalApp:
 
                 if inst_reentry:
                     new_sec_id, lot_size = self.trader.lookup_with_fallback(
-                        inst_reentry
+                        inst_reentry,
                     )
                     if new_sec_id:
-                        mode_to_use = (
-                            reentry_type
-                            if reentry_type
-                            else self.cfg.reentry_order_mode
-                        )
+                        mode_to_use = reentry_type or self.cfg.reentry_order_mode
                         match mode_to_use:
                             case "FOREVER":
                                 self.trader.place_trigger_forever_order(
-                                    new_sec_id, lot_size, inst_reentry
+                                    new_sec_id,
+                                    lot_size,
+                                    inst_reentry,
                                 )
                             case "SUPER":
                                 self.trader.place_super_order(
-                                    new_sec_id, lot_size, inst_reentry
+                                    new_sec_id,
+                                    lot_size,
+                                    inst_reentry,
                                 )
                             case "ALERT":
                                 fno_sig = (
@@ -451,7 +469,9 @@ class TradePortalApp:
                                 )
                             case _:
                                 self.trader.place_simple_order(
-                                    new_sec_id, lot_size, inst_reentry
+                                    new_sec_id,
+                                    lot_size,
+                                    inst_reentry,
                                 )
 
             return RedirectResponse(url="/", status_code=303)
