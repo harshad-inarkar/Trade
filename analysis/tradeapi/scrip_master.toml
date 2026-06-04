@@ -16,6 +16,13 @@ eq_index_instr      = ["EQUITY", "INDEX"]
 [search.stop_words]
 words = ["OF", "THE", "&", "LTD", "LIMITED", "CORP", "CORPORATION", "CO"]
 
+# Map user slangs and abbreviations to official underlying ticker symbols
+# [search.aliases.symbol]
+# "NATGAS" = "NATURALGASM"
+# "CRUDE"  = "CRUDEOILM"
+# "NIFTY"  = "NIFTY 50"
+# "BANK"   = "BANKNIFTY"
+
 [search.aliases.call]
 words = ["CALL", "CE", "C", "CA"]
 
