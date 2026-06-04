@@ -5,11 +5,12 @@ Place this file alongside app.py.
 
 import csv
 import os
+
 from utils.data.paths import NSE_INDX_DATA
 
 # Resolve path relative to this file so it works regardless of cwd
-CATEGORIES_CSV = os.path.join(NSE_INDX_DATA, 'categories.csv')
-UNIQ_CATEGORIES_CSV = os.path.join(NSE_INDX_DATA, 'uniq_categories.csv')
+CATEGORIES_CSV = os.path.join(NSE_INDX_DATA, "categories.csv")
+UNIQ_CATEGORIES_CSV = os.path.join(NSE_INDX_DATA, "uniq_categories.csv")
 
 
 def load_sector_symbols(csv_path: str = CATEGORIES_CSV) -> dict[str, list[str]]:
@@ -20,7 +21,7 @@ def load_sector_symbols(csv_path: str = CATEGORIES_CSV) -> dict[str, list[str]]:
     """
     sector_symbols: dict[str, list[str]] = {}
 
-    with open(csv_path, newline='', encoding='utf-8') as fh:
+    with open(csv_path, newline="", encoding="utf-8") as fh:
         reader = csv.reader(fh)
         rows = list(reader)
 

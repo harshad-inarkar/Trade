@@ -14,17 +14,15 @@ import subprocess
 import sys
 import tempfile
 import time
-import tomllib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
-from PIL import Image
 import pyautogui
-
+import tomllib
+from PIL import Image
 
 # ─────────────────────────────────────────────────────────────────────────────
 # macOS Background App Registration
@@ -32,28 +30,28 @@ import pyautogui
 if sys.platform == "darwin":
     try:
         import AppKit
-        
+
         # Initialize the shared application instance
         app = AppKit.NSApplication.sharedApplication()
-        
-        # Set activation policy to 'Accessory' (1) 
+
+        # Set activation policy to 'Accessory' (1)
         # This acts exactly like LSUIElement=1 (Hides Dock icon, runs in background)
         app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
-        
+
     except ImportError:
         # Fails silently if pyobjc-framework-AppKit is not installed
         pass
 
 # Safety mechanism
-pyautogui.FAILSAFE = True 
-
+pyautogui.FAILSAFE = True
 
 
 # ─── Custom Imports ───────────────────────────────────────────────────────────
-from utils.utility import wait_next_wall_clock
-from utils.data.paths import OUT_DIR
 from tradeapi.dhan_trade import DhanTrader
+from utils.data.paths import OUT_DIR
 from utils.ocr.ocr_engine import ocr_pil as _engine_ocr_pil
+from utils.utility import wait_next_wall_clock
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Pure Utility & Notification
@@ -61,8 +59,9 @@ from utils.ocr.ocr_engine import ocr_pil as _engine_ocr_pil
 def clean_symbol(sym: str) -> str:
     sym = sym.upper()
     sym = re.sub(r"1!$", "", sym)
-    sym = re.sub(r"!$",  "", sym)
+    sym = re.sub(r"!$", "", sym)
     return re.sub(r"[^A-Z0-9&]", "", sym)
+
 
 class AlertNotifier:
     @staticmethod
@@ -70,19 +69,24 @@ class AlertNotifier:
         script = f'display notification "{body}" with title "{title}"'
         try:
             subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
-            subprocess.run(["afplay", "/System/Library/Sounds/Glass.aiff"], capture_output=True)
+            subprocess.run(
+                ["afplay", "/System/Library/Sounds/Glass.aiff"],
+                capture_output=True,
+            )
         except Exception:
             pass
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Configuration Manager
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class ScannerConfig:
     """Manages TOML settings, coordinate saving, and local 'seen' alerts state."""
+
     def __init__(self, config_file: Path, seen_file: Path):
         self.config_file = config_file
-        self.seen_file   = seen_file
-        self.data        = self._load_toml()
+        self.seen_file = seen_file
+        self.data = self._load_toml()
 
     def _load_toml(self) -> dict:
         if self.config_file.exists():
@@ -112,20 +116,20 @@ class ScannerConfig:
             f.write("\n".join(lines))
 
     def save_coordinates(self, x1: int, y1: int, x2: int, y2: int, sig_x: int):
-        self.data.setdefault('settings', {})
-        self.data.setdefault('coordinates', {})
-        
-        self.data['coordinates']['x1'] = x1
-        self.data['coordinates']['y1'] = y1
-        self.data['coordinates']['x2'] = x2
-        self.data['coordinates']['y2'] = y2
-        self.data['coordinates']['signal_col_x'] = sig_x
-        
+        self.data.setdefault("settings", {})
+        self.data.setdefault("coordinates", {})
+
+        self.data["coordinates"]["x1"] = x1
+        self.data["coordinates"]["y1"] = y1
+        self.data["coordinates"]["x2"] = x2
+        self.data["coordinates"]["y2"] = y2
+        self.data["coordinates"]["signal_col_x"] = sig_x
+
         self._write_toml()
 
     def has_coordinates(self) -> bool:
-        coords = self.data.get('coordinates', {})
-        return all(k in coords for k in ('x1', 'y1', 'x2', 'y2', 'signal_col_x'))
+        coords = self.data.get("coordinates", {})
+        return all(k in coords for k in ("x1", "y1", "x2", "y2", "signal_col_x"))
 
     # 'Seen' state is dynamic, so it stays as JSON to avoid constantly rewriting the TOML
     def load_seen(self) -> dict:
@@ -166,19 +170,20 @@ class ScannerConfig:
 
         x1, y1 = get_coord("TOP-LEFT corner")
         x2, y2 = get_coord("BOTTOM-RIGHT corner")
-        sx, _  = get_coord("SIGNAL column")
+        sx, _ = get_coord("SIGNAL column")
 
         sig_x = max(0, sx - x1)
         self.save_coordinates(x1, y1, x2, y2, sig_x)
         print(f"\nCoordinates saved successfully to {self.config_file.name}")
         return True
 
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Trigram Index Matcher
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class TrigramIndexMatcher:
     _DICE_CUTOFF = 0.7
-    _MAX_EDIT    = 2
+    _MAX_EDIT = 2
 
     def __init__(self, candidates):
         self.candidates = set(candidates)
@@ -196,7 +201,8 @@ class TrigramIndexMatcher:
     @staticmethod
     @lru_cache(maxsize=4096)
     def _levenshtein(a: str, b: str) -> int:
-        if len(a) < len(b): a, b = b, a
+        if len(a) < len(b):
+            a, b = b, a
         prev = list(range(len(b) + 1))
         for ca in a:
             curr = [prev[0] + 1]
@@ -205,13 +211,16 @@ class TrigramIndexMatcher:
             prev = curr
         return prev[-1]
 
-    def match(self, query: str, cutoff=_DICE_CUTOFF) -> Optional[str]:
+    def match(self, query: str, cutoff=_DICE_CUTOFF) -> str | None:
         query = clean_symbol(query)
-        if not query: return None
-        if query in self.candidates: return query
+        if not query:
+            return None
+        if query in self.candidates:
+            return query
 
         q_tgs = self._get_trigrams(query)
-        if not q_tgs: return None
+        if not q_tgs:
+            return None
 
         scores = {}
         for tg in q_tgs:
@@ -225,7 +234,8 @@ class TrigramIndexMatcher:
             if score > best_score:
                 best_score, best_cand = score, cand
 
-        if best_score >= cutoff: return best_cand
+        if best_score >= cutoff:
+            return best_cand
 
         if scores:
             ranked = sorted(scores, key=lambda c: scores[c], reverse=True)
@@ -234,11 +244,13 @@ class TrigramIndexMatcher:
                 dist = self._levenshtein(query, cand)
                 if dist < lev_best_dist:
                     lev_best_dist, lev_best_cand = dist, cand
-                    if dist == 1: break
+                    if dist == 1:
+                        break
             if lev_best_dist <= self._MAX_EDIT:
                 return lev_best_cand
 
         return None
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Image Processing & Vision Engine
@@ -246,33 +258,35 @@ class TrigramIndexMatcher:
 class ScannerVision:
     def __init__(self, min_saturation=40, green_bias=25, red_bias=25, max_workers=8):
         self.min_saturation = min_saturation
-        self.green_bias     = green_bias
-        self.red_bias       = red_bias
-        self.pool           = ThreadPoolExecutor(max_workers=max_workers)
+        self.green_bias = green_bias
+        self.red_bias = red_bias
+        self.pool = ThreadPoolExecutor(max_workers=max_workers)
 
     def find_signal_col_x(self, arr: np.ndarray) -> int:
         h, w = arr.shape[:2]
         y0, x0, x1 = int(h * 0.05), int(w * 0.10), int(w * 0.60)
 
-        region = arr[y0::15, x0:x1:5].astype(np.int32) 
-        if region.size == 0: return -1
+        region = arr[y0::15, x0:x1:5].astype(np.int32)
+        if region.size == 0:
+            return -1
 
         r, g, _ = region[..., 0], region[..., 1], region[..., 2]
-        sat   = region.max(axis=2) - region.min(axis=2)
+        sat = region.max(axis=2) - region.min(axis=2)
         green = (sat >= self.min_saturation) & (g - r >= self.green_bias) & (g > 80)
-        red   = (sat >= self.min_saturation) & (r - g >= self.red_bias)   & (r > 80)
-        mask  = green | red                                       
+        red = (sat >= self.min_saturation) & (r - g >= self.red_bias) & (r > 80)
+        mask = green | red
 
-        hits = np.argwhere(mask) 
-        if hits.size == 0: return -1
+        hits = np.argwhere(mask)
+        if hits.size == 0:
+            return -1
 
         return x0 + hits[0][1] * 5
 
     def detect_rows(self, arr: np.ndarray, sig_x: int) -> list:
-        brightness = arr[:, sig_x, :].max(axis=1) > 80 
-        padded     = np.concatenate([[False], brightness, [False]])
-        starts     = np.where(~padded[:-1] &  padded[1:])[0]
-        ends       = np.where( padded[:-1] & ~padded[1:])[0]
+        brightness = arr[:, sig_x, :].max(axis=1) > 80
+        padded = np.concatenate([[False], brightness, [False]])
+        starts = np.where(~padded[:-1] & padded[1:])[0]
+        ends = np.where(padded[:-1] & ~padded[1:])[0]
         return [(int(s), int(e)) for s, e in zip(starts, ends) if e - s >= 10]
 
     def classify_signal(self, arr: np.ndarray, row: tuple, sig_x: int) -> str:
@@ -280,39 +294,85 @@ class ScannerVision:
         w = arr.shape[1]
         x_lo, x_hi = max(0, sig_x - 12), min(w - 1, sig_x + 12)
 
-        region = arr[y0 + 2 : y1 - 2 : max(1, (y1 - y0) // 6), x_lo : x_hi : max(1, (x_hi - x_lo) // 6)].astype(np.float32)
-        if region.size == 0: return ""
+        region = arr[
+            y0 + 2 : y1 - 2 : max(1, (y1 - y0) // 6),
+            x_lo : x_hi : max(1, (x_hi - x_lo) // 6),
+        ].astype(np.float32)
+        if region.size == 0:
+            return ""
 
         avg = region.mean(axis=(0, 1))
         r, g, b = float(avg[0]), float(avg[1]), float(avg[2])
 
-        if max(r, g, b) - min(r, g, b) < self.min_saturation: return ""
-        if g - r >= self.green_bias and g > 80: return "BUY"
-        if r - g >= self.red_bias and r > 80: return "SELL"
+        if max(r, g, b) - min(r, g, b) < self.min_saturation:
+            return ""
+        if g - r >= self.green_bias and g > 80:
+            return "BUY"
+        if r - g >= self.red_bias and r > 80:
+            return "SELL"
         return ""
 
-    def _ocr_strip(self, img: Image.Image, y0: int, y1: int, x0: int, x1: int, whitelist: str = "") -> str:
-        if x1 <= x0 or y1 <= y0: return ""
+    def _ocr_strip(
+        self,
+        img: Image.Image,
+        y0: int,
+        y1: int,
+        x0: int,
+        x1: int,
+        whitelist: str = "",
+    ) -> str:
+        if x1 <= x0 or y1 <= y0:
+            return ""
         cropped = img.crop((x0, y0, x1, y1))
         return _engine_ocr_pil(cropped, whitelist=whitelist).strip()
 
-    def extract_row_data(self, img: Image.Image, arr: np.ndarray, row: tuple, sig_x: int) -> dict:
+    def extract_row_data(
+        self,
+        img: Image.Image,
+        arr: np.ndarray,
+        row: tuple,
+        sig_x: int,
+    ) -> dict:
         y0, y1 = row
         w = img.size[0]
         y_mid = y0 + (y1 - y0) // 2
 
         left_bright = arr[y_mid, : sig_x + 1, :].max(axis=1)
-        col_sig_start = int(np.where(left_bright < 50)[0][-1]) if np.where(left_bright < 50)[0].size else 0
+        col_sig_start = (
+            int(np.where(left_bright < 50)[0][-1])
+            if np.where(left_bright < 50)[0].size
+            else 0
+        )
 
-        right_bright = arr[y_mid, sig_x :, :].max(axis=1)
-        col_sig_end  = sig_x + int(np.where(right_bright < 50)[0][0]) if np.where(right_bright < 50)[0].size else w - 1
+        right_bright = arr[y_mid, sig_x:, :].max(axis=1)
+        col_sig_end = (
+            sig_x + int(np.where(right_bright < 50)[0][0])
+            if np.where(right_bright < 50)[0].size
+            else w - 1
+        )
 
-        sym_raw = self._ocr_strip(img, y0, y1, 0, max(2, col_sig_start - 2), whitelist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!&")
-        symbol  = clean_symbol(sym_raw.upper().replace("T1!", "1!").replace("OH", "O1!").replace("EO", "CO"))
+        sym_raw = self._ocr_strip(
+            img,
+            y0,
+            y1,
+            0,
+            max(2, col_sig_start - 2),
+            whitelist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!&",
+        )
+        symbol = clean_symbol(
+            sym_raw.upper()
+            .replace("T1!", "1!")
+            .replace("OH", "O1!")
+            .replace("EO", "CO"),
+        )
 
         e_start = col_sig_end + 2
         search_limit = min(w - 1, e_start + int(w * 0.35))
-        col_max = arr[y0 + 2 : y1 - 2, e_start : search_limit].max(axis=(0, 2)) if e_start < search_limit else np.array([])
+        col_max = (
+            arr[y0 + 2 : y1 - 2, e_start:search_limit].max(axis=(0, 2))
+            if e_start < search_limit
+            else np.array([])
+        )
 
         in_text, gap_count, e_end = False, 0, search_limit
 
@@ -327,16 +387,24 @@ class ScannerVision:
 
         ent_raw = self._ocr_strip(img, y0, y1, e_start, e_end, whitelist="0123456789.")
         entry_match = re.search(r"\d+(\.\d+)?", ent_raw)
-        
+
         return {"symbol": symbol, "entry": entry_match.group(0) if entry_match else ""}
 
-    def process_row(self, img: Image.Image, arr: np.ndarray, row: tuple, sig_x: int) -> Optional[dict]:
+    def process_row(
+        self,
+        img: Image.Image,
+        arr: np.ndarray,
+        row: tuple,
+        sig_x: int,
+    ) -> dict | None:
         signal = self.classify_signal(arr, row, sig_x)
-        if not signal: return None
-        
+        if not signal:
+            return None
+
         data = self.extract_row_data(img, arr, row, sig_x)
-        if not data["symbol"]: return None
-        
+        if not data["symbol"]:
+            return None
+
         data["signal"] = signal
         return data
 
@@ -349,9 +417,12 @@ class ScannerVision:
             return []
 
         rows = self.detect_rows(arr, dynamic_sig_x)
-        
-        futures = {self.pool.submit(self.process_row, img, arr, row, dynamic_sig_x): row for row in rows}
-        
+
+        futures = {
+            self.pool.submit(self.process_row, img, arr, row, dynamic_sig_x): row
+            for row in rows
+        }
+
         results_by_row = {}
         for fut in as_completed(futures):
             row = futures[fut]
@@ -361,20 +432,28 @@ class ScannerVision:
 
         return [results_by_row[row] for row in rows if row in results_by_row]
 
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Trade Execution Wrapper
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class TradeExecutor:
     """Orchestrates API resolution and Dhan orders."""
+
     def __init__(self, exchange_map: dict, no_trade: bool, rebuild_master: bool):
         self.exchange_map = exchange_map
-        self.no_trade     = no_trade
-        self.broker       = DhanTrader(refresh_master_scrip=rebuild_master) if not self.no_trade else None
+        self.no_trade = no_trade
+        self.broker = (
+            DhanTrader(refresh_master_scrip=rebuild_master)
+            if not self.no_trade
+            else None
+        )
 
     def get_exchange(self, symb: str) -> str:
-        if symb in self.exchange_map['NSE']: return 'NSE'
-        if symb in self.exchange_map['COMM']: return 'MCX'
-        return ''
+        if symb in self.exchange_map["NSE"]:
+            return "NSE"
+        if symb in self.exchange_map["COMM"]:
+            return "MCX"
+        return ""
 
     def place_orders(self, orders_list: list):
         if not orders_list or self.no_trade or not self.broker:
@@ -382,57 +461,56 @@ class TradeExecutor:
 
         self.broker.begin_session()
         for order in orders_list:
-            symb = order['symbol']
+            symb = order["symbol"]
             exch = self.get_exchange(symb)
             if not exch:
                 continue
-            
+
             entry_val = 0
             try:
-                entry_val = float(order.get('entry', 0))
+                entry_val = float(order.get("entry", 0))
             except (ValueError, TypeError):
                 pass
 
             self.broker.fire_trade(
-                symb      = symb,
-                exch      = exch,
-                signal    = order['signal'],
-                entry_val = entry_val       
+                symb=symb,
+                exch=exch,
+                signal=order["signal"],
+                entry_val=entry_val,
             )
-    
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Main Application Controller
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class TVScannerApp:
     def __init__(self, new_setup: bool = False):
         self.new_setup = new_setup
-        
+
         # Paths
         self.config_file = Path(__file__).parent / "tv_scanner_config.toml"
-        self.seen_file   = Path(__file__).parent / ".tv_scanner_seen.json"
- 
+        self.seen_file = Path(__file__).parent / ".tv_scanner_seen.json"
+
         # Core Components
-        self.config   = ScannerConfig(self.config_file, self.seen_file)
-        
-      
+        self.config = ScannerConfig(self.config_file, self.seen_file)
+
         # Map TOML Settings
-        settings = self.config.data.get('settings', {})
-        self.reload_interval        = settings.get('reload_interval', 1)
-        self.buffer_seconds         = settings.get('buffer_seconds', 5)
-        self.debug                  = settings.get('debug', True)
-        self.ignore_lastseen        = settings.get('ignore_lastseen', True)
-        self.no_trade               = settings.get('no_trade', False)
-        self.rebuild_master         = settings.get('rebuild_master_scrip', False)
-        self.tv_focus_flag           = settings.get('tv_focus_flag', False)
+        settings = self.config.data.get("settings", {})
+        self.reload_interval = settings.get("reload_interval", 1)
+        self.buffer_seconds = settings.get("buffer_seconds", 5)
+        self.debug = settings.get("debug", True)
+        self.ignore_lastseen = settings.get("ignore_lastseen", True)
+        self.no_trade = settings.get("no_trade", False)
+        self.rebuild_master = settings.get("rebuild_master_scrip", False)
+        self.tv_focus_flag = settings.get("tv_focus_flag", False)
 
-
-        candidate_files = settings.get('candidate_files', [])
+        candidate_files = settings.get("candidate_files", [])
         self.cand_paths = [os.path.join(OUT_DIR, fname) for fname in candidate_files]
 
-        self.tv_symbols_map = self.config.data.get('tv_symbol_map',{})
+        self.tv_symbols_map = self.config.data.get("tv_symbol_map", {})
 
-        self.vision   = ScannerVision()
-        self.matcher  = None
+        self.vision = ScannerVision()
+        self.matcher = None
         self.executor = None
 
     def dprint(self, *args, **kwargs):
@@ -458,14 +536,20 @@ class TVScannerApp:
 
     def capture_screen(self) -> str:
         """Takes screencapture based on TOML coordinates."""
-        coords = self.config.data.get('coordinates', {})
+        coords = self.config.data.get("coordinates", {})
         tmp = tempfile.mkstemp(suffix=".png")[1]
-        
-        w = coords['x2'] - coords['x1']
-        h = coords['y2'] - coords['y1']
-        
+
+        w = coords["x2"] - coords["x1"]
+        h = coords["y2"] - coords["y1"]
+
         subprocess.run(
-            ["screencapture", "-x", "-R", f"{coords['x1']},{coords['y1']},{w},{h}", tmp],
+            [
+                "screencapture",
+                "-x",
+                "-R",
+                f"{coords['x1']},{coords['y1']},{w},{h}",
+                tmp,
+            ],
             check=True,
         )
         return tmp
@@ -486,25 +570,41 @@ class TVScannerApp:
             end tell
         """
         try:
-            subprocess.run(["osascript", "-e", focus_script], check=True, capture_output=True)
+            subprocess.run(
+                ["osascript", "-e", focus_script],
+                check=True,
+                capture_output=True,
+            )
         except Exception as e:
             self.dprint(f"Focus Error: {e}")
             os.system("osascript -e 'tell application \"TradingView\" to activate'")
 
     def process_scan(self):
         t0 = time.time()
-        self.dprint(f"\n── Scanning ──────────────────────────────────────")
+        self.dprint("\n── Scanning ──────────────────────────────────────")
 
         is_on_desk_1 = False
         try:
             import Quartz
+
             # Pulls only windows currently rendered on the active Desktop
-            window_list = Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
-            is_on_desk_1 = any(w.get(Quartz.kCGWindowOwnerName) == 'TradingView' for w in window_list)
+            window_list = Quartz.CGWindowListCopyWindowInfo(
+                Quartz.kCGWindowListOptionOnScreenOnly,
+                Quartz.kCGNullWindowID,
+            )
+            is_on_desk_1 = any(
+                w.get(Quartz.kCGWindowOwnerName) == "TradingView" for w in window_list
+            )
         except ImportError:
             # Fallback if pyobjc-framework-Quartz is not installed
-            active_app = os.popen('osascript -e \'tell application "System Events" to get name of first application process whose frontmost is true\'').read().strip()
-            is_on_desk_1 = (active_app == 'TradingView')
+            active_app = (
+                os.popen(
+                    "osascript -e 'tell application \"System Events\" to get name of first application process whose frontmost is true'",
+                )
+                .read()
+                .strip()
+            )
+            is_on_desk_1 = active_app == "TradingView"
 
         if not is_on_desk_1:
             pass
@@ -517,9 +617,9 @@ class TVScannerApp:
         except RuntimeError as e:
             self.dprint(f"  screencapture failed: {e}")
             return
-        
+
         if not is_on_desk_1:
-            pyautogui.hotkey('ctrl', '2')
+            pyautogui.hotkey("ctrl", "2")
 
         try:
             parsed = self.vision.process_image(img_path)
@@ -528,8 +628,8 @@ class TVScannerApp:
                 return
 
             self.dprint(f"  Rows detected : {len(parsed)}")
-            self.dprint(f"\n  ── Candidate Matching ─────────────────────────────")
-            
+            self.dprint("\n  ── Candidate Matching ─────────────────────────────")
+
             valid_parsed: list[dict] = []
             for row in parsed:
                 sym = row["symbol"]
@@ -538,13 +638,19 @@ class TVScannerApp:
 
                 if best_match == sym:
                     valid_parsed.append(row)
-                    self.dprint(f"  {icon} {sym:<14}  {row['signal']:<4}  entry={row['entry']:<10} [Exact]")
+                    self.dprint(
+                        f"  {icon} {sym:<14}  {row['signal']:<4}  entry={row['entry']:<10} [Exact]",
+                    )
                 elif best_match:
                     row["symbol"] = best_match
                     valid_parsed.append(row)
-                    self.dprint(f"  {icon} {sym:<14}  {row['signal']:<4}  entry={row['entry']:<10} [Fixed: {best_match}]")
+                    self.dprint(
+                        f"  {icon} {sym:<14}  {row['signal']:<4}  entry={row['entry']:<10} [Fixed: {best_match}]",
+                    )
                 else:
-                    self.dprint(f"  ❌ {sym:<14}  {row['signal']:<4}  entry={row['entry']:<10} [No Match]")
+                    self.dprint(
+                        f"  ❌ {sym:<14}  {row['signal']:<4}  entry={row['entry']:<10} [No Match]",
+                    )
 
             if not valid_parsed:
                 self.dprint("  No BUY/SELL rows matched candidates.")
@@ -557,17 +663,17 @@ class TVScannerApp:
             seen = self.config.load_seen()
             new_alerts = []
             cur_seen = {}
-            
+
             for row in valid_parsed:
                 sym = row["symbol"]
-                sym = self.tv_symbols_map.get(sym,sym)
+                sym = self.tv_symbols_map.get(sym, sym)
                 row["symbol"] = sym
                 sig = row["signal"]
-                
+
                 if not self.ignore_lastseen:
                     if seen.get(sym) != sig:
                         new_alerts.append(row)
-                        cur_seen[sym] = sig 
+                        cur_seen[sym] = sig
                 else:
                     new_alerts.append(row)
 
@@ -579,22 +685,30 @@ class TVScannerApp:
 
             # Execute & Notify
             self.executor.place_orders(new_alerts)
-  
-            buys  = [r for r in new_alerts if r["signal"] == "BUY"]
+
+            buys = [r for r in new_alerts if r["signal"] == "BUY"]
             sells = [r for r in new_alerts if r["signal"] == "SELL"]
             parts = []
-            if buys:  parts.append(f"{len(buys)}x BUY")
-            if sells: parts.append(f"{len(sells)}x SELL")
+            if buys:
+                parts.append(f"{len(buys)}x BUY")
+            if sells:
+                parts.append(f"{len(sells)}x SELL")
 
-            title = f"TV Alert {datetime.now().strftime('%H:%M')}  •  {', '.join(parts)}"
-            lines = [f"{r['symbol']:<10} {r['signal']:<4}  {r['entry']}" for r in new_alerts]
+            title = (
+                f"TV Alert {datetime.now().strftime('%H:%M')}  •  {', '.join(parts)}"
+            )
+            lines = [
+                f"{r['symbol']:<10} {r['signal']:<4}  {r['entry']}" for r in new_alerts
+            ]
 
             AlertNotifier.notify(title, "\n".join(lines))
             self.dprint(f"\n  Alert fired! Title: {title}")
 
         finally:
-            try: os.remove(img_path)
-            except OSError: pass
+            try:
+                os.remove(img_path)
+            except OSError:
+                pass
 
     def run(self):
         # Initial Setup/Config checks
@@ -608,26 +722,32 @@ class TVScannerApp:
 
         # Build Lookups
         candidates, cands_list = self.load_candidates()
-        
+
         exchange_map = {
-            'NSE':    cands_list[0] if len(cands_list) > 0 else set(),
-            'COMM':   cands_list[1] if len(cands_list) > 1 else set(),
-            'CRYPTO': cands_list[2] if len(cands_list) > 2 else set(),
+            "NSE": cands_list[0] if len(cands_list) > 0 else set(),
+            "COMM": cands_list[1] if len(cands_list) > 1 else set(),
+            "CRYPTO": cands_list[2] if len(cands_list) > 2 else set(),
         }
 
-        self.matcher  = TrigramIndexMatcher(candidates)
+        self.matcher = TrigramIndexMatcher(candidates)
         self.executor = TradeExecutor(exchange_map, self.no_trade, self.rebuild_master)
         self.config.clear_seen()
 
         if self.debug:
-            self.dprint(f"\n  TradingView Scanner v4 started (Production)")
-            self.dprint(f"  Interval  : {self.reload_interval} min (+{self.buffer_seconds}s buffer)")
+            self.dprint("\n  TradingView Scanner v4 started (Production)")
+            self.dprint(
+                f"  Interval  : {self.reload_interval} min (+{self.buffer_seconds}s buffer)",
+            )
             self.dprint(f"  Index     : Built {len(candidates)} candidates")
-            self.dprint(f"  Ctrl+C to stop\n")
+            self.dprint("  Ctrl+C to stop\n")
         elif not self.new_setup:
-            print("TradingView Scanner running in background. (Use debug=true in TOML to view scan logs)")
+            print(
+                "TradingView Scanner running in background. (Use debug=true in TOML to view scan logs)",
+            )
 
-        print(f"DEBUG_MODE: {self.debug}, IGNORE_LASTSEEN: {self.ignore_lastseen}, NO_TRADE: {self.no_trade}")
+        print(
+            f"DEBUG_MODE: {self.debug}, IGNORE_LASTSEEN: {self.ignore_lastseen}, NO_TRADE: {self.no_trade}",
+        )
 
         # Scan Loop
         self.process_scan()
@@ -635,20 +755,27 @@ class TVScannerApp:
             wait_next_wall_clock(self.reload_interval, self.buffer_seconds)
             self.process_scan()
 
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Execution entry point
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def main():
     p = argparse.ArgumentParser()
     # Only keep the flag that dictates an interactive action.
-    p.add_argument("-ns", "--new-setup", action="store_true", help="Interactively set TV coordinates.")
+    p.add_argument(
+        "-ns",
+        "--new-setup",
+        action="store_true",
+        help="Interactively set TV coordinates.",
+    )
     args = p.parse_args()
-    
+
     app = TVScannerApp(new_setup=args.new_setup)
     app.run()
 
+
 if __name__ == "__main__":
-    try: 
+    try:
         main()
-    except KeyboardInterrupt: 
+    except KeyboardInterrupt:
         sys.exit(0)

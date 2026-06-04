@@ -1,9 +1,9 @@
 import subprocess
+import sys
 import time
 from pathlib import Path
-import tomllib
-import sys
 
+import tomllib
 
 script_dir = Path(__file__).parent
 config_file = script_dir / "proxy_config.toml"
@@ -15,24 +15,26 @@ class SSHProxyManager:
     def __init__(self, config_path: str | Path = config_file):
         self.config_path = Path(config_path)
         self.config = self._load_config()
-        
+
         # Extract configurations
         proxy_cfg = self.config.get("proxy", {})
-        self.host = proxy_cfg.get("host",'')
+        self.host = proxy_cfg.get("host", "")
         self.user = proxy_cfg.get("user", "")
-        self.port = proxy_cfg.get("port",0)
+        self.port = proxy_cfg.get("port", 0)
         self.restart_delay = proxy_cfg.get("restart_delay", 1)
-        
+
         # Expand user path (e.g., ~/.ssh/...)
-        raw_key_path = proxy_cfg.get("key_path", '')
+        raw_key_path = proxy_cfg.get("key_path", "")
         self.key_path = Path(raw_key_path).expanduser()
 
     def _load_config(self) -> dict:
         """Loads configuration from the TOML file."""
         if not self.config_path.exists():
-            print(f"Warning: Config file '{self.config_path}' not found. Using default values.")
+            print(
+                f"Warning: Config file '{self.config_path}' not found. Using default values.",
+            )
             return {}
-        
+
         try:
             with open(self.config_path, "rb") as f:
                 return tomllib.load(f)
@@ -43,11 +45,11 @@ class SSHProxyManager:
     def stop(self):
         """Kills any existing SSH proxy process tied to the configured key or port."""
         print(f"Stopping existing SSH proxy processes on port {self.port}...")
-        
+
         # 1. Kill via SSH signature
         pkill_cmd = f"pkill -f 'ssh -i {self.key_path}'"
         subprocess.run(pkill_cmd, shell=True, stderr=subprocess.DEVNULL)
-        
+
         # 2. Kill whatever is occupying the local SOCKS port
         kill_port_cmd = f"kill -15 $(lsof -t -i:{self.port}) 2>/dev/null"
         subprocess.run(kill_port_cmd, shell=True, stderr=subprocess.DEVNULL)
@@ -59,17 +61,14 @@ class SSHProxyManager:
             sys.exit(1)
 
         print(f"Starting SSH proxy to {self.user}@{self.host}...")
-        
-        ssh_cmd = (
-            f"ssh -i {self.key_path} "
-            f"-D {self.port} "
-            f"{self.user}@{self.host} "
-            "-N -f"
-        )
-        
+
+        ssh_cmd = f"ssh -i {self.key_path} -D {self.port} {self.user}@{self.host} -N -f"
+
         try:
             subprocess.run(ssh_cmd, shell=True, check=True)
-            print(f"✅ SSH proxy successfully restarted (listening on port {self.port}).")
+            print(
+                f"✅ SSH proxy successfully restarted (listening on port {self.port}).",
+            )
         except subprocess.CalledProcessError as e:
             print(f"❌ Failed to start SSH proxy: {e}")
 
@@ -82,6 +81,6 @@ class SSHProxyManager:
 
 if __name__ == "__main__":
     # Ensure config file path is resolved relative to the script location
-    
+
     proxy_manager = SSHProxyManager()
     proxy_manager.restart()

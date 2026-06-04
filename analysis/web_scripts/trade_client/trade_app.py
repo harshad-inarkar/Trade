@@ -7,7 +7,7 @@ from pathlib import Path
 
 import tomllib
 import uvicorn
-from fastapi import FastAPI, Form, Query, Request
+from fastapi import APIRouter, FastAPI, Form, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -16,10 +16,10 @@ from tradeapi.dhan_trade import DhanTrader, UIOverride
 from utils.data.paths import TEMPLATES_ROOT_DIR
 
 BASE_DIR = Path(__file__).parent
-
 APP_CONFIG_PATH = BASE_DIR / "trade_app.toml"
 
 LOGGER = logging.getLogger(__name__)
+_MIN_QUERY_LEN = 2
 
 
 def _format_order_detail(
@@ -64,24 +64,12 @@ class AppConfig:
             "template_trade_client",
         )
         self.refresh_interval: int = app_cfg.get("refresh_interval", 15)
-        self.refresh_master_script: bool = app_cfg.get(
-            "refresh_master_script",
-            False,
-        )
-        self.reset_proxy_at_start: bool = app_cfg.get(
-            "reset_proxy_at_start",
-            False,
-        )
+        self.refresh_master_script: bool = app_cfg.get("refresh_master_script", False)
+        self.reset_proxy_at_start: bool = app_cfg.get("reset_proxy_at_start", False)
 
         cls_cfg = self.raw_cfg.get("close", {})
-        self.reentry_order_mode: str = cls_cfg.get(
-            "reentry_order_mode",
-            "FOREVER",
-        )
-        self.reentry_product_type: str = cls_cfg.get(
-            "reentry_product_type",
-            "CNC",
-        )
+        self.reentry_order_mode: str = cls_cfg.get("reentry_order_mode", "FOREVER")
+        self.reentry_product_type: str = cls_cfg.get("reentry_product_type", "CNC")
         self.clean_orphaned_super_orders: bool = cls_cfg.get(
             "clean_orphaned_super_orders",
             False,
@@ -102,8 +90,8 @@ class AppConfig:
         try:
             with self.path.open("rb") as config_file:
                 return tomllib.load(config_file)
-        except Exception as exc:
-            LOGGER.error("Could not load config from %s: %s", self.path, exc)
+        except (OSError, tomllib.TOMLDecodeError):
+            LOGGER.exception("Could not load config from %s", self.path)
             return {}
 
 
@@ -179,9 +167,7 @@ class DashboardService:
                     order.get("trigger_price"),
                 ),
             }
-            for order in self.trader.get_pending_orders(
-                self.config.pending_statuses,
-            )
+            for order in self.trader.get_pending_orders(self.config.pending_statuses)
         ]
 
     def _get_super_orders(self) -> list[dict]:
@@ -198,7 +184,6 @@ class DashboardService:
             detail = _format_order_detail(qty, price, trig)
             if leg and leg != "ENTRY_LEG":
                 detail += f" ({leg})"
-
             orders.append(
                 {
                     "symbol": symbol,
@@ -244,9 +229,7 @@ class DashboardService:
                     order.get("comparing_value"),
                 ),
             }
-            for order in self.trader.get_all_alerts(
-                self.config.alert_active_statuses,
-            )
+            for order in self.trader.get_all_alerts(self.config.alert_active_statuses)
         ]
 
 
@@ -260,7 +243,7 @@ class TradePortalApp:
         template_dir = Path(TEMPLATES_ROOT_DIR) / self.cfg.template_subdir
         self.templates = Jinja2Templates(directory=template_dir)
 
-        print("[*] Initializing DhanTrader...")
+        LOGGER.info("Initializing DhanTrader...")
         self.trader = DhanTrader(
             refresh_master_scrip=self.cfg.refresh_master_script,
             restart_proxy=self.cfg.reset_proxy_at_start,
@@ -271,264 +254,302 @@ class TradePortalApp:
         self._setup_routes()
 
     def _setup_routes(self) -> None:
-        @self.app.get("/", response_class=HTMLResponse)
-        async def dashboard(request: Request, view: str | None = None):
-            snapshot = self.dashboard.get_snapshot()
-            return self.templates.TemplateResponse(
-                "dashboard.html",
-                {
-                    "request": request,
-                    "positions": snapshot.positions,
-                    "total_positions": snapshot.total_positions,
-                    "active_orders": snapshot.active_orders,
-                    "total_orders": snapshot.total_orders,
-                    "funds": snapshot.funds,
-                    "refresh_interval": self.cfg.refresh_interval,
-                    "view": view,
-                },
-            )
+        router = APIRouter()
+        router.add_api_route(
+            "/",
+            self._dashboard,
+            methods=["GET"],
+            response_class=HTMLResponse,
+        )
+        router.add_api_route(
+            "/api/search_symbols",
+            self._search_symbols,
+            methods=["GET"],
+            response_class=JSONResponse,
+        )
+        router.add_api_route(
+            "/api/live_data",
+            self._live_data,
+            methods=["GET"],
+            response_class=JSONResponse,
+        )
+        router.add_api_route(
+            "/place_order",
+            self._place_order,
+            methods=["POST"],
+            response_class=RedirectResponse,
+        )
+        router.add_api_route(
+            "/close_reentry",
+            self._close_reentry,
+            methods=["POST"],
+            response_class=RedirectResponse,
+        )
+        router.add_api_route(
+            "/close_position",
+            self._close_position,
+            methods=["POST"],
+            response_class=RedirectResponse,
+        )
+        router.add_api_route(
+            "/cancel_order",
+            self._cancel_order,
+            methods=["POST"],
+            response_class=RedirectResponse,
+        )
+        router.add_api_route(
+            "/clean_orphaned",
+            self._clean_orphaned,
+            methods=["POST"],
+            response_class=RedirectResponse,
+        )
+        router.add_api_route(
+            "/cancel_all",
+            self._cancel_all,
+            methods=["POST"],
+            response_class=RedirectResponse,
+        )
+        self.app.include_router(router)
 
-        @self.app.get("/api/search_symbols")
-        async def search_symbols(q: str = Query("")):
-            q = (q or "").strip()
+    async def _dashboard(
+        self,
+        request: Request,
+        view: str | None = None,
+    ) -> HTMLResponse:
+        snapshot = self.dashboard.get_snapshot()
+        return self.templates.TemplateResponse(
+            "dashboard.html",
+            {
+                "request": request,
+                "positions": snapshot.positions,
+                "total_positions": snapshot.total_positions,
+                "active_orders": snapshot.active_orders,
+                "total_orders": snapshot.total_orders,
+                "funds": snapshot.funds,
+                "refresh_interval": self.cfg.refresh_interval,
+                "view": view,
+            },
+        )
 
-            if len(q) < 2:
-                return JSONResponse([])
+    async def _search_symbols(self, q: str = Query("")) -> JSONResponse:
+        q = (q or "").strip()
+        if len(q) < _MIN_QUERY_LEN:
+            return JSONResponse([])
 
-            try:
-                matches = self.trader.scrip.search_symbols(q, limit=30)
-                clean = []
+        try:
+            matches = self.trader.scrip.search_symbols(q, limit=30)
+            clean = []
 
-                for match in matches:
-                    strike_val = match.get("strike", 0)
+            for match in matches:
+                strike_val = match.get("strike", 0)
+                try:
+                    strike_val = float(strike_val)
+                except (ValueError, TypeError):
+                    strike_val = 0.0
 
-                    try:
-                        strike_val = float(strike_val)
-                    except (ValueError, TypeError):
-                        strike_val = 0.0
+                clean.append(
+                    {
+                        "display": str(match.get("display", "")),
+                        "symbol": str(match.get("symbol", "")),
+                        "inst_type": str(match.get("inst_type", "")),
+                        "strike": strike_val,
+                        "opt_type": str(match.get("opt_type", "")),
+                        "expiry": str(match.get("expiry", "")),
+                        "exch": str(match.get("exch", "")),
+                    },
+                )
+            return JSONResponse(content=jsonable_encoder(clean))
 
-                    clean.append(
-                        {
-                            "display": str(match.get("display", "")),
-                            "symbol": str(match.get("symbol", "")),
-                            "inst_type": str(match.get("inst_type", "")),
-                            "strike": strike_val,
-                            "opt_type": str(match.get("opt_type", "")),
-                            "expiry": str(match.get("expiry", "")),
-                            "exch": str(match.get("exch", "")),
-                        },
-                    )
+        except Exception:
+            LOGGER.exception("[search_symbols API ERROR] q=%s", q)
+            return JSONResponse([])
 
-                return JSONResponse(content=jsonable_encoder(clean))
+    async def _live_data(self) -> JSONResponse:
+        return JSONResponse(self.dashboard.get_snapshot().live_payload())
 
-            except Exception as exc:
-                LOGGER.error("[search_symbols API ERROR] q=%s err=%s", q, exc)
-                return JSONResponse([])
+    async def _place_order(
+        self,
+        symbol: str = Form(...),
+        exchange: str = Form("NSE"),
+        signal: str = Form(...),
+        qty: int = Form(1),
+        price: float = Form(0.0),
+        limit_price: float = Form(0.0),
+        order_mode: str = Form("MARKET"),
+        inst_type: str = Form(""),
+        alert_trigger_base: str = Form("PARENT"),
+        strike: float = Form(0.0),
+        expiry: str = Form(""),
+        opt_type: str = Form(""),
+        view: str | None = Query(None),
+    ) -> RedirectResponse:
+        overrides = UIOverride(
+            inst_type=inst_type,
+            strike=strike,
+            expiry=expiry,
+            trigger_price=price,
+            force_qty=True,
+            opt_type=opt_type,
+            limit_price=limit_price,
+        )
 
-        @self.app.get("/api/live_data")
-        async def live_data():
-            return JSONResponse(self.dashboard.get_snapshot().live_payload())
+        inst = self.trader.resolve_instrument(
+            symbol,
+            exchange,
+            signal,
+            qty,
+            price,
+            overrides=overrides,
+        )
+        if inst:
+            sec_id, lot_size = self.trader.lookup_with_fallback(inst)
+            if sec_id:
+                match order_mode:
+                    case "MARKET":
+                        self.trader.place_market_order(sec_id, lot_size, inst)
+                    case "SUPER":
+                        self.trader.place_super_order(sec_id, lot_size, inst)
+                    case "FOREVER":
+                        self.trader.place_trigger_forever_order(sec_id, lot_size, inst)
+                    case "ALERT":
+                        fno_sig = signal if alert_trigger_base == "PARENT" else None
+                        self.trader.place_trigger_alert_order(
+                            sec_id,
+                            lot_size,
+                            inst,
+                            fno_signal=fno_sig,
+                        )
+        else:
+            LOGGER.warning("Could not resolve %s %s", exchange, symbol)
 
-        @self.app.post("/place_order")
-        async def place_order(
-            symbol: str = Form(...),
-            exchange: str = Form("NSE"),
-            signal: str = Form(...),
-            qty: int = Form(1),
-            price: float = Form(0.0),
-            limit_price: float = Form(0.0),
-            order_mode: str = Form("MARKET"),
-            inst_type: str = Form(""),
-            alert_trigger_base: str = Form("PARENT"),
-            strike: float = Form(0.0),
-            expiry: str = Form(""),
-            opt_type: str = Form(""),
-            view: str | None = Query(None),
-        ):
+        redirect_url = "/?view=order" if view == "order" else "/"
+        return RedirectResponse(url=redirect_url, status_code=303)
+
+    async def _close_reentry(
+        self,
+        symbol: str = Form(...),
+        exchange: str = Form("NSE"),
+        sec_id: str = Form(...),
+        exchange_seg: str = Form(...),
+        net_qty: int = Form(...),
+        qty: int = Form(1),
+        reentry_price: float = Form(0.0),
+        reentry_limit_price: float = Form(0.0),
+        reentry_side: str = Form("BUY"),
+        inst_type: str = Form(""),
+        reentry_type: str = Form(""),
+        reentry_alert_base: str = Form("PARENT"),
+        strike: float = Form(0.0),
+        expiry: str = Form(""),
+        opt_type: str = Form(""),
+    ) -> RedirectResponse:
+        self.trader.close_position_by_secid(sec_id, exchange_seg, net_qty)
+
+        if self.cfg.clean_orphaned_super_orders:
+            await asyncio.sleep(1)
+            self.trader.clean_orphaned_orders()
+
+        if reentry_price > 0 or reentry_limit_price > 0:
             overrides = UIOverride(
                 inst_type=inst_type,
                 strike=strike,
                 expiry=expiry,
-                trigger_price=price,
+                trigger_price=reentry_price,
                 force_qty=True,
                 opt_type=opt_type,
-                limit_price=limit_price,
+                limit_price=reentry_limit_price,
             )
 
-            inst = self.trader.resolve_instrument(
+            inst_reentry = self.trader.resolve_instrument(
                 symbol,
                 exchange,
-                signal,
+                reentry_side,
                 qty,
-                price,
+                reentry_price,
                 overrides=overrides,
             )
 
-            if inst:
-                sec_id, lot_size = self.trader.lookup_with_fallback(inst)
-                if sec_id:
-                    match order_mode:
-                        case "MARKET":
-                            self.trader.place_market_order(sec_id, lot_size, inst)
-                        case "SUPER":
-                            self.trader.place_super_order(sec_id, lot_size, inst)
+            if inst_reentry:
+                new_sec_id, lot_size = self.trader.lookup_with_fallback(inst_reentry)
+                if new_sec_id:
+                    mode_to_use = reentry_type or self.cfg.reentry_order_mode
+                    match mode_to_use:
                         case "FOREVER":
                             self.trader.place_trigger_forever_order(
-                                sec_id,
+                                new_sec_id,
                                 lot_size,
-                                inst,
+                                inst_reentry,
+                            )
+                        case "SUPER":
+                            self.trader.place_super_order(
+                                new_sec_id,
+                                lot_size,
+                                inst_reentry,
                             )
                         case "ALERT":
-                            fno_sig = signal if alert_trigger_base == "PARENT" else None
+                            fno_sig = (
+                                reentry_side if reentry_alert_base == "PARENT" else None
+                            )
                             self.trader.place_trigger_alert_order(
-                                sec_id,
+                                new_sec_id,
                                 lot_size,
-                                inst,
+                                inst_reentry,
                                 fno_signal=fno_sig,
                             )
-            else:
-                LOGGER.warning("Could not resolve %s %s", exchange, symbol)
+                        case _:
+                            self.trader.place_simple_order(
+                                new_sec_id,
+                                lot_size,
+                                inst_reentry,
+                            )
 
-            redirect_url = "/?view=order" if view == "order" else "/"
-            return RedirectResponse(url=redirect_url, status_code=303)
+        return RedirectResponse(url="/", status_code=303)
 
-        @self.app.post("/close_reentry")
-        async def close_reentry(
-            symbol: str = Form(...),
-            exchange: str = Form("NSE"),
-            sec_id: str = Form(...),
-            exchange_seg: str = Form(...),
-            net_qty: int = Form(...),
-            qty: int = Form(1),
-            reentry_price: float = Form(0.0),
-            reentry_limit_price: float = Form(0.0),
-            reentry_side: str = Form("BUY"),
-            inst_type: str = Form(""),
-            reentry_type: str = Form(""),
-            reentry_alert_base: str = Form("PARENT"),
-            strike: float = Form(0.0),
-            expiry: str = Form(""),
-            opt_type: str = Form(""),
-        ):
-            self.trader.close_position_by_secid(sec_id, exchange_seg, net_qty)
-
-            if self.cfg.clean_orphaned_super_orders:
-                await asyncio.sleep(1)
-                self.trader.clean_orphaned_orders()
-
-            if reentry_price > 0 or reentry_limit_price > 0:
-                overrides = UIOverride(
-                    inst_type=inst_type,
-                    strike=strike,
-                    expiry=expiry,
-                    trigger_price=reentry_price,
-                    force_qty=True,
-                    opt_type=opt_type,
-                    limit_price=reentry_limit_price,
-                )
-
-                inst_reentry = self.trader.resolve_instrument(
-                    symbol,
-                    exchange,
-                    reentry_side,
-                    qty,
-                    reentry_price,
-                    overrides=overrides,
-                )
-
-                if inst_reentry:
-                    new_sec_id, lot_size = self.trader.lookup_with_fallback(
-                        inst_reentry,
-                    )
-                    if new_sec_id:
-                        mode_to_use = reentry_type or self.cfg.reentry_order_mode
-                        match mode_to_use:
-                            case "FOREVER":
-                                self.trader.place_trigger_forever_order(
-                                    new_sec_id,
-                                    lot_size,
-                                    inst_reentry,
-                                )
-                            case "SUPER":
-                                self.trader.place_super_order(
-                                    new_sec_id,
-                                    lot_size,
-                                    inst_reentry,
-                                )
-                            case "ALERT":
-                                fno_sig = (
-                                    reentry_side
-                                    if reentry_alert_base == "PARENT"
-                                    else None
-                                )
-                                self.trader.place_trigger_alert_order(
-                                    new_sec_id,
-                                    lot_size,
-                                    inst_reentry,
-                                    fno_signal=fno_sig,
-                                )
-                            case _:
-                                self.trader.place_simple_order(
-                                    new_sec_id,
-                                    lot_size,
-                                    inst_reentry,
-                                )
-
-            return RedirectResponse(url="/", status_code=303)
-
-        @self.app.post("/close_position")
-        async def close_position(
-            sec_id: str = Form(...),
-            exchange_seg: str = Form(...),
-            net_qty: int = Form(...),
-        ):
-            self.trader.close_position_by_secid(sec_id, exchange_seg, net_qty)
-            if self.cfg.clean_orphaned_super_orders:
-                await asyncio.sleep(1)
-                self.trader.clean_orphaned_orders()
-
-            return RedirectResponse(url="/", status_code=303)
-
-        @self.app.post("/cancel_order")
-        async def cancel_order(
-            order_id: str = Form(...),
-            order_type: str = Form(...),
-            leg: str = Form("ENTRY_LEG"),
-        ):
-            match order_type:
-                case "SUPER":
-                    self.trader.cancel_super_order(order_id, leg)
-                case "FOREVER":
-                    self.trader.cancel_forever_order(order_id)
-                case "ALERT":
-                    self.trader.cancel_alert_order(order_id)
-                case _:
-                    self.trader.cancel_normal_order(order_id)
-
-            return RedirectResponse(url="/", status_code=303)
-
-        @self.app.post("/clean_orphaned")
-        async def clean_orphaned():
+    async def _close_position(
+        self,
+        sec_id: str = Form(...),
+        exchange_seg: str = Form(...),
+        net_qty: int = Form(...),
+    ) -> RedirectResponse:
+        self.trader.close_position_by_secid(sec_id, exchange_seg, net_qty)
+        if self.cfg.clean_orphaned_super_orders:
+            await asyncio.sleep(1)
             self.trader.clean_orphaned_orders()
-            return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url="/", status_code=303)
 
-        @self.app.post("/cancel_all")
-        async def cancel_all():
-            for o in self.trader.get_pending_orders(self.cfg.pending_statuses):
-                self.trader.cancel_normal_order(o["order_id"])
+    async def _cancel_order(
+        self,
+        order_id: str = Form(...),
+        order_type: str = Form(...),
+        leg: str = Form("ENTRY_LEG"),
+    ) -> RedirectResponse:
+        match order_type:
+            case "SUPER":
+                self.trader.cancel_super_order(order_id, leg)
+            case "FOREVER":
+                self.trader.cancel_forever_order(order_id)
+            case "ALERT":
+                self.trader.cancel_alert_order(order_id)
+            case _:
+                self.trader.cancel_normal_order(order_id)
+        return RedirectResponse(url="/", status_code=303)
 
-            for _, oid, leg, *_ in self.trader.get_active_super_orders():
-                self.trader.cancel_super_order(oid, leg)
+    async def _clean_orphaned(self) -> RedirectResponse:
+        self.trader.clean_orphaned_orders()
+        return RedirectResponse(url="/", status_code=303)
 
-            for o in self.trader.get_forever_orders(self.cfg.forever_active_statuses):
-                self.trader.cancel_forever_order(o["order_id"])
+    async def _cancel_all(self) -> RedirectResponse:
+        for o in self.trader.get_pending_orders(self.cfg.pending_statuses):
+            self.trader.cancel_normal_order(o["order_id"])
+        for _, oid, leg, *_ in self.trader.get_active_super_orders():
+            self.trader.cancel_super_order(oid, leg)
+        for o in self.trader.get_forever_orders(self.cfg.forever_active_statuses):
+            self.trader.cancel_forever_order(o["order_id"])
+        for o in self.trader.get_all_alerts(self.cfg.alert_active_statuses):
+            self.trader.cancel_alert_order(o["order_id"])
+        return RedirectResponse(url="/", status_code=303)
 
-            for o in self.trader.get_all_alerts(self.cfg.alert_active_statuses):
-                self.trader.cancel_alert_order(o["order_id"])
-
-            return RedirectResponse(url="/", status_code=303)
-
-    def run(self):
+    def run(self) -> None:
         uvicorn.run(
             self.app,
             host=self.cfg.host,
