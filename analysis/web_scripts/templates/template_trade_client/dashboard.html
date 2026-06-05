@@ -333,7 +333,8 @@
             <tr>
               <th style="width:36px">#</th>
               <th class="sortable" onclick="window.UI.sortTable('table-closed', 1, false)">Symbol</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-closed', 2, true)">Realized PnL</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-closed', 2, true)">Qty</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-closed', 3, true)">Realized PnL</th>
             </tr>
           </thead>
           <tbody>
@@ -342,6 +343,9 @@
               <td>{{ loop.index }}</td>
               <td>
                 <span class="symbol-badge">{{ pos.display_name }}</span>
+              </td>
+              <td>
+                <span id="buyqty-{{ pos.security_id }}">{{ pos.buyqty }}</span>
               </td>
               <td>
                 <span id="pnl-{{ pos.security_id }}" class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">

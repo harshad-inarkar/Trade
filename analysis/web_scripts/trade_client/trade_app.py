@@ -39,6 +39,8 @@ class SymbolSearchItem(BaseModel):
 class PositionData(BaseModel):
     pnl: float
     qty: int
+    buyqty: int
+    sellqty: int
     display_name: str
     exchange_seg: str
 
@@ -156,6 +158,8 @@ class DashboardSnapshot:
                 "qty": position.get("qty", 0),
                 "display_name": position.get("display_name", ""),
                 "exchange_seg": position.get("exchange_seg", ""),
+                "buyqty": position.get("buyQty", 0),
+                "sellqty": position.get("sellQty", 0),
             }
 
         for position in self.closed_positions:
@@ -167,6 +171,8 @@ class DashboardSnapshot:
                 "qty": position.get("qty", 0),
                 "display_name": position.get("display_name", ""),
                 "exchange_seg": position.get("exchange_seg", ""),
+                "buyqty": position.get("buyQty", 0),
+                "sellqty": position.get("sellQty", 0),
             }
 
         return {

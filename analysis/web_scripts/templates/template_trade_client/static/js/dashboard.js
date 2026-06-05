@@ -273,6 +273,11 @@ class LiveDashboard {
                     qtyEl.textContent = Math.abs(parseInt(pos.qty, 10) || 0);
                 }
 
+                const buyQtyEl = document.getElementById('buyqty-' + sec_id);
+                if (buyQtyEl && pos.buyqty !== undefined) {
+                    buyQtyEl.textContent = parseInt(pos.buyqty, 10) || 0;
+                }
+
                 const sideEl = document.getElementById('side-' + sec_id);
                 if (sideEl) {
                     const q = parseInt(pos.qty, 10) || 0;

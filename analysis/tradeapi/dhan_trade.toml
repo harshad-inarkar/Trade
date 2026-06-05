@@ -1,5 +1,8 @@
 # dhan_trade.toml — Execution Engine Configuration
 
+[settings]
+log_level = ""
+
 [urls]
 order         = "https://api.dhan.co/v2/orders"
 positions     = "https://api.dhan.co/v2/positions"

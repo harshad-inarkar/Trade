@@ -2,6 +2,7 @@
 
 import logging
 import math
+import sys
 from dataclasses import dataclass
 from enum import Enum
 from http import HTTPStatus
@@ -25,7 +26,7 @@ BASE_DIR = Path(__file__).parent
 SYMBOLS_CONFIG = BASE_DIR / "symbols_config.toml"
 ACCESS_FILE_PATH = BASE_DIR / "access_token.toml"
 API_CONFIG_PATH = BASE_DIR / "dhan_trade.toml"
-REQUEST_TIMEOUT_SECONDS = 10
+REQUEST_TIMEOUT_SECONDS = 3
 
 
 class PriceCondition(Enum):
@@ -147,6 +148,7 @@ class SymbolsConfig:
 
 class DhanAPIConfig:
     def __init__(self, path: Path):
+        self.settings: dict[str, str] = {}
         self.urls: dict[str, str] = {}
         self.segments: dict[str, list[str]] = {}
         self.opt_segments: frozenset[str] = frozenset()
@@ -167,6 +169,7 @@ class DhanAPIConfig:
             LOGGER.exception("Failed parsing Dhan API config at %s", path)
             return
 
+        self.settings = data.get("settings", {})
         self.urls = data.get("urls", {})
         self.segments = data.get("segments", {})
         self.opt_segments = frozenset(self.segments.get("opt_segments", []))
@@ -187,6 +190,8 @@ class DhanTrader:
         self.api_cfg = DhanAPIConfig(API_CONFIG_PATH)
         self.cfg = SymbolsConfig(symb_config)
         self.cfg.refresh()
+
+        self._set_logging()
 
         self._defaults_config: MappingProxyType = MappingProxyType(
             {
@@ -224,6 +229,18 @@ class DhanTrader:
         self.target_perc = self.cfg.get("target_perc", 4.0)
         self.stop_loss_perc = self.cfg.get("stop_loss_perc", 0.7)
         self.stop_trail_perc = self.cfg.get("stop_trail_perc", 0.5)
+
+    def _set_logging(self) -> None:
+        log_level = self.api_cfg.settings.get("log_level", "")
+        if bool(log_level):
+            numeric_level = logging.getLevelNamesMapping().get(
+                log_level.upper(), logging.INFO
+            )
+            logging.basicConfig(
+                level=numeric_level,
+                format="[%(levelname)s] %(message)s",
+                handlers=[logging.StreamHandler(sys.stdout)],
+            )
 
     def _apply_proxy(self) -> None:
         try:
@@ -886,6 +903,8 @@ class DhanTrader:
             aggregated[sec_id]["buyQty"] += int(pos.get("buyQty", 0))
             aggregated[sec_id]["sellQty"] += int(pos.get("sellQty", 0))
 
+        # LOGGER.debug(f"All Positions:\n{aggregated}")
+
         active = []
         closed = []
 
@@ -900,6 +919,9 @@ class DhanTrader:
                 "exchange_seg": agg["exchange_seg"],
                 "exchange": agg["exchange"],
                 "qty": qty,
+                "buyQty": agg["buyQty"],
+                "sellQty": agg["sellQty"],
+                "pnl": 0.0,
             }
 
             if qty != 0:
@@ -1229,3 +1251,9 @@ class DhanTrader:
             LOGGER.info("Symbols: %s", cancelled)
         else:
             LOGGER.info("Cleanup Complete. No orphaned orders found.")
+
+
+# INSERT_YOUR_CODE
+if __name__ == "__main__":
+    trader = DhanTrader()
+    trader.get_positions()
