@@ -7,7 +7,7 @@
 host      = "127.0.0.1"
 port      = 8000
 reload    = false          # Set to false to prevent double-loading
-log_level = "debug"         # debug | info | warning | error | critical
+log_level = ""         # debug | info | warning | error | critical
 
 # ── App-level settings ────────────────────────────────────────────────────────
 [app]

@@ -86,7 +86,9 @@ class AppConfig:
         self.host: str = srv.get("host", "127.0.0.1")
         self.port: int = srv.get("port", 8000)
         self.reload: bool = srv.get("reload", False)
-        self.log_level: str = srv.get("log_level", "info")
+        self.log_level: str = srv.get("log_level", "")
+        if not self.log_level:
+            self.log_level = "critical"
 
         app_cfg = self.raw_cfg.get("app", {})
         self.title: str = app_cfg.get("title", "Dhan Trading Portal")
@@ -158,8 +160,8 @@ class DashboardSnapshot:
                 "qty": position.get("qty", 0),
                 "display_name": position.get("display_name", ""),
                 "exchange_seg": position.get("exchange_seg", ""),
-                "buyqty": position.get("buyQty", 0),
-                "sellqty": position.get("sellQty", 0),
+                "buyqty": position.get("buyqty", 0),
+                "sellqty": position.get("sellqty", 0),
             }
 
         for position in self.closed_positions:
@@ -171,8 +173,8 @@ class DashboardSnapshot:
                 "qty": position.get("qty", 0),
                 "display_name": position.get("display_name", ""),
                 "exchange_seg": position.get("exchange_seg", ""),
-                "buyqty": position.get("buyQty", 0),
-                "sellqty": position.get("sellQty", 0),
+                "buyqty": position.get("buyqty", 0),
+                "sellqty": position.get("sellqty", 0),
             }
 
         return {

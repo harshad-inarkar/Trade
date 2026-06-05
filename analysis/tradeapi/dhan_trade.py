@@ -186,12 +186,13 @@ class DhanTrader:
         *,
         refresh_master_scrip: bool = False,
         restart_proxy: bool = False,
+        log_level: str = "",
     ):
         self.api_cfg = DhanAPIConfig(API_CONFIG_PATH)
         self.cfg = SymbolsConfig(symb_config)
         self.cfg.refresh()
 
-        self._set_logging()
+        self._set_logging(log_level)
 
         self._defaults_config: MappingProxyType = MappingProxyType(
             {
@@ -230,11 +231,13 @@ class DhanTrader:
         self.stop_loss_perc = self.cfg.get("stop_loss_perc", 0.7)
         self.stop_trail_perc = self.cfg.get("stop_trail_perc", 0.5)
 
-    def _set_logging(self) -> None:
-        log_level = self.api_cfg.settings.get("log_level", "")
+    def _set_logging(self, log_level: str = "") -> None:
+
+        cfg_log_level = self.api_cfg.settings.get("log_level", "")
+        log_level = log_level or cfg_log_level
         if bool(log_level):
             numeric_level = logging.getLevelNamesMapping().get(
-                log_level.upper(), logging.INFO
+                log_level.upper(), logging.CRITICAL
             )
             logging.basicConfig(
                 level=numeric_level,
@@ -894,16 +897,17 @@ class DhanTrader:
                 }
 
             aggregated[sec_id]["realizedProfit"] += float(
-                pos.get("realizedProfit", 0.0),
+                pos.get("realizedProfit", 0.0)
             )
             aggregated[sec_id]["unrealizedProfit"] += float(
-                pos.get("unrealizedProfit", 0.0),
-            )
+                pos.get("unrealizedProfit", 0.0)
+            ) * float(pos.get("multiplier", 1.0))
+
             aggregated[sec_id]["netQty"] += int(pos.get("netQty", 0))
             aggregated[sec_id]["buyQty"] += int(pos.get("buyQty", 0))
             aggregated[sec_id]["sellQty"] += int(pos.get("sellQty", 0))
 
-        # LOGGER.debug(f"All Positions:\n{aggregated}")
+        LOGGER.debug("All Positions:\n%s", resp_data)
 
         active = []
         closed = []
@@ -919,8 +923,8 @@ class DhanTrader:
                 "exchange_seg": agg["exchange_seg"],
                 "exchange": agg["exchange"],
                 "qty": qty,
-                "buyQty": agg["buyQty"],
-                "sellQty": agg["sellQty"],
+                "buyqty": agg["buyQty"],
+                "sellqty": agg["sellQty"],
                 "pnl": 0.0,
             }
 
@@ -1255,5 +1259,5 @@ class DhanTrader:
 
 # INSERT_YOUR_CODE
 if __name__ == "__main__":
-    trader = DhanTrader()
+    trader = DhanTrader(log_level="debug")
     trader.get_positions()
