@@ -285,6 +285,26 @@ class LiveDashboard {
                     sideEl.textContent = side;
                     sideEl.className = 'box-side box-' + side;
                 }
+
+                // Dynamically update Entry Price and LTP (Active)
+                const entryEl = document.getElementById('entry-' + sec_id);
+                if (entryEl && pos.entry_price !== undefined) {
+                    entryEl.textContent = this.formatCurrency(pos.entry_price);
+                }
+                const ltpEl = document.getElementById('ltp-' + sec_id);
+                if (ltpEl && pos.ltp !== undefined) {
+                    ltpEl.textContent = this.formatCurrency(pos.ltp);
+                }
+
+                // Dynamically update Buy Avg and Sell Avg (Closed)
+                const buyAvgEl = document.getElementById('buyavg-' + sec_id);
+                if (buyAvgEl && pos.buy_avg !== undefined) {
+                    buyAvgEl.textContent = this.formatCurrency(pos.buy_avg);
+                }
+                const sellAvgEl = document.getElementById('sellavg-' + sec_id);
+                if (sellAvgEl && pos.sell_avg !== undefined) {
+                    sellAvgEl.textContent = this.formatCurrency(pos.sell_avg);
+                }
             }
         } catch (e) {
             console.warn('[live_data] fetch failed:', e);

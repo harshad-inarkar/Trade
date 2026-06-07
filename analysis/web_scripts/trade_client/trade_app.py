@@ -41,6 +41,10 @@ class PositionData(BaseModel):
     qty: int
     buyqty: int
     sellqty: int
+    entry_price: float = 0.0
+    ltp: float = 0.0
+    buy_avg: float = 0.0
+    sell_avg: float = 0.0
     display_name: str
     exchange_seg: str
 
@@ -162,6 +166,10 @@ class DashboardSnapshot:
                 "exchange_seg": position.get("exchange_seg", ""),
                 "buyqty": position.get("buyqty", 0),
                 "sellqty": position.get("sellqty", 0),
+                "entry_price": position.get("entry_price", 0.0),
+                "ltp": position.get("ltp", 0.0),
+                "buy_avg": position.get("buy_avg", 0.0),
+                "sell_avg": position.get("sell_avg", 0.0),
             }
 
         for position in self.closed_positions:

@@ -184,7 +184,9 @@
               <th class="sortable" onclick="window.UI.sortTable('table-active', 1, false)">Symbol</th>
               <th class="sortable" onclick="window.UI.sortTable('table-active', 2, false)">Side</th>
               <th class="sortable" onclick="window.UI.sortTable('table-active', 3, true)">Qty</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-active', 4, true)">PnL</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-active', 4, true)">Entry Price</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-active', 5, true)">LTP</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-active', 6, true)">PnL</th>
               <th style="text-align: right;">Action</th>
             </tr>
           </thead>
@@ -205,6 +207,12 @@
                 style="font-family: var(--mono); font-size: .8rem;"
               >
                 {{ qty_num | abs }}
+              </td>
+              <td id="entry-{{ pos.security_id }}" style="font-family: var(--mono); font-size: .8rem;">
+                {{ "{:,.2f}".format(pos.entry_price | default(0)) }}
+              </td>
+              <td id="ltp-{{ pos.security_id }}" style="font-family: var(--mono); font-size: .8rem;">
+                {{ "{:,.2f}".format(pos.ltp | default(0)) }}
               </td>
               <td>
                 <span id="pnl-{{ pos.security_id }}" class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
@@ -334,7 +342,9 @@
               <th style="width:36px">#</th>
               <th class="sortable" onclick="window.UI.sortTable('table-closed', 1, false)">Symbol</th>
               <th class="sortable" onclick="window.UI.sortTable('table-closed', 2, true)">Qty</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-closed', 3, true)">Realized PnL</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-closed', 3, true)">Buy Avg</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-closed', 4, true)">Sell Avg</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-closed', 5, true)">Realized PnL</th>
             </tr>
           </thead>
           <tbody>
@@ -346,6 +356,12 @@
               </td>
               <td>
                 <span id="buyqty-{{ pos.security_id }}">{{ pos.buyqty }}</span>
+              </td>
+              <td id="buyavg-{{ pos.security_id }}" style="font-family: var(--mono); font-size: .8rem;">
+                {{ "{:,.2f}".format(pos.buy_avg | default(0)) }}
+              </td>
+              <td id="sellavg-{{ pos.security_id }}" style="font-family: var(--mono); font-size: .8rem;">
+                {{ "{:,.2f}".format(pos.sell_avg | default(0)) }}
               </td>
               <td>
                 <span id="pnl-{{ pos.security_id }}" class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">

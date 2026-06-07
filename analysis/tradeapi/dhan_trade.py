@@ -889,11 +889,14 @@ class DhanTrader:
                     "security_id": sec_id,
                     "exchange_seg": pos.get("exchangeSegment", "NSE_EQ"),
                     "exchange": exch,
+                    "multiplier": float(pos.get("multiplier", 1.0)),
                     "realizedProfit": 0.0,
                     "unrealizedProfit": 0.0,
                     "netQty": 0,
                     "buyQty": 0,
                     "sellQty": 0,
+                    "totBuyVal": 0.0,
+                    "totSellVal": 0.0,
                 }
 
             aggregated[sec_id]["realizedProfit"] += float(
@@ -906,6 +909,13 @@ class DhanTrader:
             aggregated[sec_id]["netQty"] += int(pos.get("netQty", 0))
             aggregated[sec_id]["buyQty"] += int(pos.get("buyQty", 0))
             aggregated[sec_id]["sellQty"] += int(pos.get("sellQty", 0))
+
+            aggregated[sec_id]["totBuyVal"] += float(pos.get("buyAvg", 0)) * int(
+                pos.get("buyQty", 0)
+            )
+            aggregated[sec_id]["totSellVal"] += float(pos.get("sellAvg", 0)) * int(
+                pos.get("sellQty", 0)
+            )
 
         LOGGER.debug("All Positions:\n%s", resp_data)
 
@@ -926,15 +936,61 @@ class DhanTrader:
                 "buyqty": agg["buyQty"],
                 "sellqty": agg["sellQty"],
                 "pnl": 0.0,
+                "entry_price": 0.0,
+                "ltp": 0.0,
             }
 
             if qty != 0:
                 # Active position shows strictly Unrealized PnL
-                entry["pnl"] = agg["unrealizedProfit"]
+                unrealisedprofit = agg["unrealizedProfit"]
+                entry["pnl"] = unrealisedprofit
+
+                rpqty = agg["sellQty"] if qty > 0 else agg["buyQty"]
+                realisedprofit = agg["realizedProfit"]
+                buyavg = (
+                    (agg["totBuyVal"] / agg["buyQty"]) if agg["buyQty"] > 0 else 0.0
+                )
+                sellavg = (
+                    (agg["totSellVal"] / agg["sellQty"]) if agg["sellQty"] > 0 else 0.0
+                )
+
+                if qty > 0:
+                    rpbuyavg = (
+                        sellavg * rpqty - realisedprofit / agg["multiplier"]
+                    ) / rpqty
+                    buy_entry_price = (
+                        (buyavg * agg["buyQty"]) - (rpbuyavg * rpqty)
+                    ) / qty
+                    sell_ltp = (
+                        unrealisedprofit / agg["multiplier"] + (buy_entry_price * qty)
+                    ) / qty
+                    entry["entry_price"] = buy_entry_price
+                    entry["ltp"] = sell_ltp
+                else:
+                    absqty = abs(qty)
+                    rpsellavg = (
+                        buyavg * rpqty + realisedprofit / agg["multiplier"]
+                    ) / rpqty
+                    sell_entry_price = (
+                        sellavg * agg["sellQty"] - rpsellavg * rpqty
+                    ) / absqty
+                    buy_ltp = (
+                        sell_entry_price * absqty - unrealisedprofit / agg["multiplier"]
+                    ) / absqty
+
+                    entry["entry_price"] = sell_entry_price
+                    entry["ltp"] = buy_ltp
+
                 active.append(entry)
             elif agg["buyQty"] > 0 or agg["sellQty"] > 0:
                 # Closed position shows strictly Realized PnL
                 entry["pnl"] = agg["realizedProfit"]
+                entry["buy_avg"] = (
+                    (agg["totBuyVal"] / agg["buyQty"]) if agg["buyQty"] > 0 else 0.0
+                )
+                entry["sell_avg"] = (
+                    (agg["totSellVal"] / agg["sellQty"]) if agg["sellQty"] > 0 else 0.0
+                )
                 closed.append(entry)
 
         return active, closed
