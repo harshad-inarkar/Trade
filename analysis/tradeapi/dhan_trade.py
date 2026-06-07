@@ -936,10 +936,7 @@ class DhanTrader:
 
             if qty != 0:
                 mult = agg["multiplier"]
-
-                # Combine Realized + Unrealized for total daily PnL so the
-                # table doesn't drop to 0 on partial exits
-                entry["pnl"] = agg["realizedProfit"] + agg["unrealizedProfit"]
+                entry["pnl"] = agg["unrealizedProfit"]
 
                 # Optimized Net Cash Flow approach (avoids ZeroDivisionError entirely)
                 if qty > 0:
