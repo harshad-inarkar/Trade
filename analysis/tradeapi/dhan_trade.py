@@ -854,6 +854,48 @@ class DhanTrader:
             return 0.0
         return float(data.get("availabelBalance", data.get("availableBalance", 0.0)))
 
+    def _aggregate_positions(self, resp_data: list[dict]) -> dict:
+        aggregated = {}
+        for pos in resp_data:
+            if not pos.get("tradingSymbol"):
+                continue
+
+            sec_id = str(pos.get("securityId", ""))
+            if sec_id not in aggregated:
+                trade_sym = pos.get("tradingSymbol", "")
+                exch = pos.get("exchangeSegment", "NSE_EQ").split("_")[0]
+
+                aggregated[sec_id] = {
+                    "display_name": self.scrip.get_symbol_name(sec_id, trade_sym),
+                    "base_symbol": self.scrip.get_base_symbol(sec_id, trade_sym),
+                    "security_id": sec_id,
+                    "exchange_seg": pos.get("exchangeSegment", "NSE_EQ"),
+                    "exchange": exch,
+                    "multiplier": float(pos.get("multiplier", 1.0)),
+                    "realizedProfit": 0.0,
+                    "unrealizedProfit": 0.0,
+                    "netQty": 0,
+                    "buyQty": 0,
+                    "sellQty": 0,
+                    "totBuyVal": 0.0,
+                    "totSellVal": 0.0,
+                }
+
+            agg = aggregated[sec_id]
+            mult = float(pos.get("multiplier", 1.0))
+
+            agg["realizedProfit"] += float(pos.get("realizedProfit", 0.0))
+            agg["unrealizedProfit"] += float(pos.get("unrealizedProfit", 0.0)) * mult
+            agg["netQty"] += int(pos.get("netQty", 0))
+            agg["buyQty"] += int(pos.get("buyQty", 0))
+            agg["sellQty"] += int(pos.get("sellQty", 0))
+            agg["totBuyVal"] += float(pos.get("buyAvg", 0)) * int(pos.get("buyQty", 0))
+            agg["totSellVal"] += float(pos.get("sellAvg", 0)) * int(
+                pos.get("sellQty", 0)
+            )
+
+        return aggregated
+
     def get_positions(self) -> tuple[list[dict], list[dict]]:
         """Returns isolated lists of Active and Closed positions with true net PnL."""
         resp = self._request_with_retry(
@@ -869,63 +911,15 @@ class DhanTrader:
         except ValueError:
             return [], []
 
-        # 1. Aggregate positions by securityId to club INTRADAY and NORMAL together
-        aggregated = {}
-        for pos in resp_data:
-            if not pos.get("tradingSymbol"):
-                continue
-
-            sec_id = str(pos.get("securityId", ""))
-
-            if sec_id not in aggregated:
-                trade_sym = pos.get("tradingSymbol", "")
-                display_sym = self.scrip.get_symbol_name(sec_id, trade_sym)
-                base_sym = self.scrip.get_base_symbol(sec_id, trade_sym)
-                exch = pos.get("exchangeSegment", "NSE_EQ").split("_")[0]
-
-                aggregated[sec_id] = {
-                    "display_name": display_sym,
-                    "base_symbol": base_sym,
-                    "security_id": sec_id,
-                    "exchange_seg": pos.get("exchangeSegment", "NSE_EQ"),
-                    "exchange": exch,
-                    "multiplier": float(pos.get("multiplier", 1.0)),
-                    "realizedProfit": 0.0,
-                    "unrealizedProfit": 0.0,
-                    "netQty": 0,
-                    "buyQty": 0,
-                    "sellQty": 0,
-                    "totBuyVal": 0.0,
-                    "totSellVal": 0.0,
-                }
-
-            aggregated[sec_id]["realizedProfit"] += float(
-                pos.get("realizedProfit", 0.0)
-            )
-            aggregated[sec_id]["unrealizedProfit"] += float(
-                pos.get("unrealizedProfit", 0.0)
-            ) * float(pos.get("multiplier", 1.0))
-
-            aggregated[sec_id]["netQty"] += int(pos.get("netQty", 0))
-            aggregated[sec_id]["buyQty"] += int(pos.get("buyQty", 0))
-            aggregated[sec_id]["sellQty"] += int(pos.get("sellQty", 0))
-
-            aggregated[sec_id]["totBuyVal"] += float(pos.get("buyAvg", 0)) * int(
-                pos.get("buyQty", 0)
-            )
-            aggregated[sec_id]["totSellVal"] += float(pos.get("sellAvg", 0)) * int(
-                pos.get("sellQty", 0)
-            )
+        aggregated = self._aggregate_positions(resp_data)
 
         LOGGER.debug("All Positions:\n%s", resp_data)
 
         active = []
         closed = []
 
-        # 2. Separate into Active and Closed
         for agg in aggregated.values():
             qty = agg["netQty"]
-
             entry = {
                 "display_name": agg["display_name"],
                 "base_symbol": agg["base_symbol"],
@@ -941,49 +935,38 @@ class DhanTrader:
             }
 
             if qty != 0:
-                # Active position shows strictly Unrealized PnL
-                unrealisedprofit = agg["unrealizedProfit"]
-                entry["pnl"] = unrealisedprofit
+                mult = agg["multiplier"]
 
-                rpqty = agg["sellQty"] if qty > 0 else agg["buyQty"]
-                realisedprofit = agg["realizedProfit"]
-                buyavg = (
-                    (agg["totBuyVal"] / agg["buyQty"]) if agg["buyQty"] > 0 else 0.0
-                )
-                sellavg = (
-                    (agg["totSellVal"] / agg["sellQty"]) if agg["sellQty"] > 0 else 0.0
-                )
+                # Combine Realized + Unrealized for total daily PnL so the
+                # table doesn't drop to 0 on partial exits
+                entry["pnl"] = agg["realizedProfit"] + agg["unrealizedProfit"]
 
+                # Optimized Net Cash Flow approach (avoids ZeroDivisionError entirely)
                 if qty > 0:
-                    rpbuyavg = (
-                        sellavg * rpqty - realisedprofit / agg["multiplier"]
-                    ) / rpqty
-                    buy_entry_price = (
-                        (buyavg * agg["buyQty"]) - (rpbuyavg * rpqty)
-                    ) / qty
-                    sell_ltp = (
-                        unrealisedprofit / agg["multiplier"] + (buy_entry_price * qty)
-                    ) / qty
-                    entry["entry_price"] = buy_entry_price
-                    entry["ltp"] = sell_ltp
+                    active_cost = (
+                        agg["totBuyVal"]
+                        - agg["totSellVal"]
+                        + (agg["realizedProfit"] / mult)
+                    )
+                    entry["entry_price"] = active_cost / qty
+                    entry["ltp"] = entry["entry_price"] + (
+                        agg["unrealizedProfit"] / (qty * mult)
+                    )
                 else:
-                    absqty = abs(qty)
-                    rpsellavg = (
-                        buyavg * rpqty + realisedprofit / agg["multiplier"]
-                    ) / rpqty
-                    sell_entry_price = (
-                        sellavg * agg["sellQty"] - rpsellavg * rpqty
-                    ) / absqty
-                    buy_ltp = (
-                        sell_entry_price * absqty - unrealisedprofit / agg["multiplier"]
-                    ) / absqty
-
-                    entry["entry_price"] = sell_entry_price
-                    entry["ltp"] = buy_ltp
+                    abs_qty = abs(qty)
+                    active_cost = (
+                        agg["totSellVal"]
+                        - agg["totBuyVal"]
+                        - (agg["realizedProfit"] / mult)
+                    )
+                    entry["entry_price"] = active_cost / abs_qty
+                    entry["ltp"] = entry["entry_price"] - (
+                        agg["unrealizedProfit"] / (abs_qty * mult)
+                    )
 
                 active.append(entry)
+
             elif agg["buyQty"] > 0 or agg["sellQty"] > 0:
-                # Closed position shows strictly Realized PnL
                 entry["pnl"] = agg["realizedProfit"]
                 entry["buy_avg"] = (
                     (agg["totBuyVal"] / agg["buyQty"]) if agg["buyQty"] > 0 else 0.0
