@@ -183,6 +183,8 @@ class DashboardSnapshot:
                 "exchange_seg": position.get("exchange_seg", ""),
                 "buyqty": position.get("buyqty", 0),
                 "sellqty": position.get("sellqty", 0),
+                "buy_avg": position.get("buy_avg", 0.0),
+                "sell_avg": position.get("sell_avg", 0.0),
             }
 
         return {

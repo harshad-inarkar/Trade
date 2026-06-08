@@ -926,7 +926,7 @@ class DhanTrader:
                 "security_id": agg["security_id"],
                 "exchange_seg": agg["exchange_seg"],
                 "exchange": agg["exchange"],
-                "qty": qty,
+                "qty": qty * agg["multiplier"],
                 "buyqty": agg["buyQty"],
                 "sellqty": agg["sellQty"],
                 "pnl": 0.0,
