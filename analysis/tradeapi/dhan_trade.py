@@ -96,8 +96,8 @@ def _invert_signal(signal: str) -> str:
 def _format_expiry_time(expiry_time: str) -> str:
     try:
         # Expecting ISO format, parse and reformat to 'YYYY-MM-DD  HH:MM'
-        dt = datetime.strptime(expiry_time[:16], "%Y-%m-%dT%H:%M").replace(
-            tzinfo=india_tz
+        dt = datetime.strptime(expiry_time[:16], "%Y-%m-%dT%H:%M").astimezone(
+            tz=india_tz
         )
         expiry_time = dt.strftime("%Y-%m-%d  %H:%M")
 
