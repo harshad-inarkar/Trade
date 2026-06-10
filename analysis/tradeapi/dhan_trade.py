@@ -101,8 +101,8 @@ def _format_expiry_time(expiry_time: str) -> str:
         )
         expiry_time = dt.strftime("%Y-%m-%d  %H:%M")
 
-    except Exception:
-        LOGGER.exception("Date conversion failed %s", expiry_time)
+    except (ValueError, TypeError) as e:
+        LOGGER.info("Date conversion failed %s %s", expiry_time, e)
 
     return expiry_time
 
