@@ -26,6 +26,18 @@
   <div class="header-brand">
     <span class="logo">DHAN PORTAL</span>
     <span class="sub">Execution Engine</span>
+    
+    <div style="display: flex; align-items: center; margin-left: 24px; gap: 12px; border-left: 1px solid var(--border); padding-left: 20px;">
+      <div style="display: flex; flex-direction: column; line-height: 1.3;">
+          <span style="font-family: var(--mono); font-size: 0.75rem; color: var(--text);">
+            Client: <strong style="color: var(--accent3);">{{ client_name }}</strong>
+          </span>
+          <span style="font-family: var(--mono); font-size: 0.65rem; color: var(--muted);">
+            Expires: {{ expiry_time }}
+          </span>
+      </div>
+      <button onclick="document.getElementById('access-modal').style.display='flex'" class="btn-action" title="Manage Authentication">Update Access</button>
+    </div>
   </div>
 </header>
 
@@ -449,6 +461,75 @@
   </div>
   {% endif %}
 </div>
+
+
+<div id="access-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
+  <div class="panel" style="width: 380px; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+    <div class="panel-header" style="display: flex; justify-content: space-between;">
+      <span>API Authentication</span>
+      <span style="cursor: pointer; color: var(--muted);" onclick="document.getElementById('access-modal').style.display='none'">✕</span>
+    </div>
+
+    <script>
+      function switchAuthTab(tab) {
+          const tabs = ['generate', 'renew', 'update'];
+          tabs.forEach(t => {
+              document.getElementById('form-' + t).style.display = (t === tab ? 'block' : 'none');
+              document.getElementById('btn-tab-' + t).style.borderColor = (t === tab ? 'var(--accent)' : 'transparent');
+          });
+      }
+    </script>
+
+    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+       <button type="button" class="btn" id="btn-tab-generate" onclick="switchAuthTab('generate')" style="background: var(--surface2); color: var(--text); border: 1px solid var(--accent);">Generate</button>
+       <button type="button" class="btn" id="btn-tab-renew" onclick="switchAuthTab('renew')" style="background: var(--surface2); color: var(--text); border: 1px solid transparent;">Renew</button>
+       <button type="button" class="btn" id="btn-tab-update" onclick="switchAuthTab('update')" style="background: var(--surface2); color: var(--text); border: 1px solid transparent;">Manual</button>
+    </div>
+    
+    <form id="form-generate" action="/generate_token" method="post" class="order-form">
+      <div class="form-group">
+        <label>Client ID</label>
+        <input type="text" name="client_id" value="{{ client_id }}" required />
+      </div>
+      <div class="form-group" style="margin-top: 8px;">
+        <label>Account PIN</label>
+        <input type="password" name="pin" placeholder="Enter your numeric PIN" required />
+      </div>
+      <div class="form-group" style="margin-top: 8px;">
+        <label>Authenticator TOTP</label>
+        <input type="text" name="totp" placeholder="Enter 6-digit TOTP code" required />
+      </div>
+      <div class="btn-group" style="margin-top: 20px;">
+        <button type="submit" class="btn btn-buy">Generate New Token</button>
+      </div>
+    </form>
+
+    <form id="form-renew" action="/renew_token" method="post" class="order-form" style="display: none;">
+      <p style="font-family: var(--sans); font-size: 0.85rem; color: var(--muted); margin-bottom: 20px;">
+        Click below to renew your currently active session. This securely extends your token validity without requiring a PIN or TOTP code.
+      </p>
+      <div class="btn-group">
+        <button type="submit" class="btn" style="background: var(--accent4); color: #000;">Renew Existing Token</button>
+      </div>
+    </form>
+
+    <form id="form-update" action="/update_token" method="post" class="order-form" style="display: none;">
+      <div class="form-group">
+        <label>Client ID</label>
+        <input type="text" name="client_id" value="{{ client_id }}" required />
+      </div>
+      <div class="form-group" style="margin-top: 8px;">
+        <label>Token (Access Token)</label>
+        <input type="password" name="access_token" placeholder="Paste manual JWT token here..." required />
+      </div>
+      <div class="btn-group" style="margin-top: 20px;">
+        <button type="submit" class="btn btn-buy" style="background: var(--surface2); color: var(--text); border: 1px solid var(--border);">Save Manual Token</button>
+      </div>
+    </form>
+
+  </div>
+</div>
+
 
 <script src="/static/js/dashboard.js"></script>
 

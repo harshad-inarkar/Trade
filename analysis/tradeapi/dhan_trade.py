@@ -4,6 +4,7 @@ import logging
 import math
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from http import HTTPStatus
 from pathlib import Path
@@ -15,7 +16,7 @@ import tomllib
 from requests.exceptions import RequestException
 
 from tradeapi.price_strike_calc import get_price_strike, get_strike_interval
-from tradeapi.scrip_master import ScripMaster, _get_today_str
+from tradeapi.scrip_master import ScripMaster, _get_today_str, india_tz
 from utils.network.start_proxy import SSHProxyManager
 
 __all__ = ["DhanTrader", "Instrument", "PriceLevels", "UIOverride"]
@@ -90,6 +91,20 @@ def _signal_to_opt(signal: str) -> str:
 
 def _invert_signal(signal: str) -> str:
     return "SELL" if signal == "BUY" else "BUY"
+
+
+def _format_expiry_time(expiry_time: str) -> str:
+    try:
+        # Expecting ISO format, parse and reformat to 'YYYY-MM-DD  HH:MM'
+        dt = datetime.strptime(expiry_time[:16], "%Y-%m-%dT%H:%M").replace(
+            tzinfo=india_tz
+        )
+        expiry_time = dt.strftime("%Y-%m-%d  %H:%M")
+
+    except Exception:
+        LOGGER.exception("Date conversion failed %s", expiry_time)
+
+    return expiry_time
 
 
 def _adjust_price(
@@ -213,8 +228,15 @@ class DhanTrader:
         self.session = requests.Session()
         self._apply_proxy()
 
-        self.client_id, self.access_token = self._load_credentials(ACCESS_FILE_PATH)
+        (
+            self.client_id,
+            self.access_token,
+            self.client_name,
+            self.expiry_time,
+        ) = self._load_credentials(ACCESS_FILE_PATH)
+
         self.api_headers = {
+            "dhanClientId": self.client_id,
             "access-token": self.access_token,
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -256,19 +278,102 @@ class DhanTrader:
         except (AttributeError, TypeError) as exc:
             LOGGER.warning("Unable to apply proxy configuration: %s", exc)
 
-    def _load_credentials(self, path: Path) -> tuple[str, str]:
+    def _load_credentials(self, path: Path) -> tuple[str, str, str, str]:
         try:
             with path.open("rb") as config_file:
                 data = tomllib.load(config_file)
         except (OSError, tomllib.TOMLDecodeError):
             LOGGER.exception("Unable to load Dhan credentials from %s", path)
-            return "", ""
+            return "", "", "", ""
 
         client_id = str(data.get("CLIENT_ID", "")).strip()
         access_token = str(data.get("ACCESS_TOKEN", "")).strip()
+        client_name = str(data.get("CLIENT_NAME", "")).strip()
+        expiry_time = str(data.get("TIME_TO_EXPIRY", "")).strip()
+
+        expiry_time = _format_expiry_time(expiry_time)
+
         if not client_id or not access_token:
             LOGGER.error("Dhan credentials are incomplete in %s.", path)
-        return client_id, access_token
+        return client_id, access_token, client_name, expiry_time
+
+    def update_credentials(
+        self,
+        new_client_id: str,
+        new_access_token: str,
+        new_client_name: str,
+        new_expiry_time: str,
+    ) -> bool:
+        try:
+            with ACCESS_FILE_PATH.open("w", encoding="utf-8") as f:
+                f.write(f'CLIENT_ID = "{new_client_id}"\n')
+                f.write(f'ACCESS_TOKEN = "{new_access_token}"\n')
+                f.write(f'CLIENT_NAME = "{new_client_name}"\n')
+                f.write(f'TIME_TO_EXPIRY = "{new_expiry_time}"\n')
+
+            self.client_id = new_client_id
+            self.access_token = new_access_token
+            self.client_name = new_client_name
+            self.expiry_time = _format_expiry_time(new_expiry_time)
+
+            self.api_headers["access-token"] = new_access_token
+            self.api_headers["dhanClientId"] = self.client_id
+
+            LOGGER.info(
+                "API Credentials successfully updated in memory and saved to disk."
+            )
+        except OSError:
+            LOGGER.exception("Failed to write to %s", ACCESS_FILE_PATH)
+            return False
+        else:
+            return True
+
+    def generate_token(self, client_id: str, pin: str, totp: str) -> bool:
+        try:
+            # Direct post to bypass our standard retry/auth logic
+            url = (
+                f"{self.api_cfg.urls.get('gen_token', '')}"
+                f"?dhanClientId={client_id}&pin={pin}&totp={totp}"
+            )
+
+            resp = self._request_with_retry("POST", url, label="GENTOKEN", data={})
+
+            if resp and resp.status_code == HTTPStatus.OK:
+                data = resp.json()
+                return self.update_credentials(
+                    new_client_id=client_id,
+                    new_access_token=data.get("accessToken", ""),
+                    new_client_name=data.get("dhanClientName", ""),
+                    new_expiry_time=data.get("expiryTime", ""),
+                )
+            LOGGER.error("Generate Token Failed: %s", resp.text)
+        except Exception:
+            LOGGER.exception("Generate Token Exception")
+            return False
+        else:
+            return False
+
+    def renew_token(self) -> bool:
+        try:
+            # Renew requires the CURRENT access token in the headers
+            url = self.api_cfg.urls.get("renew_token", "")
+            resp = self._request_with_retry("GET", url, label="RENEW", data={})
+
+            if resp and resp.status_code == HTTPStatus.OK:
+                data = resp.json()
+                return self.update_credentials(
+                    new_client_id=self.client_id,
+                    new_access_token=data.get("token", ""),
+                    new_client_name=self.client_name,
+                    new_expiry_time=data.get("expiryTime", ""),
+                )
+            LOGGER.error("Renew Token Failed: %s", resp.text)
+
+        except Exception:
+            LOGGER.exception("Renew Token Exception")
+            return False
+        else:
+            return False
 
     def begin_session(self) -> None:
         self.cfg.refresh()

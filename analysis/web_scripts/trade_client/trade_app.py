@@ -378,6 +378,25 @@ class TradePortalApp:
             methods=["POST"],
             response_class=RedirectResponse,
         )
+        router.add_api_route(
+            "/generate_token",
+            self._generate_token,
+            methods=["POST"],
+            response_class=RedirectResponse,
+        )
+        router.add_api_route(
+            "/renew_token",
+            self._renew_token,
+            methods=["POST"],
+            response_class=RedirectResponse,
+        )
+        router.add_api_route(
+            "/update_token",
+            self._update_token,
+            methods=["POST"],
+            response_class=RedirectResponse,
+        )
+
         self.app.include_router(router)
 
     async def _dashboard(
@@ -399,8 +418,35 @@ class TradePortalApp:
                 "funds": snapshot.funds,
                 "refresh_interval": self.cfg.refresh_interval,
                 "view": view,
+                "client_id": self.trader.client_id,
+                "client_name": self.trader.client_name,
+                "expiry_time": self.trader.expiry_time,
             },
         )
+
+    async def _update_token(
+        self,
+        client_id: str = Form(...),
+        access_token: str = Form(...),
+    ) -> RedirectResponse:
+        # We reuse the existing client_name, but mark expiry as "Manual Update"
+        self.trader.update_credentials(
+            client_id, access_token, self.trader.client_name, "Manual Update"
+        )
+        return RedirectResponse(url="/", status_code=303)
+
+    async def _generate_token(
+        self,
+        client_id: str = Form(...),
+        pin: str = Form(...),
+        totp: str = Form(...),
+    ) -> RedirectResponse:
+        self.trader.generate_token(client_id, pin, totp)
+        return RedirectResponse(url="/", status_code=303)
+
+    async def _renew_token(self) -> RedirectResponse:
+        self.trader.renew_token()
+        return RedirectResponse(url="/", status_code=303)
 
     async def _search_symbols(self, q: str = Query("")) -> list[SymbolSearchItem]:
         q = (q or "").strip()

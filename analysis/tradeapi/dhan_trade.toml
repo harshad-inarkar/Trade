@@ -10,6 +10,8 @@ super_order   = "https://api.dhan.co/v2/super/orders"
 forever_order = "https://api.dhan.co/v2/forever/orders"
 alert_order   = "https://api.dhan.co/v2/alerts/orders"
 fund_limit    = "https://api.dhan.co/v2/fundlimit"
+renew_token   = "https://api.dhan.co/v2/RenewToken"
+gen_token     = "https://auth.dhan.co/app/generateAccessToken"
 
 [segments]
 opt_segments = ["OPTSTK", "OPTIDX", "OPTFUT"]
