@@ -10,19 +10,36 @@ class UITableManager {
             closed: { col: null, isNum: false, isAsc: true }
         };
     }
+
+    
     togglePositions(view) {
         this.currentView = view;
-        const viewActive = document.getElementById('view-active');
-        const viewClosed = document.getElementById('view-closed');
-        const tabActive = document.getElementById('tab-active');
-        const tabClosed = document.getElementById('tab-closed');
+        const viewActive = document.getElementById("view-active");
+        const viewClosed = document.getElementById("view-closed");
+        const tabActive = document.getElementById("tab-active");
+        const tabClosed = document.getElementById("tab-closed");
+
         if (viewActive && viewClosed && tabActive && tabClosed) {
-            viewActive.style.display = view === 'active' ? 'block' : 'none';
-            viewClosed.style.display = view === 'closed' ? 'block' : 'none';
-            tabActive.classList.toggle('active', view === 'active');
-            tabClosed.classList.toggle('active', view === 'closed');
+            // Strip any lingering inline styles from the old logic
+            viewActive.style.display = "";
+            viewClosed.style.display = "";
+
+            // Toggle the .hidden utility class instead of forcing inline styles
+            if (view === "active") {
+                viewActive.classList.remove("hidden");
+                viewClosed.classList.add("hidden");
+            } else {
+                viewActive.classList.add("hidden");
+                viewClosed.classList.remove("hidden");
+            }
+
+            tabActive.classList.toggle("active", view === "active");
+            tabClosed.classList.toggle("active", view === "closed");
         }
-        this.updateTotalDisplay();
+        
+        if (typeof this.updateTotalDisplay === "function") {
+            this.updateTotalDisplay();
+        }
     }
 
 
