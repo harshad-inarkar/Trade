@@ -28,6 +28,7 @@ SYMBOLS_CONFIG = BASE_DIR / "symbols_config.toml"
 ACCESS_FILE_PATH = BASE_DIR / "access_token.toml"
 API_CONFIG_PATH = BASE_DIR / "dhan_trade.toml"
 REQUEST_TIMEOUT_SECONDS = 3
+OPT_BUMP_MULT = 10
 
 
 class PriceCondition(Enum):
@@ -114,7 +115,7 @@ def _adjust_price(
     *,
     opt_bump: bool = False,
 ) -> float:
-    perc = 10 * perc if opt_bump else perc
+    perc = OPT_BUMP_MULT * perc if opt_bump else perc
     if signal == "BUY":
         return math.ceil(base * (1 + perc / 100))
     return math.floor(base * (1 - perc / 100))
@@ -392,7 +393,7 @@ class DhanTrader:
         stop_loss = _adjust_price(entry, self.stop_loss_perc, inv, opt_bump=opt_bump)
         stop_limit = _adjust_price(stop_loss, self.limit_perc, inv, opt_bump=opt_bump)
         target = _adjust_price(entry, self.target_perc, signal, opt_bump=opt_bump)
-        trail_factor = self.stop_trail_perc * (10 if opt_bump else 1)
+        trail_factor = self.stop_trail_perc * (OPT_BUMP_MULT if opt_bump else 1)
         trail = math.ceil(entry * trail_factor / 100)
         return PriceLevels(entry, limit, stop_loss, stop_limit, target, trail)
 
@@ -706,10 +707,7 @@ class DhanTrader:
         if resp and resp.status_code == HTTPStatus.OK:
             LOGGER.info("[✓] %s Order placed successfully.", label)
         else:
-            try:
-                err_msg = resp.json() if resp else "No Response Data"
-            except ValueError:
-                err_msg = resp.text if resp else "No Response"
+            err_msg = resp.json() if resp is not None else "No Response Data"
             LOGGER.error(
                 "[✗] %s Order failed. Payload: %s | Response: %s",
                 label,
@@ -775,7 +773,10 @@ class DhanTrader:
 
     def place_super_order(self, sec_id: str, lot_size: int, inst: Instrument) -> None:
         _, exchange_seg = self.get_instr_data(inst)
-        levels = self._compute_price_levels(inst.entry_val, inst.signal)
+        raw_price = inst.entry_val if inst.entry_val > 0 else inst.limit_price
+        levels = self._compute_price_levels(
+            raw_price, inst.signal, opt_bump=inst.seg in self.api_cfg.opt_segments
+        )
         total_quant = self._compute_quantity(
             inst.trade_amount,
             levels.entry,
