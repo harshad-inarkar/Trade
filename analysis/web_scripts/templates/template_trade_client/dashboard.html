@@ -15,9 +15,10 @@
   <link rel="stylesheet" href="/static/css/dashboard.css" />
   <script>
     window.DhanConfig = {
-      // Wrap Jinja variables in quotes and parse them so the IDE linter is happy
       refreshInterval: parseInt("{{ refresh_interval | default(0) }}", 10) || 0,
-      isDashboard: ("{{ view }}" !== "order")
+      isDashboard: ("{{ view }}" !== "order"),
+      initActivePnl: parseFloat("{{ active_pnl_total | default(0) }}"),
+      initClosedPnl: parseFloat("{{ closed_pnl_total | default(0) }}")
     };
   </script>
 </head>
@@ -163,6 +164,13 @@
           <button id="tab-closed" class="btn-tab" onclick="window.UI.togglePositions('closed')">
             Closed (<span id="live-closed-count">{{ total_closed }}</span>)
           </button>
+
+          <div class="ml-auto"
+            style="padding: 14px 20px; display: flex; align-items: center; font-family: var(--mono); font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">
+            <span style="color: var(--muted); margin-right: 8px;">Total PnL:</span>
+            <span id="live-total-pnl">₹ 0.00</span>
+          </div>
+
         </div>
         <div class="table-wrap" id="view-active">
           <table class="symbols-table" id="table-active">

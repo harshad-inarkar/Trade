@@ -54,6 +54,8 @@ class LiveDataResponse(BaseModel):
     position_count: int
     closed_count: int
     order_count: int
+    active_pnl_total: float
+    closed_pnl_total: float
     positions: dict[str, PositionData]
 
 
@@ -153,6 +155,14 @@ class DashboardSnapshot:
     def total_orders(self) -> int:
         return len(self.active_orders)
 
+    @property
+    def active_pnl_total(self) -> float:
+        return sum(p.get("pnl", 0.0) for p in self.positions)
+
+    @property
+    def closed_pnl_total(self) -> float:
+        return sum(p.get("pnl", 0.0) for p in self.closed_positions)
+
     def live_payload(self) -> dict:
         positions = {}
         for position in self.positions:
@@ -192,6 +202,8 @@ class DashboardSnapshot:
             "position_count": self.total_positions,
             "closed_count": self.total_closed,
             "order_count": self.total_orders,
+            "active_pnl_total": self.active_pnl_total,
+            "closed_pnl_total": self.closed_pnl_total,
             "positions": positions,
         }
 
@@ -415,6 +427,8 @@ class TradePortalApp:
                 "total_closed": snapshot.total_closed,
                 "active_orders": snapshot.active_orders,
                 "total_orders": snapshot.total_orders,
+                "active_pnl_total": snapshot.active_pnl_total,
+                "closed_pnl_total": snapshot.closed_pnl_total,
                 "funds": snapshot.funds,
                 "refresh_interval": self.cfg.refresh_interval,
                 "view": view,

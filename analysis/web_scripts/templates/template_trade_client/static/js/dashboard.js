@@ -3,12 +3,15 @@
 */
 class UITableManager {
     constructor() {
+        this.currentView = 'active';
+        this.totals = { active: 0, closed: 0 };
         this.currentSort = {
             active: { col: null, isNum: false, isAsc: true },
             closed: { col: null, isNum: false, isAsc: true }
         };
     }
     togglePositions(view) {
+        this.currentView = view;
         const viewActive = document.getElementById('view-active');
         const viewClosed = document.getElementById('view-closed');
         const tabActive = document.getElementById('tab-active');
@@ -19,7 +22,22 @@ class UITableManager {
             tabActive.classList.toggle('active', view === 'active');
             tabClosed.classList.toggle('active', view === 'closed');
         }
+        this.updateTotalDisplay();
     }
+
+
+    updateTotalDisplay() {
+        const totalEl = document.getElementById('live-total-pnl');
+        if (!totalEl) return;
+        const val = this.totals[this.currentView] || 0;
+        totalEl.textContent = '₹ ' + Number(val).toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+        totalEl.className = val > 0 ? 'pnl-positive' : (val < 0 ? 'pnl-negative' : 'pnl-neutral');
+    }
+
+
     sortTable(tableId, colIndex, isNumeric, forceAsc = null) {
         const table = document.getElementById(tableId);
         if (!table) return;
@@ -206,6 +224,14 @@ class LiveDashboard {
         try {
             const res = await fetch('/api/live_data');
             const data = await res.json();
+
+            // NEW: Receive Live Totals
+            if (data.active_pnl_total !== undefined) {
+                this.uiManager.totals.active = data.active_pnl_total;
+                this.uiManager.totals.closed = data.closed_pnl_total;
+                this.uiManager.updateTotalDisplay();
+            }
+
             const fundsEl = document.getElementById('live-funds');
             if (fundsEl && data.funds !== undefined) {
                 fundsEl.textContent = '₹ ' + this.formatCurrency(data.funds);
@@ -295,6 +321,12 @@ class LiveDashboard {
 // Bootstrap the App
 document.addEventListener('DOMContentLoaded', () => {
     window.UI = new UITableManager();
+    // NEW: Initialize totals from the Jinja template load
+    if (window.DhanConfig) {
+        window.UI.totals.active = window.DhanConfig.initActivePnl || 0;
+        window.UI.totals.closed = window.DhanConfig.initClosedPnl || 0;
+        window.UI.updateTotalDisplay();
+    }
     window.Search = new SymbolSearch();
     // Only boot live updater if we are not in order-only view
     if (window.DhanConfig && window.DhanConfig.isDashboard) {
