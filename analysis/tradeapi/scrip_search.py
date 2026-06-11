@@ -134,7 +134,7 @@ class SearchEngine:
                 continue
             try:
                 v = float(tok)
-                if v > 0:
+                if math.isfinite(v) and v > 0:
                     ctx.strike_int = int(v) if v.is_integer() else round(v)
                 continue
             except ValueError:

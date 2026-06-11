@@ -138,6 +138,7 @@
             <input type="number" name="qty" value="1" min="1" class="w-full" />
           </div>
         </div>
+
         <div class="form-group flex-row-gap-10">
           <div class="flex-1">
             <label>Trigger / Entry Price</label>
@@ -148,6 +149,18 @@
             <input type="number" name="limit_price" value="0.0" step="0.05" class="w-full" />
           </div>
         </div>
+
+        <div class="form-group flex-row-gap-10">
+          <div class="flex-1">
+            <label>Target Price (Super)</label>
+            <input type="number" name="target_price" value="0.0" step="0.05" class="w-full" />
+          </div>
+          <div class="flex-1">
+            <label>Stop Loss (Super)</label>
+            <input type="number" name="stop_loss" value="0.0" step="0.05" class="w-full" />
+          </div>
+        </div>
+
         <div class="btn-group">
           <button type="submit" name="signal" value="BUY" class="btn btn-buy">BUY</button>
           <button type="submit" name="signal" value="SELL" class="btn btn-sell">SELL</button>

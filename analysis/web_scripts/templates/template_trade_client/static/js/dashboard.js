@@ -142,6 +142,9 @@ class SymbolSearch {
                         form.querySelector('[name="strike"]').value = '0.0';
                         form.querySelector('[name="opt_type"]').value = '';
                     }
+
+                    // --- NEW FIX: Force the form logic to recalculate instantly ---
+                    form.querySelector('[name="inst_type"]').dispatchEvent(new Event('change'));
                 }
                 this.hideDropdown();
             });
@@ -338,6 +341,7 @@ class LiveDashboard {
 // Bootstrap the App
 document.addEventListener('DOMContentLoaded', () => {
     window.UI = new UITableManager();
+    window.OrderForm = new OrderFormLogic();
     // NEW: Initialize totals from the Jinja template load
     if (window.DhanConfig) {
         window.UI.totals.active = window.DhanConfig.initActivePnl || 0;
@@ -367,3 +371,124 @@ window.switchAuthTab = function (tab) {
         }
     });
 };
+
+
+
+/**
+ * Dynamic Order Form - Enables/Disables fields based on conditions
+ */
+class OrderFormLogic {
+    constructor() {
+        this.form = document.querySelector('.order-form');
+        if (!this.form) return;
+
+        this.instType = this.form.querySelector('[name="inst_type"]');
+        this.orderMode = this.form.querySelector('[name="order_mode"]');
+        this.alertTarget = this.form.querySelector('[name="alert_trigger_base"]');
+        this.strike = this.form.querySelector('[name="strike"]');
+        this.optType = this.form.querySelector('[name="opt_type"]');
+        this.expiry = this.form.querySelector('[name="expiry"]');
+        this.triggerPrice = this.form.querySelector('[name="price"]');
+        this.limitPrice = this.form.querySelector('[name="limit_price"]');
+        this.stopLoss = this.form.querySelector('[name="stop_loss"]');
+        this.targetPrice = this.form.querySelector('[name="target_price"]');
+
+        // Match DhanTrader defaults for Super Order Calculations
+        this.slPerc = 0.7;
+        this.targetPerc = this.slPerc * 2;
+
+        this.optBump = 10;
+
+        this.setupListeners();
+        this.updateState(); // Boot initial state
+    }
+
+    setupListeners() {
+        this.instType.addEventListener('change', () => this.updateState());
+        this.orderMode.addEventListener('change', () => this.updateState());
+        this.limitPrice.addEventListener('input', () => this.autoPopulateSuper());
+    }
+
+    updateState() {
+        const inst = this.instType.value;
+        const mode = this.orderMode.value;
+
+        // Reset all to enabled before applying specific constraints
+        this.strike.disabled = false;
+        this.optType.disabled = false;
+        this.expiry.disabled = false;
+        this.alertTarget.disabled = false;
+        this.stopLoss.disabled = false;
+        this.targetPrice.disabled = false;
+        this.triggerPrice.disabled = false;
+        this.limitPrice.disabled = false;
+
+        // Constraint 1, 4, 5: Instrument specific rules
+        if (inst === 'EQ') {
+            this.strike.disabled = true;
+            this.optType.disabled = true;
+            this.expiry.disabled = true;
+        } else if (inst === 'FUT') {
+            this.strike.disabled = true;
+            this.optType.disabled = true;
+        } else if (inst === '') {
+            // Constraint 6: Default Config selected -> Enable only Exchange, Order Mode, Entry Price
+            this.strike.disabled = true;
+            this.optType.disabled = true;
+            this.expiry.disabled = true;
+            this.limitPrice.disabled = true;
+            this.stopLoss.disabled = true;
+            this.targetPrice.disabled = true;
+            this.alertTarget.disabled = true;
+        }
+
+        // Constraint 2: Super Order Mode overrides
+        if (mode === 'SUPER') {
+            this.triggerPrice.disabled = true; // Disable Trigger/Entry price
+        } else {
+            this.stopLoss.disabled = true;
+            this.targetPrice.disabled = true;
+        }
+
+        // Apply strict cascade: if config default, ensure Super fields stay disabled
+        if (inst === '') {
+            this.triggerPrice.disabled = false;
+            this.stopLoss.disabled = true;
+            this.targetPrice.disabled = true;
+        }
+
+        // Constraint 3: Alert Target
+        if (mode !== 'ALERT') {
+            this.alertTarget.disabled = true;
+        }
+
+        this.autoPopulateSuper();
+    }
+
+    autoPopulateSuper() {
+        const mode = this.orderMode.value;
+        const inst = this.instType.value;
+
+        if (mode !== 'SUPER' || inst === '') return;
+
+        const limitVal = parseFloat(this.limitPrice.value) || 0;
+        if (limitVal <= 0) {
+            this.targetPrice.value = "0.0";
+            this.stopLoss.value = "0.0";
+            return;
+        }
+
+        // Replicate Python _compute_price_levels logic (Assuming standard BUY layout for the visual aid)
+        const isOpt = (inst === 'OPT');
+        const bump = isOpt ? this.optBump : 1;
+
+        const finalTargetPerc = this.targetPerc * bump;
+        const finalSlPerc = this.slPerc * bump;
+
+        const target = Math.ceil(limitVal * (1 + finalTargetPerc / 100));
+        const stopLoss = Math.floor(limitVal * (1 - finalSlPerc / 100));
+
+        this.targetPrice.value = target.toFixed(2);
+        this.stopLoss.value = stopLoss.toFixed(2);
+    }
+}

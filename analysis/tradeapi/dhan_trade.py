@@ -60,6 +60,8 @@ class Instrument:
     opt_type: str | None = None
     trigger_price: float = 0.0
     limit_price: float = 0.0
+    stop_loss: float = 0.0
+    target_price: float = 0.0
 
 
 @dataclass
@@ -71,6 +73,8 @@ class UIOverride:
     trigger_price: float = 0.0
     force_qty: bool = False
     opt_type: str | None = None
+    stop_loss: float = 0.0
+    target_price: float = 0.0
 
 
 @dataclass
@@ -606,6 +610,8 @@ class DhanTrader:
             trade_amount=trade_amt,
             trigger_price=overrides.trigger_price,
             limit_price=overrides.limit_price,
+            stop_loss=overrides.stop_loss,
+            target_price=overrides.target_price,
         )
 
     def get_instr_data(self, inst: Instrument) -> tuple[str, str]:
@@ -784,15 +790,20 @@ class DhanTrader:
             inst.quant,
         )
 
+        # 2. Prefer UI overrides, otherwise fallback to computed levels
         final_limit = inst.limit_price if inst.limit_price > 0 else levels.limit
+        final_sl = inst.stop_loss if inst.stop_loss > 0 else levels.stop_loss
+        final_target = inst.target_price if inst.target_price > 0 else levels.target
 
         payload = self._base_payload(inst.signal, exchange_seg, sec_id) | {
             "orderType": "LIMIT",
             "quantity": total_quant,
             "price": final_limit,
-            "stopLossPrice": levels.stop_loss,
-            "trailingJump": levels.trail,
+            "stopLossPrice": final_sl,
+            "targetPrice": final_target,
+            # "trailingJump": levels.trail,
         }
+
         self._post_order(
             self.api_cfg.urls.get("super_order", ""),
             payload,

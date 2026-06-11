@@ -506,6 +506,8 @@ class TradePortalApp:
         qty: int = Form(1),
         price: float = Form(0.0),
         limit_price: float = Form(0.0),
+        stop_loss: float = Form(0.0),
+        target_price: float = Form(0.0),
         order_mode: str = Form("MARKET"),
         inst_type: str = Form(""),
         alert_trigger_base: str = Form("PARENT"),
@@ -522,6 +524,8 @@ class TradePortalApp:
             force_qty=True,
             opt_type=opt_type,
             limit_price=limit_price,
+            stop_loss=stop_loss,
+            target_price=target_price,
         )
 
         inst = self.trader.resolve_instrument(
