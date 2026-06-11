@@ -1,301 +1,265 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Dhan Portal — Trading Dashboard</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet" />
-
-<link rel="stylesheet" href="/static/css/dashboard.css" />
-<link rel="stylesheet" href="/static/css/dashboard.css" />
-<script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Dhan Portal — Automated Execution Engine & Trading Dashboard" />
+  <meta name="keywords" content="trading, dashboard, dhan, stocks, options, execution" />
+  <title>Dhan Portal — Trading Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/dashboard.css" />
+  <script>
     window.DhanConfig = {
-        // Wrap Jinja variables in quotes and parse them so the IDE linter is happy
-        refreshInterval: parseInt("{{ refresh_interval | default(0) }}", 10) || 0,
-        isDashboard: ("{{ view }}" !== "order")
+      // Wrap Jinja variables in quotes and parse them so the IDE linter is happy
+      refreshInterval: parseInt("{{ refresh_interval | default(0) }}", 10) || 0,
+      isDashboard: ("{{ view }}" !== "order")
     };
-</script>
-
+  </script>
 </head>
 
 <body>
-
-<header>
-  <div class="header-brand">
-    <span class="logo">DHAN PORTAL</span>
-    <span class="sub">Execution Engine</span>
-    
-    <div style="display: flex; align-items: center; margin-left: 24px; gap: 12px; border-left: 1px solid var(--border); padding-left: 20px;">
-      <div style="display: flex; flex-direction: column; line-height: 1.3;">
-          <span style="font-family: var(--mono); font-size: 0.75rem; color: var(--text);">
-            Client: <strong style="color: var(--accent3);">{{ client_name }}</strong>
+  <header>
+    <div class="header-brand">
+      <span class="logo">DHAN PORTAL</span>
+      <span class="sub">Execution Engine</span>
+      <div class="auth-container">
+        <div class="auth-info">
+          <span class="auth-client-label">
+            Client: <strong class="text-accent3">{{ client_name }}</strong>
           </span>
-          <span style="font-family: var(--mono); font-size: 0.65rem; color: var(--muted);">
-            Expires: {{ expiry_time }}
-          </span>
+          <span class="auth-expiry">Expires: {{ expiry_time }}</span>
+        </div>
+        <button onclick="document.getElementById('access-modal').classList.add('modal-active')" class="btn-action"
+          title="Manage Authentication">Update Access</button>
       </div>
-      <button onclick="document.getElementById('access-modal').style.display='flex'" class="btn-action" title="Manage Authentication">Update Access</button>
+    </div>
+  </header>
+  <div class="meta-bar">
+    <div><span class="dot"></span>API Live</div>
+    <div>Positions: <strong id="hdr-live-position-count">{{ total_positions }}</strong></div>
+    <div>Open Orders: <strong id="live-order-count">{{ total_orders }}</strong></div>
+    <div>Funds: <strong id="live-funds">₹ {{ "{:,.2f}".format(funds) }}</strong></div>
+    {% if view != 'order' %}
+    <div class="polling-rate-container">
+      <span class="polling-label">Polling Rate:</span>
+      <select id="live-interval-select" class="polling-select">
+        <option value="1000">1 Sec</option>
+        <option value="3000" selected>3 Sec</option>
+        <option value="5000">5 Sec</option>
+        <option value="10000">10 Sec</option>
+        <option value="0">Off</option>
+      </select>
+    </div>
+    {% endif %}
+    <div class="ml-auto">
+      {% if view == 'order' %}
+      <a href="/" class="header-link">Show Full Dashboard</a>
+      {% else %}
+      <a href="/?view=order" class="header-link">Place Order Only</a>
+      {% endif %}
     </div>
   </div>
-</header>
-
-<div class="meta-bar">
-  <div><span class="dot"></span>API Live</div>
-  <div>Positions: <strong id="hdr-live-position-count">{{ total_positions }}</strong></div>
-  <div>Open Orders: <strong id="live-order-count">{{ total_orders }}</strong></div>
-  <div>Funds: <strong id="live-funds">₹ {{ "{:,.2f}".format(funds) }}</strong></div>
-
-  {% if view != 'order' %}
-  <div style="display: flex; align-items: center; gap: 6px; margin-left: 15px;">
-    <span style="text-transform: uppercase; font-size: 0.65rem;">Polling Rate:</span>
-    <select id="live-interval-select" style="font-family: var(--mono); font-size: 0.7rem; padding: 2px 6px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); outline: none;">
-      <option value="1000">1 Sec</option>
-      <option value="3000" selected>3 Sec</option>
-      <option value="5000">5 Sec</option>
-      <option value="10000">10 Sec</option>
-      <option value="0">Off</option>
-    </select>
-  </div>
-  {% endif %}
-
-  <div style="margin-left: auto;">
-    {% if view == 'order' %}
-      <a href="/" style="color: var(--accent); text-decoration: none; font-family: var(--mono); font-weight: 600;">Show Full Dashboard</a>
-    {% else %}
-      <a href="/?view=order" style="color: var(--accent); text-decoration: none; font-family: var(--mono); font-weight: 600;">Place Order Only</a>
-    {% endif %}
-  </div>
-</div>
-
-<div class="dashboard-grid {% if view == 'order' %}order-only{% endif %}">
-
-  <div class="panel">
-    <div class="panel-header">Place Order</div>
-    <form action="/place_order{% if view == 'order' %}?view=order{% endif %}" method="post" class="order-form">
-      
-      <div class="form-group">
-        <label>Symbol</label>
-        <div class="symbol-search-wrap">
-          <input
-              type="text"
-              name="symbol"
-              placeholder="e.g. TCS"
-              autocomplete="off"
-              required
-          />
-        
-          <div id="symbol-search-dropdown" class="symbol-search-dropdown"></div>
+  <div class="dashboard-grid {% if view == 'order' %}order-only{% endif %}">
+    <div class="panel">
+      <div class="panel-header">Place Order</div>
+      <form action="/place_order{% if view == 'order' %}?view=order{% endif %}" method="post" class="order-form">
+        <div class="form-group">
+          <label>Symbol</label>
+          <div class="symbol-search-wrap">
+            <input type="text" name="symbol" placeholder="e.g. TCS" autocomplete="off" required />
+            <div id="symbol-search-dropdown" class="symbol-search-dropdown"></div>
+          </div>
         </div>
-      </div>
-      
-      <div class="form-group" style="flex-direction: row; gap: 10px;">
-        <div style="flex:1;">
-          <div style="display: flex; flex-direction: column;">
-            <label>Exchange</label>
-            <select name="exchange">
-              <option value="NSE">NSE</option>
-              <option value="MCX">MCX</option>
+        <div class="form-group flex-row-gap-10">
+          <div class="flex-1">
+            <div class="flex-col">
+              <label>Exchange</label>
+              <select name="exchange">
+                <option value="NSE">NSE</option>
+                <option value="MCX">MCX</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex-1">
+            <label>Inst Type</label>
+            <select name="inst_type">
+              <option value="">Config Default</option>
+              <option value="EQ">Equity (EQ)</option>
+              <option value="OPT" selected>Options (OPT)</option>
+              <option value="FUT">Futures (FUT)</option>
             </select>
           </div>
         </div>
-        <div style="flex:1;">
-          <label>Inst Type</label>
-          <select name="inst_type">
-            <option value="">Config Default</option>
-            <option value="EQ">Equity (EQ)</option>
-            <option value="OPT" selected>Options (OPT)</option>
-            <option value="FUT">Futures (FUT)</option>
-          </select>
+        <div class="form-group flex-row-gap-10">
+          <div class="flex-1">
+            <label>Order Mode</label>
+            <select name="order_mode">
+              <option value="MARKET">Mark/Lim</option>
+              <option value="SUPER">Super Order</option>
+              <option value="FOREVER" selected>Forever (GTT)</option>
+              <option value="ALERT">Alert Trigger</option>
+            </select>
+          </div>
+          <div class="flex-1">
+            <label>Alert Target</label>
+            <select name="alert_trigger_base" title="Only applies if Alert Trigger is selected">
+              <option value="PARENT">Underlying</option>
+              <option value="SELF">Same</option>
+            </select>
+          </div>
         </div>
-      </div>
-      
-      <div class="form-group" style="flex-direction: row; gap: 10px;">
-        <div style="flex:1;">
-          <label>Order Mode</label>
-          <select name="order_mode">
-            <option value="MARKET">Mark/Lim</option>
-            <option value="SUPER">Super Order</option>
-            <option value="FOREVER" selected>Forever (GTT)</option>
-            <option value="ALERT">Alert Trigger</option>
-          </select>
+        <div class="form-group flex-row-gap-10">
+          <div class="flex-1">
+            <label>Strike (OPT)</label>
+            <input type="number" name="strike" value="0.0" step="0.05" class="w-full" />
+          </div>
+          <div class="flex-1">
+            <label>Opt Type (OPT)</label>
+            <select name="opt_type">
+              <option value="">Auto (By Side)</option>
+              <option value="CE">Call (CE)</option>
+              <option value="PE">Put (PE)</option>
+            </select>
+          </div>
         </div>
-        <div style="flex:1;">
-          <label>Alert Target</label>
-          <select name="alert_trigger_base" title="Only applies if Alert Trigger is selected">
-            <option value="PARENT">Underlying</option>
-            <option value="SELF">Same</option>
-          </select>
+        <div class="form-group flex-row-gap-10">
+          <div class="flex-1">
+            <label>Expiry (YYYY-MM-DD)</label>
+            <input type="text" name="expiry" placeholder="Default" class="w-full" />
+          </div>
+          <div class="flex-1">
+            <label>Qty (Lots / Shares)</label>
+            <input type="number" name="qty" value="1" min="1" class="w-full" />
+          </div>
         </div>
-      </div>
-
-      <div class="form-group" style="flex-direction: row; gap: 10px;">
-        <div style="flex:1;">
-          <label>Strike (OPT)</label>
-          <input type="number" name="strike" value="0.0" step="0.05" style="width: 100%;" />
+        <div class="form-group flex-row-gap-10">
+          <div class="flex-1">
+            <label>Trigger / Entry Price</label>
+            <input type="number" name="price" value="0.0" step="0.05" class="w-full" />
+          </div>
+          <div class="flex-1">
+            <label>Limit Price</label>
+            <input type="number" name="limit_price" value="0.0" step="0.05" class="w-full" />
+          </div>
         </div>
-        <div style="flex:1;">
-          <label>Opt Type (OPT)</label>
-          <select name="opt_type">
-            <option value="">Auto (By Side)</option>
-            <option value="CE">Call (CE)</option>
-            <option value="PE">Put (PE)</option>
-          </select>
+        <div class="btn-group">
+          <button type="submit" name="signal" value="BUY" class="btn btn-buy">BUY</button>
+          <button type="submit" name="signal" value="SELL" class="btn btn-sell">SELL</button>
         </div>
-      </div>
-      
-      <div class="form-group" style="flex-direction: row; gap: 10px;">
-        <div style="flex:1;">
-          <label>Expiry (YYYY-MM-DD)</label>
-          <input type="text" name="expiry" placeholder="Default" style="width: 100%;" />
-        </div>
-        <div style="flex:1;">
-          <label>Qty (Lots / Shares)</label>
-          <input type="number" name="qty" value="1" min="1" style="width: 100%;" />
-        </div>
-      </div>
-      
-      <div class="form-group" style="flex-direction: row; gap: 10px;">
-        <div style="flex:1;">
-          <label>Trigger / Entry Price</label>
-          <input type="number" name="price" value="0.0" step="0.05" style="width: 100%;" />
-        </div>
-        <div style="flex:1;">
-          <label>Limit Price</label>
-          <input type="number" name="limit_price" value="0.0" step="0.05" style="width: 100%;" />
-        </div>
-      </div>
-      
-      <div class="btn-group">
-        <button type="submit" name="signal" value="BUY"  class="btn btn-buy">BUY</button>
-        <button type="submit" name="signal" value="SELL" class="btn btn-sell">SELL</button>
-      </div>
-    </form>
-  </div>
-
-  {% if view != 'order' %}
-  <div class="data-stack">
-
-    <div class="panel" style="padding: 0;">
-      
-      <div class="tabs">
-        <button id="tab-active" class="btn-tab active" onclick="window.UI.togglePositions('active')">
+      </form>
+    </div>
+    {% if view != 'order' %}
+    <div class="data-stack">
+      <div class="panel p-0">
+        <div class="tabs">
+          <button id="tab-active" class="btn-tab active" onclick="window.UI.togglePositions('active')">
             Active (<span id="live-position-count">{{ total_positions }}</span>)
-        </button>
-        <button id="tab-closed" class="btn-tab" onclick="window.UI.togglePositions('closed')">
+          </button>
+          <button id="tab-closed" class="btn-tab" onclick="window.UI.togglePositions('closed')">
             Closed (<span id="live-closed-count">{{ total_closed }}</span>)
-        </button>
-      </div>
-
-      <div class="table-wrap" id="view-active">
-        <table class="symbols-table" id="table-active">
-          <thead>
-            <tr>
-              <th style="width:36px">#</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-active', 1, false)">Symbol</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-active', 2, false)">Side</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-active', 3, true)">Qty</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-active', 4, true)">Entry Price</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-active', 5, true)">LTP</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-active', 6, true)">PnL</th>
-              <th style="text-align: right;">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for pos in positions %}
-            <tr data-position-row="{{ pos.security_id }}" data-position-qty="{{ pos.qty }}">
-              <td>{{ loop.index }}</td>
-              <td>
-                <span class="symbol-badge">{{ pos.display_name }}</span>
-              </td>
-              <td>
-                {% set qty_num = pos.qty | int %}
-                {% set side = 'B' if qty_num > 0 else ('S' if qty_num < 0 else '-') %}
-                <span id="side-{{ pos.security_id }}" class="box-side box-{{ side }}">{{ side }}</span>
-              </td>
-              <td
-                id="qty-{{ pos.security_id }}"
-                style="font-family: var(--mono); font-size: .8rem;"
-              >
-                {{ qty_num | abs }}
-              </td>
-              <td id="entry-{{ pos.security_id }}" style="font-family: var(--mono); font-size: .8rem;">
-                {{ "{:,.2f}".format(pos.entry_price | default(0)) }}
-              </td>
-              <td id="ltp-{{ pos.security_id }}" style="font-family: var(--mono); font-size: .8rem;">
-                {{ "{:,.2f}".format(pos.ltp | default(0)) }}
-              </td>
-              <td>
-                <span id="pnl-{{ pos.security_id }}" class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
-                  {{ "{:,.2f}".format(pos.pnl) }}
-                </span>
-              </td>
-              <td>
-                <div class="action-cell">
+          </button>
+        </div>
+        <div class="table-wrap" id="view-active">
+          <table class="symbols-table" id="table-active">
+            <thead>
+              <tr>
+                <th class="w-36">#</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-active', 1, false)">Symbol</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-active', 2, false)">Side</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-active', 3, true)">Qty</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-active', 4, true)">Entry Price</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-active', 5, true)">LTP</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-active', 6, true)">PnL</th>
+                <th class="text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pos in positions %}
+              <tr data-position-row="{{ pos.security_id }}" data-position-qty="{{ pos.qty }}">
+                <td>{{ loop.index }}</td>
+                <td>
+                  <span class="symbol-badge">{{ pos.display_name }}</span>
+                </td>
+                <td>
+                  {% set qty_num = pos.qty | int %}
+                  {% set side = 'B' if qty_num > 0 else ('S' if qty_num < 0 else '-' ) %} <span
+                    id="side-{{ pos.security_id }}" class="box-side box-{{ side }}">{{ side }}</span>
+                </td>
+                <td id="qty-{{ pos.security_id }}" class="mono-text">{{ qty_num | abs }}</td>
+                <td id="entry-{{ pos.security_id }}" class="mono-text">
+                  {{ "{:,.2f}".format(pos.entry_price | default(0)
+                  ) }}
+                </td>
+                <td id="ltp-{{ pos.security_id }}" class="mono-text">{{ "{:,.2f}".format(pos.ltp | default(0) ) }}</td>
+                <td>
+                  <span id="pnl-{{ pos.security_id }}"
+                    class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+                    {{ "{:,.2f}".format(pos.pnl) }}
+                  </span>
+                </td>
+                <td>
+                  <div class="action-cell">
                     <form action="/close_position" method="post">
-                        <input type="hidden" name="sec_id"       value="{{ pos.security_id }}">
-                        <input type="hidden" name="exchange_seg" value="{{ pos.exchange_seg }}">
-                        <input type="hidden" name="net_qty"      value="{{ pos.qty }}">
-                        <button type="submit" class="btn-action btn-close-mkt" title="Immediate market close">
-                          Close
-                        </button>
+                      <input type="hidden" name="sec_id" value="{{ pos.security_id }}">
+                      <input type="hidden" name="exchange_seg" value="{{ pos.exchange_seg }}">
+                      <input type="hidden" name="net_qty" value="{{ pos.qty }}">
+                      <button type="submit" class="btn-action btn-close-mkt"
+                        title="Immediate market close">Close</button>
                     </form>
-    
                     <details class="reentry-panel">
                       <summary class="btn-action btn-reentry" title="Close now and set a re-entry order">
                         Re-entry ▸
                       </summary>
                       <div class="reentry-form-wrap">
                         <form action="/close_reentry" method="post">
-                          <input type="hidden" name="sec_id"       value="{{ pos.security_id }}">
+                          <input type="hidden" name="sec_id" value="{{ pos.security_id }}">
                           <input type="hidden" name="exchange_seg" value="{{ pos.exchange_seg }}">
-                          <input type="hidden" name="net_qty"      value="{{ pos.qty }}">
-                          
-                          <input type="hidden" name="symbol"       value="{{ pos.base_symbol }}">
-                          <input type="hidden" name="exchange"     value="{{ pos.exchange }}">
-  
+                          <input type="hidden" name="net_qty" value="{{ pos.qty }}">
+                          <input type="hidden" name="symbol" value="{{ pos.base_symbol }}">
+                          <input type="hidden" name="exchange" value="{{ pos.exchange }}">
                           <label>Re-entry Side</label>
                           <select name="reentry_side">
                             <option value="BUY">BUY (re-enter long)</option>
                             <option value="SELL">SELL (re-enter short)</option>
                           </select>
-  
-                          <div style="display: flex; gap: 10px; margin-top: 10px;">
-                              <div style="flex:1;">
-                                <label style="margin-top:0;">Instrument</label>
-                                <select name="inst_type">
-                                  <option value="">Config Default</option>
-                                  <option value="EQ">Equity (EQ)</option>
-                                  <option value="OPT">Options (OPT)</option>
-                                  <option value="FUT">Futures (FUT)</option>
-                                </select>
-                              </div>
-                              <div style="flex:1;">
-                                <label style="margin-top:0;">Order Type</label>
-                                <select name="reentry_type">
-                                  <option value="">Config Default</option>
-                                  <option value="FOREVER">Forever (GTT)</option>
-                                  <option value="ALERT">Alert Trigger</option>
-                                  <option value="SUPER">Super Order</option>
-                                  <option value="MARKET">Mark/Lim</option>
-                                </select>
-                              </div>
+                          <div class="mt-10-flex-gap-10">
+                            <div class="flex-1">
+                              <label class="mt-0">Instrument</label>
+                              <select name="inst_type">
+                                <option value="">Config Default</option>
+                                <option value="EQ">Equity (EQ)</option>
+                                <option value="OPT">Options (OPT)</option>
+                                <option value="FUT">Futures (FUT)</option>
+                              </select>
+                            </div>
+                            <div class="flex-1">
+                              <label class="mt-0">Order Type</label>
+                              <select name="reentry_type">
+                                <option value="">Config Default</option>
+                                <option value="FOREVER">Forever (GTT)</option>
+                                <option value="ALERT">Alert Trigger</option>
+                                <option value="SUPER">Super Order</option>
+                                <option value="MARKET">Mark/Lim</option>
+                              </select>
+                            </div>
                           </div>
-                          
                           <label>Alert Target (If Alert)</label>
                           <select name="reentry_alert_base">
                             <option value="PARENT">Underlying Asset</option>
                             <option value="SELF">Same Symbol</option>
                           </select>
-
-                          <div style="display: flex; gap: 10px; margin-top: 10px;">
-                            <div style="flex:1;">
-                              <label style="margin-top:0;">Strike (OPT)</label>
+                          <div class="mt-10-flex-gap-10">
+                            <div class="flex-1">
+                              <label class="mt-0">Strike (OPT)</label>
                               <input type="number" name="strike" value="0.0" step="0.05" />
                             </div>
-                            <div style="flex:1;">
-                              <label style="margin-top:0;">Opt Type (OPT)</label>
+                            <div class="flex-1">
+                              <label class="mt-0">Opt Type (OPT)</label>
                               <select name="opt_type">
                                 <option value="">Auto</option>
                                 <option value="CE">CE</option>
@@ -303,235 +267,210 @@
                               </select>
                             </div>
                           </div>
-                          
-                          <div style="display: flex; gap: 10px; margin-top: 10px;">
-                              <div style="flex:1;">
-                                <label style="margin-top:0;">Expiry Date</label>
-                                <input type="text" name="expiry" placeholder="YYYY-MM-DD" />
-                              </div>
-                              <div style="flex:1;">
-                                <label style="margin-top:0;">New Lot Qty</label>
-                                <input type="number" name="qty" value="1" min="1" />
-                              </div>
+                          <div class="mt-10-flex-gap-10">
+                            <div class="flex-1">
+                              <label class="mt-0">Expiry Date</label>
+                              <input type="text" name="expiry" placeholder="YYYY-MM-DD" />
+                            </div>
+                            <div class="flex-1">
+                              <label class="mt-0">New Lot Qty</label>
+                              <input type="number" name="qty" value="1" min="1" />
+                            </div>
                           </div>
-                          
-                          <div style="display: flex; gap: 10px; margin-top: 10px;">
-                              <div style="flex:1;">
-                                <label style="margin-top:0;">Trigger Price</label>
-                                <input type="number" name="reentry_price" placeholder="e.g. 2350" step="0.05" min="0" required />
-                              </div>
-                              <div style="flex:1;">
-                                <label style="margin-top:0;">Limit Price</label>
-                                <input type="number" name="reentry_limit_price" placeholder="e.g. 2355" step="0.05" min="0" />
-                              </div>
+                          <div class="mt-10-flex-gap-10">
+                            <div class="flex-1">
+                              <label class="mt-0">Trigger Price</label>
+                              <input type="number" name="reentry_price" placeholder="e.g. 2350" step="0.05" min="0"
+                                required />
+                            </div>
+                            <div class="flex-1">
+                              <label class="mt-0">Limit Price</label>
+                              <input type="number" name="reentry_limit_price" placeholder="e.g. 2355" step="0.05"
+                                min="0" />
+                            </div>
                           </div>
-  
-                          <button type="submit" class="reentry-submit">
-                            Close &amp; Set Re-entry
-                          </button>
+                          <button type="submit" class="reentry-submit">Close &amp; Set Re-entry</button>
                         </form>
                       </div>
                     </details>
-
-                </div>
-              </td>
-            </tr>
-            {% else %}
-            <tr>
-              <td colspan="6" style="text-align: center; color: var(--muted); padding: 40px;">
-                No Active Positions.
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="table-wrap" id="view-closed" style="display: none;">
-        <table class="symbols-table" id="table-closed">
-          <thead>
-            <tr>
-              <th style="width:36px">#</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-closed', 1, false)">Symbol</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-closed', 2, true)">Qty</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-closed', 3, true)">Buy Avg</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-closed', 4, true)">Sell Avg</th>
-              <th class="sortable" onclick="window.UI.sortTable('table-closed', 5, true)">Realized PnL</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for pos in closed_positions %}
-            <tr data-position-row="{{ pos.security_id }}" data-position-qty="{{ pos.qty }}">
-              <td>{{ loop.index }}</td>
-              <td>
-                <span class="symbol-badge">{{ pos.display_name }}</span>
-              </td>
-              <td>
-                <span id="buyqty-{{ pos.security_id }}">{{ pos.buyqty }}</span>
-              </td>
-              <td id="buyavg-{{ pos.security_id }}" style="font-family: var(--mono); font-size: .8rem;">
-                {{ "{:,.2f}".format(pos.buy_avg | default(0)) }}
-              </td>
-              <td id="sellavg-{{ pos.security_id }}" style="font-family: var(--mono); font-size: .8rem;">
-                {{ "{:,.2f}".format(pos.sell_avg | default(0)) }}
-              </td>
-              <td>
-                <span id="pnl-{{ pos.security_id }}" class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
-                  {{ "{:,.2f}".format(pos.pnl) }}
-                </span>
-              </td>
-            </tr>
-            {% else %}
-            <tr>
-              <td colspan="3" style="text-align: center; color: var(--muted); padding: 40px;">
-                No Closed Positions.
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-    </div>
-
-    <div class="panel" style="padding: 0;">
-      <div class="panel-header" style="margin: 18px 18px 10px 18px; display: flex; justify-content: space-between; align-items: center;">
-        <span>Pending Orders</span>
-        <div style="display: flex; gap: 8px;">
-          <form action="/clean_orphaned" method="post" style="margin: 0;">
-            <button type="submit" class="btn-action" style="border-color: var(--accent3); color: var(--accent3);" title="Clear Orphaned Super Orders">
-              Clear Super
-            </button>
-          </form>
-          <form action="/cancel_all" method="post" style="margin: 0;">
-            <button type="submit" class="btn-action" style="border-color: var(--red); color: var(--red);" title="Cancel ALL Pending Orders">
-              Clear All
-            </button>
-          </form>
+                  </div>
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="6" class="empty-state">No Active Positions.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="table-wrap hidden" id="view-closed">
+          <table class="symbols-table" id="table-closed">
+            <thead>
+              <tr>
+                <th class="w-36">#</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-closed', 1, false)">Symbol</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-closed', 2, true)">Qty</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-closed', 3, true)">Buy Avg</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-closed', 4, true)">Sell Avg</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-closed', 5, true)">Realized PnL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pos in closed_positions %}
+              <tr data-position-row="{{ pos.security_id }}" data-position-qty="{{ pos.qty }}">
+                <td>{{ loop.index }}</td>
+                <td>
+                  <span class="symbol-badge">{{ pos.display_name }}</span>
+                </td>
+                <td>
+                  <span id="buyqty-{{ pos.security_id }}">{{ pos.buyqty }}</span>
+                </td>
+                <td id="buyavg-{{ pos.security_id }}" class="mono-text">
+                  {{ "{:,.2f}".format(pos.buy_avg | default(0) )
+                  }}
+                </td>
+                <td id="sellavg-{{ pos.security_id }}" class="mono-text">
+                  {{ "{:,.2f}".format(pos.sell_avg | default(0) )
+                  }}
+                </td>
+                <td>
+                  <span id="pnl-{{ pos.security_id }}"
+                    class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+                    {{ "{:,.2f}".format(pos.pnl) }}
+                  </span>
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="3" class="empty-state">No Closed Positions.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
       </div>
-    <div class="table-wrap">
-      <table class="symbols-table">
-        <thead>
-          <tr>
-            <th style="width:36px">#</th>
-            <th>Symbol</th>
-            <th>Type</th>
-            <th>Side</th>
-            <th>Detail</th>
-            <th style="text-align: right;">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for ord in active_orders %}
-          <tr>
-            <td>{{ loop.index }}</td>
-            <td>
-              <span class="symbol-badge">{{ ord.symbol }}</span>
-            </td>
-            <td>
-              <span class="badge-type badge-{{ ord.type }}">{{ ord.type }}</span>
-            </td>
-            <td>
-              {% set oside = 'B' if ord.side == 'BUY' else ('S' if ord.side == 'SELL' else '-') %}
-              <span class="box-side box-{{ oside }}">{{ oside }}</span>
-            </td>
-            <td style="color: var(--text); font-family: var(--mono); font-size: .72rem; white-space: nowrap;">
-              {{ ord.detail }}
-            </td>
-            <td style="text-align: right;">
-              <form action="/cancel_order" method="post" style="display:inline;">
-                <input type="hidden" name="order_id"   value="{{ ord.order_id }}">
-                <input type="hidden" name="order_type" value="{{ ord.type }}">
-                <input type="hidden" name="leg"        value="{{ ord.leg }}">
-                <button type="submit" class="btn-action btn-cancel-{{ ord.type | lower }}" title="Cancel this order">Cancel</button>
-              </form>
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="6" style="text-align: center; color: var(--muted); padding: 40px;">No Pending Orders.</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div class="panel p-0">
+        <div class="panel-header-custom">
+          <span>Pending Orders</span>
+          <div class="flex-gap-8">
+            <form action="/clean_orphaned" method="post" class="m-0">
+              <button type="submit" class="btn-action btn-accent3" title="Clear Orphaned Super Orders">
+                Clear
+                Super
+              </button>
+            </form>
+            <form action="/cancel_all" method="post" class="m-0">
+              <button type="submit" class="btn-action btn-red" title="Cancel ALL Pending Orders">Clear All</button>
+            </form>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="symbols-table">
+            <thead>
+              <tr>
+                <th class="w-36">#</th>
+                <th>Symbol</th>
+                <th>Type</th>
+                <th>Side</th>
+                <th>Detail</th>
+                <th class="text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ord in active_orders %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>
+                  <span class="symbol-badge">{{ ord.symbol }}</span>
+                </td>
+                <td>
+                  <span class="badge-type badge-{{ ord.type }}">{{ ord.type }}</span>
+                </td>
+                <td>
+                  {% set oside = 'B' if ord.side == 'BUY' else ('S' if ord.side == 'SELL' else '-') %}
+                  <span class="box-side box-{{ oside }}">{{ oside }}</span>
+                </td>
+                <td class="order-detail">{{ ord.detail }}</td>
+                <td class="text-right">
+                  <form action="/cancel_order" method="post" class="inline-block">
+                    <input type="hidden" name="order_id" value="{{ ord.order_id }}">
+                    <input type="hidden" name="order_type" value="{{ ord.type }}">
+                    <input type="hidden" name="leg" value="{{ ord.leg }}">
+                    <button type="submit" class="btn-action btn-cancel-{{ ord.type | lower }}"
+                      title="Cancel this order">Cancel</button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="6" class="empty-state">No Pending Orders.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div id="access-modal" class="modal-overlay">
+    <div class="panel modal-panel">
+      <div class="panel-header flex-between">
+        <span>API Authentication</span>
+        <span class="cursor-pointer-muted"
+          onclick="document.getElementById('access-modal').classList.remove('modal-active')">✕</span>
+      </div>
+      <div class="modal-tabs">
+        <button type="button" class="btn tab-btn-active" id="btn-tab-generate"
+          onclick="switchAuthTab('generate')">Generate</button>
+        <button type="button" class="btn tab-btn-inactive" id="btn-tab-renew"
+          onclick="switchAuthTab('renew')">Renew</button>
+        <button type="button" class="btn tab-btn-inactive" id="btn-tab-update"
+          onclick="switchAuthTab('update')">Manual</button>
+      </div>
+      <form id="form-generate" action="/generate_token" method="post" class="order-form">
+        <div class="form-group">
+          <label>Client ID</label>
+          <input type="text" name="client_id" value="{{ client_id }}" required />
+        </div>
+        <div class="form-group mt-8">
+          <label>Account PIN</label>
+          <input type="password" name="pin" placeholder="Enter your numeric PIN" required />
+        </div>
+        <div class="form-group mt-8">
+          <label>Authenticator TOTP</label>
+          <input type="text" name="totp" placeholder="Enter 6-digit TOTP code" required />
+        </div>
+        <div class="btn-group mt-20">
+          <button type="submit" class="btn btn-buy">Generate New Token</button>
+        </div>
+      </form>
+      <form id="form-renew" action="/renew_token" method="post" class="order-form hidden">
+        <p class="modal-desc">
+          Click below to renew your currently active session. This securely extends your token validity without
+          requiring a PIN or TOTP code.
+        </p>
+        <div class="btn-group">
+          <button type="submit" class="btn btn-accent4">Renew Existing Token</button>
+        </div>
+      </form>
+      <form id="form-update" action="/update_token" method="post" class="order-form hidden">
+        <div class="form-group">
+          <label>Client ID</label>
+          <input type="text" name="client_id" value="{{ client_id }}" required />
+        </div>
+        <div class="form-group mt-8">
+          <label>Token (Access Token)</label>
+          <input type="password" name="access_token" placeholder="Paste manual JWT token here..." required />
+        </div>
+        <div class="btn-group mt-20">
+          <button type="submit" class="btn btn-buy btn-manual-save">Save Manual Token</button>
+        </div>
+      </form>
     </div>
   </div>
-
-  </div>
-  {% endif %}
-</div>
-
-
-<div id="access-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
-  <div class="panel" style="width: 380px; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
-    <div class="panel-header" style="display: flex; justify-content: space-between;">
-      <span>API Authentication</span>
-      <span style="cursor: pointer; color: var(--muted);" onclick="document.getElementById('access-modal').style.display='none'">✕</span>
-    </div>
-
-    <script>
-      function switchAuthTab(tab) {
-          const tabs = ['generate', 'renew', 'update'];
-          tabs.forEach(t => {
-              document.getElementById('form-' + t).style.display = (t === tab ? 'block' : 'none');
-              document.getElementById('btn-tab-' + t).style.borderColor = (t === tab ? 'var(--accent)' : 'transparent');
-          });
-      }
-    </script>
-
-    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-       <button type="button" class="btn" id="btn-tab-generate" onclick="switchAuthTab('generate')" style="background: var(--surface2); color: var(--text); border: 1px solid var(--accent);">Generate</button>
-       <button type="button" class="btn" id="btn-tab-renew" onclick="switchAuthTab('renew')" style="background: var(--surface2); color: var(--text); border: 1px solid transparent;">Renew</button>
-       <button type="button" class="btn" id="btn-tab-update" onclick="switchAuthTab('update')" style="background: var(--surface2); color: var(--text); border: 1px solid transparent;">Manual</button>
-    </div>
-    
-    <form id="form-generate" action="/generate_token" method="post" class="order-form">
-      <div class="form-group">
-        <label>Client ID</label>
-        <input type="text" name="client_id" value="{{ client_id }}" required />
-      </div>
-      <div class="form-group" style="margin-top: 8px;">
-        <label>Account PIN</label>
-        <input type="password" name="pin" placeholder="Enter your numeric PIN" required />
-      </div>
-      <div class="form-group" style="margin-top: 8px;">
-        <label>Authenticator TOTP</label>
-        <input type="text" name="totp" placeholder="Enter 6-digit TOTP code" required />
-      </div>
-      <div class="btn-group" style="margin-top: 20px;">
-        <button type="submit" class="btn btn-buy">Generate New Token</button>
-      </div>
-    </form>
-
-    <form id="form-renew" action="/renew_token" method="post" class="order-form" style="display: none;">
-      <p style="font-family: var(--sans); font-size: 0.85rem; color: var(--muted); margin-bottom: 20px;">
-        Click below to renew your currently active session. This securely extends your token validity without requiring a PIN or TOTP code.
-      </p>
-      <div class="btn-group">
-        <button type="submit" class="btn" style="background: var(--accent4); color: #000;">Renew Existing Token</button>
-      </div>
-    </form>
-
-    <form id="form-update" action="/update_token" method="post" class="order-form" style="display: none;">
-      <div class="form-group">
-        <label>Client ID</label>
-        <input type="text" name="client_id" value="{{ client_id }}" required />
-      </div>
-      <div class="form-group" style="margin-top: 8px;">
-        <label>Token (Access Token)</label>
-        <input type="password" name="access_token" placeholder="Paste manual JWT token here..." required />
-      </div>
-      <div class="btn-group" style="margin-top: 20px;">
-        <button type="submit" class="btn btn-buy" style="background: var(--surface2); color: var(--text); border: 1px solid var(--border);">Save Manual Token</button>
-      </div>
-    </form>
-
-  </div>
-</div>
-
-
-<script src="/static/js/dashboard.js"></script>
-
+  <script src="/static/js/dashboard.js"></script>
 </body>
+
 </html>
