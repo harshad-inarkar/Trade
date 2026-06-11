@@ -4,8 +4,17 @@
 GITHUB_REPO_ROOT_DIR="$HOME/gitlibs/harshad-inarkar/Trade/analysis"
 LOCAL_WORKING_ROOT_DIR="$HOME/Documents/projects/trade/analysis"
 
-# List of source directories to copy
-SOURCE_DIRS=("tradeview" "tradeapi" "orchest" "utils" "web_scripts")
+
+SOURCE_TARGET=(
+    "tradeview"
+    "tradeapi"
+    "orchest"
+    "utils"
+    "web_scripts"
+    "push_src_git.sh"
+    "pyproject.toml"
+    "ruff_cmd_check.sh"
+)
 
 # 2. Ensure the destination exists
 mkdir -p "$GITHUB_REPO_ROOT_DIR"
@@ -18,17 +27,19 @@ echo "Pull origin main..."
 git pull origin main
 
 
-# 4. Force copy source directories to GitHub repo root
-echo "Copying directories..."
-for dir in "${SOURCE_DIRS[@]}"; do
-    src_path="$LOCAL_WORKING_ROOT_DIR/$dir"
-    
+echo "Copying directories and files..."
+for item in "${SOURCE_TARGET[@]}"; do
+    src_path="$LOCAL_WORKING_ROOT_DIR/$item"
+    dest_path="$GITHUB_REPO_ROOT_DIR/$item"
+
     if [ -d "$src_path" ]; then
-        # -r: recursive, -f: force, -v: verbose
-        rsync -av --delete "$src_path/" "$GITHUB_REPO_ROOT_DIR/$dir/"
-        echo "Successfully copied $dir"
+        rsync -av --delete "$src_path/" "$dest_path/"
+        echo "Successfully copied directory $item"
+    elif [ -f "$src_path" ]; then
+        rsync -av "$src_path" "$dest_path"
+        echo "Successfully copied file $item"
     else
-        echo "Warning: Source directory $src_path does not exist. Skipping."
+        echo "Warning: Source $src_path does not exist. Skipping."
     fi
 done
 

@@ -33,11 +33,11 @@ select = ["ALL"]
 # Combines your --ignore and --extend-ignore flags globally for all files
 ignore = [
     "D",        # pydocstyle (missing docstrings)
-    "ANN101",   # Missing type annotation for 'self' (safe to keep even if deprecated)
-    "ANN102",   # Missing type annotation for 'cls' (safe to keep even if deprecated)
     "ANN204",   # Missing return type annotation for special method `__init__`
     "INP001",   # Missing __init__.py in implicit namespace package
     "PLR0913",  # Too many arguments to function call (>5)
     "ANN401",   # Dynamically typed expressions (typing.Any) are disallowed
     "PERF203",
+    "COM812",
+    "ERA001",
 ]
