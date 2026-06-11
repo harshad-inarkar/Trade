@@ -13,7 +13,7 @@ SOURCE_TARGET=(
     "web_scripts"
     "push_src_git.sh"
     "pyproject.toml"
-    "ruff_cmd_check.sh"
+    "project_sanity_check.sh"
 )
 
 # 2. Ensure the destination exists

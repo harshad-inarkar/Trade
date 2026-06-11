@@ -784,3 +784,18 @@ th.sort-desc::after {
     gap: 10px;
     margin-bottom: 20px;
 }
+
+.total-pnl-wrap {
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.total-pnl-label {
+    color: var(--muted);
+    margin-right: 8px;
+}
