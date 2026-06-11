@@ -11,7 +11,7 @@ class UITableManager {
         };
     }
 
-    
+
     togglePositions(view) {
         this.currentView = view;
         const viewActive = document.getElementById("view-active");
@@ -36,7 +36,7 @@ class UITableManager {
             tabActive.classList.toggle("active", view === "active");
             tabClosed.classList.toggle("active", view === "closed");
         }
-        
+
         if (typeof this.updateTotalDisplay === "function") {
             this.updateTotalDisplay();
         }
