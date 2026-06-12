@@ -49,6 +49,8 @@ class PositionData(BaseModel):
     exchange_seg: str
     product_type: str = "INTRADAY"
     ui_inst_type: str = ""
+    is_active: bool = True
+    sec_id: str = ""
 
 
 class LiveDataResponse(BaseModel):
@@ -104,7 +106,7 @@ class AppConfig:
             "template_subdir",
             "template_trade_client",
         )
-        self.refresh_interval: int = app_cfg.get("refresh_interval", 15)
+
         self.refresh_master_script: bool = app_cfg.get("refresh_master_script", False)
         self.reset_proxy_at_start: bool = app_cfg.get("reset_proxy_at_start", False)
 
@@ -171,7 +173,7 @@ class DashboardSnapshot:
             security_id = str(position.get("security_id", ""))
             if not security_id:
                 continue
-            positions[security_id] = {
+            positions[f"active_{security_id}"] = {
                 "pnl": position.get("pnl", 0.0),
                 "qty": position.get("qty", 0),
                 "display_name": position.get("display_name", ""),
@@ -182,15 +184,15 @@ class DashboardSnapshot:
                 "ltp": position.get("ltp", 0.0),
                 "buy_avg": position.get("buy_avg", 0.0),
                 "sell_avg": position.get("sell_avg", 0.0),
-                "product_type": position.get("product_type", "CNC"),
-                "ui_inst_type": position.get("ui_inst_type", ""),
+                "is_active": True,  # <-- ADDED
+                "sec_id": security_id,  # <-- ADDED
             }
 
         for position in self.closed_positions:
             security_id = str(position.get("security_id", ""))
             if not security_id:
                 continue
-            positions[security_id] = {
+            positions[f"closed_{security_id}"] = {
                 "pnl": position.get("pnl", 0.0),
                 "qty": position.get("qty", 0),
                 "display_name": position.get("display_name", ""),
@@ -199,6 +201,8 @@ class DashboardSnapshot:
                 "sellqty": position.get("sellqty", 0),
                 "buy_avg": position.get("buy_avg", 0.0),
                 "sell_avg": position.get("sell_avg", 0.0),
+                "is_active": False,  # <-- ADDED
+                "sec_id": security_id,  # <-- ADDED
             }
 
         return {
@@ -434,7 +438,6 @@ class TradePortalApp:
                 "active_pnl_total": snapshot.active_pnl_total,
                 "closed_pnl_total": snapshot.closed_pnl_total,
                 "funds": snapshot.funds,
-                "refresh_interval": self.cfg.refresh_interval,
                 "view": view,
                 "client_id": self.trader.client_id,
                 "client_name": self.trader.client_name,

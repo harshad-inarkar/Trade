@@ -44,14 +44,26 @@ class UITableManager {
 
 
     updateTotalDisplay() {
-        const totalEl = document.getElementById('live-total-pnl');
-        if (!totalEl) return;
-        const val = this.totals[this.currentView] || 0;
-        totalEl.textContent = '₹ ' + Number(val).toLocaleString("en-IN", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-        });
-        totalEl.className = val > 0 ? 'pnl-positive' : (val < 0 ? 'pnl-negative' : 'pnl-neutral');
+        const activeSum = this.totals.active || 0;
+        const closedSum = this.totals.closed || 0;
+
+        // Update the Active Element
+        const activeEl = document.getElementById('total-pnl-active');
+        if (activeEl) {
+            activeEl.textContent = '₹ ' + Number(activeSum).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            activeEl.className = 'pnl-display ' + (activeSum > 0 ? 'pnl-positive' : (activeSum < 0 ? 'pnl-negative' : 'pnl-neutral'));
+            if (this.currentView === 'closed') activeEl.classList.add('hidden');
+            else activeEl.classList.remove('hidden');
+        }
+
+        // Update the Closed Element
+        const closedEl = document.getElementById('total-pnl-closed');
+        if (closedEl) {
+            closedEl.textContent = '₹ ' + Number(closedSum).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            closedEl.className = 'pnl-display ' + (closedSum > 0 ? 'pnl-positive' : (closedSum < 0 ? 'pnl-negative' : 'pnl-neutral'));
+            if (this.currentView === 'active') closedEl.classList.add('hidden');
+            else closedEl.classList.remove('hidden');
+        }
     }
 
 
@@ -185,184 +197,212 @@ class SymbolSearch {
     }
 }
 /**
-* Live Updater - Handles background polling and DOM Patching
-*/
+ * Live Updater - Handles background polling and DOM Patching
+ */
 class LiveDashboard {
     constructor(uiManager) {
         this.uiManager = uiManager;
         this.liveIntervalId = null;
         this.fetchInFlight = false;
         this.sectionRefreshInFlight = false;
-        this.autoRefreshTimer = null;
+
+        // Removed autoRefreshTimer: fetchLiveData naturally handles layout refreshes now.
         this.setupListeners();
     }
+
     formatCurrency(value) {
-        return Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return Number(value || 0).toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
     }
+
     haveCoreCountsChanged(data) {
-        const posCountEl = document.getElementById('live-position-count');
-        const closedCountEl = document.getElementById('live-closed-count');
-        const orderCountEl = document.getElementById('live-order-count');
+        const posCountEl = document.getElementById("live-position-count");
+        const closedCountEl = document.getElementById("live-closed-count");
+        const orderCountEl = document.getElementById("live-order-count");
+
         const currentPosCount = posCountEl ? parseInt(posCountEl.textContent, 10) : 0;
         const currentClosedCount = closedCountEl ? parseInt(closedCountEl.textContent, 10) : 0;
         const currentOrderCount = orderCountEl ? parseInt(orderCountEl.textContent, 10) : 0;
-        return (currentPosCount !== data.position_count) ||
-            (currentClosedCount !== data.closed_count) ||
-            (currentOrderCount !== data.order_count);
+
+        return (
+            currentPosCount !== data.position_count ||
+            currentClosedCount !== data.closed_count ||
+            currentOrderCount !== data.order_count
+        );
     }
+
     async refreshDataStack() {
         if (this.sectionRefreshInFlight) return;
         this.sectionRefreshInFlight = true;
+
         try {
             const response = await fetch(window.location.href);
             const html = await response.text();
-            const doc = new DOMParser().parseFromString(html, 'text/html');
-            const newData = doc.querySelector('.data-stack');
-            const oldData = document.querySelector('.data-stack');
-            const activeTab = document.querySelector('.btn-tab.active');
-            const viewToRestore = activeTab ? (activeTab.id === 'tab-active' ? 'active' : 'closed') : 'active';
+            const doc = new DOMParser().parseFromString(html, "text/html");
+
+            const newData = doc.querySelector(".data-stack");
+            const oldData = document.querySelector(".data-stack");
+            const activeTab = document.querySelector(".btn-tab.active");
+            const viewToRestore = activeTab ? (activeTab.id === "tab-active" ? "active" : "closed") : "active";
+
             if (newData && oldData) {
+                // Seamlessly swap the raw HTML
                 oldData.innerHTML = newData.innerHTML;
+                document.querySelectorAll('.reentry-form').forEach(f => new OrderFormLogic(f));
             }
-            const newHdrCount = doc.getElementById('hdr-live-position-count');
-            const oldHdrCount = document.getElementById('hdr-live-position-count');
+
+            const newHdrCount = doc.getElementById("hdr-live-position-count");
+            const oldHdrCount = document.getElementById("hdr-live-position-count");
             if (newHdrCount && oldHdrCount) oldHdrCount.textContent = newHdrCount.textContent;
-            const newOrderCount = doc.getElementById('live-order-count');
-            const oldOrderCount = document.getElementById('live-order-count');
+
+            const newOrderCount = doc.getElementById("live-order-count");
+            const oldOrderCount = document.getElementById("live-order-count");
             if (newOrderCount && oldOrderCount) oldOrderCount.textContent = newOrderCount.textContent;
+
+            // Instantly restore layout and calculate sums
             this.uiManager.togglePositions(viewToRestore);
             this.uiManager.restoreSortState();
+            this.uiManager.updateTotalDisplay();
+
         } catch (e) {
-            console.warn('[data_stack] refresh failed:', e);
+            console.warn("[data_stack] refresh failed:", e);
         } finally {
             this.sectionRefreshInFlight = false;
         }
     }
+
     async fetchLiveData() {
         if (this.fetchInFlight) return;
         this.fetchInFlight = true;
+
         try {
-            const res = await fetch('/api/live_data');
+            const res = await fetch("/api/live_data");
             const data = await res.json();
 
-
-
-            // FIX 1: Dynamically calculate Active PnL from the exact live row data
-            // This bypasses the backend 0.0 property bug entirely.
-            let liveActiveSum = 0;
-            for (const [sec_id, pos] of Object.entries(data.positions)) {
-                liveActiveSum += parseFloat(pos.pnl) || 0;
+            const fundsEl = document.getElementById("live-funds");
+            if (fundsEl && data.funds !== undefined) {
+                fundsEl.textContent = "₹ " + this.formatCurrency(data.funds);
             }
 
-            // Store the accurate active sum, and static closed sum
-            this.uiManager.totals.active = liveActiveSum;
-            if (data.closed_pnl_total !== undefined) {
+
+            // Apply exact backend totals
+            if (data.active_pnl_total !== undefined) {
+                this.uiManager.totals.active = data.active_pnl_total;
                 this.uiManager.totals.closed = data.closed_pnl_total;
             }
 
-            // Instantly update UI before doing anything else
-            this.uiManager.updateTotalDisplay();
-
-
-            const fundsEl = document.getElementById('live-funds');
-            if (fundsEl && data.funds !== undefined) {
-                fundsEl.textContent = '₹ ' + this.formatCurrency(data.funds);
-            }
             if (this.haveCoreCountsChanged(data)) {
                 await this.refreshDataStack();
                 this.uiManager.updateTotalDisplay();
                 return;
             }
-            for (const [sec_id, pos] of Object.entries(data.positions)) {
-                const pnlEl = document.getElementById('pnl-' + sec_id);
-                if (pnlEl) {
-                    const pnlVal = parseFloat(pos.pnl);
-                    pnlEl.textContent = this.formatCurrency(pnlVal);
-                    pnlEl.className = pnlVal > 0 ? 'pnl-positive' : (pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
-                }
-                const qtyEl = document.getElementById('qty-' + sec_id);
-                if (qtyEl) {
-                    qtyEl.textContent = Math.abs(parseInt(pos.qty, 10) || 0);
-                }
-                const buyQtyEl = document.getElementById('buyqty-' + sec_id);
-                if (buyQtyEl && pos.buyqty !== undefined) {
-                    buyQtyEl.textContent = parseInt(pos.buyqty, 10) || 0;
-                }
-                const sideEl = document.getElementById('side-' + sec_id);
-                if (sideEl) {
-                    const q = parseInt(pos.qty, 10) || 0;
-                    const side = q > 0 ? 'B' : (q < 0 ? 'S' : '-');
-                    sideEl.textContent = side;
-                    sideEl.className = 'box-side box-' + side;
-                }
-                // Dynamically update Entry Price and LTP (Active)
-                const entryEl = document.getElementById('entry-' + sec_id);
-                if (entryEl && pos.entry_price !== undefined) {
-                    entryEl.textContent = this.formatCurrency(pos.entry_price);
-                }
-                const ltpEl = document.getElementById('ltp-' + sec_id);
-                if (ltpEl && pos.ltp !== undefined) {
-                    ltpEl.textContent = this.formatCurrency(pos.ltp);
-                }
-                // Dynamically update Buy Avg and Sell Avg (Closed)
-                const buyAvgEl = document.getElementById('buyavg-' + sec_id);
-                if (buyAvgEl && pos.buy_avg !== undefined) {
-                    buyAvgEl.textContent = this.formatCurrency(pos.buy_avg);
-                }
-                const sellAvgEl = document.getElementById('sellavg-' + sec_id);
-                if (sellAvgEl && pos.sell_avg !== undefined) {
-                    sellAvgEl.textContent = this.formatCurrency(pos.sell_avg);
+
+            // Loop and patch the individual rows
+            for (const [key, pos] of Object.entries(data.positions)) {
+                const sec_id = pos.sec_id;
+
+                if (pos.is_active) {
+                    const pnlEl = document.getElementById("pnl-active-" + sec_id);
+                    if (pnlEl) {
+                        const pnlVal = parseFloat(pos.pnl);
+                        pnlEl.textContent = this.formatCurrency(pnlVal);
+                        pnlEl.className = pnlVal > 0 ? "pnl-positive" : (pnlVal < 0 ? "pnl-negative" : "pnl-neutral");
+                    }
+
+                    const qtyEl = document.getElementById("qty-" + sec_id);
+                    if (qtyEl) {
+                        qtyEl.textContent = Math.abs(parseInt(pos.qty, 10) || 0);
+                    }
+
+                    const sideEl = document.getElementById("side-" + sec_id);
+                    if (sideEl) {
+                        const q = parseInt(pos.qty, 10) || 0;
+                        const side = q > 0 ? "B" : q < 0 ? "S" : "-";
+                        sideEl.textContent = side;
+                        sideEl.className = "box-side box-" + side;
+                    }
+
+                    const entryEl = document.getElementById("entry-" + sec_id);
+                    if (entryEl && pos.entry_price !== undefined) {
+                        entryEl.textContent = this.formatCurrency(pos.entry_price);
+                    }
+
+                    const ltpEl = document.getElementById("ltp-" + sec_id);
+                    if (ltpEl && pos.ltp !== undefined) {
+                        ltpEl.textContent = this.formatCurrency(pos.ltp);
+                    }
+                } else {
+                    const pnlEl = document.getElementById("pnl-closed-" + sec_id);
+                    if (pnlEl) {
+                        const pnlVal = parseFloat(pos.pnl);
+                        pnlEl.textContent = this.formatCurrency(pnlVal);
+                        pnlEl.className = pnlVal > 0 ? "pnl-positive" : (pnlVal < 0 ? "pnl-negative" : "pnl-neutral");
+                    }
+
+                    const buyQtyEl = document.getElementById("buyqty-" + sec_id);
+                    if (buyQtyEl && pos.buyqty !== undefined) {
+                        buyQtyEl.textContent = parseInt(pos.buyqty, 10) || 0;
+                    }
+
+                    const buyAvgEl = document.getElementById("buyavg-" + sec_id);
+                    if (buyAvgEl && pos.buy_avg !== undefined) {
+                        buyAvgEl.textContent = this.formatCurrency(pos.buy_avg);
+                    }
+
+                    const sellAvgEl = document.getElementById("sellavg-" + sec_id);
+                    if (sellAvgEl && pos.sell_avg !== undefined) {
+                        sellAvgEl.textContent = this.formatCurrency(pos.sell_avg);
+                    }
                 }
             }
+
+            // Fire the sum calculation using the backed-in totals
+            this.uiManager.updateTotalDisplay();
+
         } catch (e) {
-            console.warn('[live_data] fetch failed:', e);
+            console.warn("[live_data] fetch failed:", e);
         } finally {
             this.fetchInFlight = false;
         }
     }
+
     startLiveDataUpdater() {
         if (this.liveIntervalId) clearInterval(this.liveIntervalId);
-        const selectEl = document.getElementById('live-interval-select');
+        const selectEl = document.getElementById("live-interval-select");
         if (!selectEl) return;
+
         const ms = parseInt(selectEl.value, 10);
         if (ms > 0) {
             this.liveIntervalId = setInterval(() => this.fetchLiveData(), ms);
         }
     }
-    startAutoRefresh() {
-        if (!window.DhanConfig.refreshInterval) return;
-        const refreshSecs = window.DhanConfig.refreshInterval;
-        const autoRefreshTask = async () => {
-            const activeTag = document.activeElement?.tagName ?? '';
-            const hasOpenReentry = !!document.querySelector('details.reentry-panel[open]');
-            if (activeTag !== 'INPUT' && activeTag !== 'SELECT' && !hasOpenReentry) {
-                await this.refreshDataStack();
-            }
-            this.autoRefreshTimer = setTimeout(autoRefreshTask, refreshSecs * 1000);
-        };
-        this.autoRefreshTimer = setTimeout(autoRefreshTask, refreshSecs * 1000);
-    }
+
     setupListeners() {
-        const selectEl = document.getElementById('live-interval-select');
+        const selectEl = document.getElementById("live-interval-select");
         if (selectEl) {
-            selectEl.addEventListener('change', () => this.startLiveDataUpdater());
+            selectEl.addEventListener("change", () => this.startLiveDataUpdater());
             this.startLiveDataUpdater();
         }
-        this.startAutoRefresh();
+        // Completely disabled the rigid auto-refresh interval
     }
 }
+
 // Bootstrap the App
 document.addEventListener('DOMContentLoaded', () => {
     window.UI = new UITableManager();
-    window.OrderForm = new OrderFormLogic();
-    // NEW: Initialize totals from the Jinja template load
+    
+    // FIX: Properly initialize both the main Left Panel and existing Re-entry panels
+    document.querySelectorAll('.order-form, .reentry-form').forEach(f => new OrderFormLogic(f));
+
     if (window.DhanConfig) {
         window.UI.totals.active = window.DhanConfig.initActivePnl || 0;
         window.UI.totals.closed = window.DhanConfig.initClosedPnl || 0;
         window.UI.updateTotalDisplay();
     }
+    
     window.Search = new SymbolSearch();
-    // Only boot live updater if we are not in order-only view
     if (window.DhanConfig && window.DhanConfig.isDashboard) {
         window.LivePoller = new LiveDashboard(window.UI);
     }
@@ -504,22 +544,3 @@ class OrderFormLogic {
         this.stopLoss.value = stopLoss.toFixed(2);
     }
 }
-
-// Bootstrap the App
-document.addEventListener('DOMContentLoaded', () => {
-    window.UI = new UITableManager();
-
-    // Initialize logic for the main order form AND any re-entry forms
-    document.querySelectorAll('.order-form, .reentry-form').forEach(f => new OrderFormLogic(f));
-
-    if (window.DhanConfig) {
-        window.UI.totals.active = window.DhanConfig.initActivePnl || 0;
-        window.UI.totals.closed = window.DhanConfig.initClosedPnl || 0;
-        window.UI.updateTotalDisplay();
-    }
-
-    window.Search = new SymbolSearch();
-    if (window.DhanConfig && window.DhanConfig.isDashboard) {
-        window.LivePoller = new LiveDashboard(window.UI);
-    }
-});

@@ -15,7 +15,6 @@
   <link rel="stylesheet" href="/static/css/dashboard.css" />
   <script>
     window.DhanConfig = {
-      refreshInterval: parseInt("{{ refresh_interval | default(0) }}", 10) || 0,
       isDashboard: ("{{ view }}" !== "order"),
       initActivePnl: parseFloat("{{ active_pnl_total | default(0) }}"),
       initClosedPnl: parseFloat("{{ closed_pnl_total | default(0) }}")
@@ -198,7 +197,14 @@
 
           <div class="ml-auto total-pnl-wrap">
             <span class="total-pnl-label">Total PnL:</span>
-            <span id="live-total-pnl">₹ 0.00</span>
+            
+            <span id="total-pnl-active" class="pnl-display {% if active_pnl_total > 0 %}pnl-positive{% elif active_pnl_total < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+              ₹ {{ "{:,.2f}".format(active_pnl_total | default(0)) }}
+            </span>
+            
+            <span id="total-pnl-closed" class="pnl-display hidden {% if closed_pnl_total > 0 %}pnl-positive{% elif closed_pnl_total < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+              ₹ {{ "{:,.2f}".format(closed_pnl_total | default(0)) }}
+            </span>
           </div>
 
         </div>
@@ -235,7 +241,7 @@
                 </td>
                 <td id="ltp-{{ pos.security_id }}" class="mono-text">{{ "{:,.2f}".format(pos.ltp | default(0) ) }}</td>
                 <td>
-                  <span id="pnl-{{ pos.security_id }}"
+                  <span id="pnl-active-{{ pos.security_id }}"
                     class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
                     {{ "{:,.2f}".format(pos.pnl) }}
                   </span>
@@ -410,7 +416,7 @@
                   }}
                 </td>
                 <td>
-                  <span id="pnl-{{ pos.security_id }}"
+                  <span id="pnl-closed-{{ pos.security_id }}"
                     class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
                     {{ "{:,.2f}".format(pos.pnl) }}
                   </span>
