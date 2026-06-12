@@ -245,12 +245,24 @@ class LiveDashboard {
             const res = await fetch('/api/live_data');
             const data = await res.json();
 
-            // NEW: Receive Live Totals
-            if (data.active_pnl_total !== undefined) {
-                this.uiManager.totals.active = data.active_pnl_total;
-                this.uiManager.totals.closed = data.closed_pnl_total;
-                this.uiManager.updateTotalDisplay();
+
+
+            // FIX 1: Dynamically calculate Active PnL from the exact live row data
+            // This bypasses the backend 0.0 property bug entirely.
+            let liveActiveSum = 0;
+            for (const [sec_id, pos] of Object.entries(data.positions)) {
+                liveActiveSum += parseFloat(pos.pnl) || 0;
             }
+
+            // Store the accurate active sum, and static closed sum
+            this.uiManager.totals.active = liveActiveSum;
+            if (data.closed_pnl_total !== undefined) {
+                this.uiManager.totals.closed = data.closed_pnl_total;
+            }
+
+            // Instantly update UI before doing anything else
+            this.uiManager.updateTotalDisplay();
+
 
             const fundsEl = document.getElementById('live-funds');
             if (fundsEl && data.funds !== undefined) {
@@ -258,6 +270,7 @@ class LiveDashboard {
             }
             if (this.haveCoreCountsChanged(data)) {
                 await this.refreshDataStack();
+                this.uiManager.updateTotalDisplay();
                 return;
             }
             for (const [sec_id, pos] of Object.entries(data.positions)) {
@@ -374,92 +387,91 @@ window.switchAuthTab = function (tab) {
 
 
 
+
+
 /**
  * Dynamic Order Form - Enables/Disables fields based on conditions
  */
 class OrderFormLogic {
-    constructor() {
-        this.form = document.querySelector('.order-form');
+    constructor(formEl) {
+        this.form = formEl;
         if (!this.form) return;
 
         this.instType = this.form.querySelector('[name="inst_type"]');
-        this.orderMode = this.form.querySelector('[name="order_mode"]');
-        this.alertTarget = this.form.querySelector('[name="alert_trigger_base"]');
+
+        // Support both main form names and re-entry form names
+        this.orderMode = this.form.querySelector('[name="order_mode"]') || this.form.querySelector('[name="reentry_type"]');
+        this.alertTarget = this.form.querySelector('[name="alert_trigger_base"]') || this.form.querySelector('[name="reentry_alert_base"]');
         this.strike = this.form.querySelector('[name="strike"]');
         this.optType = this.form.querySelector('[name="opt_type"]');
         this.expiry = this.form.querySelector('[name="expiry"]');
-        this.triggerPrice = this.form.querySelector('[name="price"]');
-        this.limitPrice = this.form.querySelector('[name="limit_price"]');
-        this.stopLoss = this.form.querySelector('[name="stop_loss"]');
-        this.targetPrice = this.form.querySelector('[name="target_price"]');
+        this.triggerPrice = this.form.querySelector('[name="price"]') || this.form.querySelector('[name="reentry_price"]');
+        this.limitPrice = this.form.querySelector('[name="limit_price"]') || this.form.querySelector('[name="reentry_limit_price"]');
+        this.stopLoss = this.form.querySelector('[name="stop_loss"]') || this.form.querySelector('[name="reentry_stop_loss"]');
+        this.targetPrice = this.form.querySelector('[name="target_price"]') || this.form.querySelector('[name="reentry_target_price"]');
 
-        // Match DhanTrader defaults for Super Order Calculations
         this.slPerc = 0.7;
         this.targetPerc = this.slPerc * 2;
-
         this.optBump = 10;
 
-        this.setupListeners();
-        this.updateState(); // Boot initial state
+        // Ensure critical elements exist before attaching listeners
+        if (this.instType && this.orderMode) {
+            this.setupListeners();
+            this.updateState(); // Boot initial state
+        }
     }
 
     setupListeners() {
         this.instType.addEventListener('change', () => this.updateState());
         this.orderMode.addEventListener('change', () => this.updateState());
-        this.limitPrice.addEventListener('input', () => this.autoPopulateSuper());
+        if (this.limitPrice) {
+            this.limitPrice.addEventListener('input', () => this.autoPopulateSuper());
+        }
     }
 
     updateState() {
         const inst = this.instType.value;
         const mode = this.orderMode.value;
 
-        // Reset all to enabled before applying specific constraints
-        this.strike.disabled = false;
-        this.optType.disabled = false;
-        this.expiry.disabled = false;
-        this.alertTarget.disabled = false;
-        this.stopLoss.disabled = false;
-        this.targetPrice.disabled = false;
-        this.triggerPrice.disabled = false;
-        this.limitPrice.disabled = false;
+        // Reset all to enabled
+        const fields = [this.strike, this.optType, this.expiry, this.alertTarget, this.stopLoss, this.targetPrice, this.triggerPrice, this.limitPrice];
+        fields.forEach(f => { if (f) f.disabled = false; });
 
-        // Constraint 1, 4, 5: Instrument specific rules
+        // Constraint 1, 4, 5: Instrument rules
         if (inst === 'EQ') {
-            this.strike.disabled = true;
-            this.optType.disabled = true;
-            this.expiry.disabled = true;
+            if (this.strike) this.strike.disabled = true;
+            if (this.optType) this.optType.disabled = true;
+            if (this.expiry) this.expiry.disabled = true;
         } else if (inst === 'FUT') {
-            this.strike.disabled = true;
-            this.optType.disabled = true;
+            if (this.strike) this.strike.disabled = true;
+            if (this.optType) this.optType.disabled = true;
         } else if (inst === '') {
-            // Constraint 6: Default Config selected -> Enable only Exchange, Order Mode, Entry Price
-            this.strike.disabled = true;
-            this.optType.disabled = true;
-            this.expiry.disabled = true;
-            this.limitPrice.disabled = true;
-            this.stopLoss.disabled = true;
-            this.targetPrice.disabled = true;
-            this.alertTarget.disabled = true;
+            if (this.strike) this.strike.disabled = true;
+            if (this.optType) this.optType.disabled = true;
+            if (this.expiry) this.expiry.disabled = true;
+            if (this.limitPrice) this.limitPrice.disabled = true;
+            if (this.stopLoss) this.stopLoss.disabled = true;
+            if (this.targetPrice) this.targetPrice.disabled = true;
+            if (this.alertTarget) this.alertTarget.disabled = true;
         }
 
-        // Constraint 2: Super Order Mode overrides
+        // Constraint 2: Super Order Mode
         if (mode === 'SUPER') {
-            this.triggerPrice.disabled = true; // Disable Trigger/Entry price
+            if (this.triggerPrice) this.triggerPrice.disabled = true;
         } else {
-            this.stopLoss.disabled = true;
-            this.targetPrice.disabled = true;
+            if (this.stopLoss) this.stopLoss.disabled = true;
+            if (this.targetPrice) this.targetPrice.disabled = true;
         }
 
-        // Apply strict cascade: if config default, ensure Super fields stay disabled
         if (inst === '') {
-            this.triggerPrice.disabled = false;
-            this.stopLoss.disabled = true;
-            this.targetPrice.disabled = true;
+            if (this.triggerPrice) this.triggerPrice.disabled = false;
+            if (this.stopLoss) this.stopLoss.disabled = true;
+            if (this.targetPrice) this.targetPrice.disabled = true;
         }
 
         // Constraint 3: Alert Target
         if (mode !== 'ALERT') {
-            this.alertTarget.disabled = true;
+            if (this.alertTarget) this.alertTarget.disabled = true;
         }
 
         this.autoPopulateSuper();
@@ -470,6 +482,7 @@ class OrderFormLogic {
         const inst = this.instType.value;
 
         if (mode !== 'SUPER' || inst === '') return;
+        if (!this.limitPrice || !this.targetPrice || !this.stopLoss) return;
 
         const limitVal = parseFloat(this.limitPrice.value) || 0;
         if (limitVal <= 0) {
@@ -478,7 +491,6 @@ class OrderFormLogic {
             return;
         }
 
-        // Replicate Python _compute_price_levels logic (Assuming standard BUY layout for the visual aid)
         const isOpt = (inst === 'OPT');
         const bump = isOpt ? this.optBump : 1;
 
@@ -492,3 +504,22 @@ class OrderFormLogic {
         this.stopLoss.value = stopLoss.toFixed(2);
     }
 }
+
+// Bootstrap the App
+document.addEventListener('DOMContentLoaded', () => {
+    window.UI = new UITableManager();
+
+    // Initialize logic for the main order form AND any re-entry forms
+    document.querySelectorAll('.order-form, .reentry-form').forEach(f => new OrderFormLogic(f));
+
+    if (window.DhanConfig) {
+        window.UI.totals.active = window.DhanConfig.initActivePnl || 0;
+        window.UI.totals.closed = window.DhanConfig.initClosedPnl || 0;
+        window.UI.updateTotalDisplay();
+    }
+
+    window.Search = new SymbolSearch();
+    if (window.DhanConfig && window.DhanConfig.isDashboard) {
+        window.LivePoller = new LiveDashboard(window.UI);
+    }
+});

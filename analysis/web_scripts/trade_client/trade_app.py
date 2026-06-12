@@ -47,6 +47,8 @@ class PositionData(BaseModel):
     sell_avg: float = 0.0
     display_name: str
     exchange_seg: str
+    product_type: str = "INTRADAY"
+    ui_inst_type: str = ""
 
 
 class LiveDataResponse(BaseModel):
@@ -180,6 +182,8 @@ class DashboardSnapshot:
                 "ltp": position.get("ltp", 0.0),
                 "buy_avg": position.get("buy_avg", 0.0),
                 "sell_avg": position.get("sell_avg", 0.0),
+                "product_type": position.get("product_type", "CNC"),
+                "ui_inst_type": position.get("ui_inst_type", ""),
             }
 
         for position in self.closed_positions:
@@ -509,6 +513,7 @@ class TradePortalApp:
         stop_loss: float = Form(0.0),
         target_price: float = Form(0.0),
         order_mode: str = Form("MARKET"),
+        product_type: str = Form("INTRADAY"),
         inst_type: str = Form(""),
         alert_trigger_base: str = Form("PARENT"),
         strike: float = Form(0.0),
@@ -526,6 +531,7 @@ class TradePortalApp:
             limit_price=limit_price,
             stop_loss=stop_loss,
             target_price=target_price,
+            product_type=product_type,
         )
 
         inst = self.trader.resolve_instrument(
@@ -567,10 +573,14 @@ class TradePortalApp:
         sec_id: str = Form(...),
         exchange_seg: str = Form(...),
         net_qty: int = Form(...),
+        product_type: str = Form("INTRADAY"),
         qty: int = Form(1),
         reentry_price: float = Form(0.0),
         reentry_limit_price: float = Form(0.0),
+        reentry_stop_loss: float = Form(0.0),
+        reentry_target_price: float = Form(0.0),
         reentry_side: str = Form("BUY"),
+        reentry_product_type: str = Form("INTRADAY"),
         inst_type: str = Form(""),
         reentry_type: str = Form(""),
         reentry_alert_base: str = Form("PARENT"),
@@ -578,7 +588,7 @@ class TradePortalApp:
         expiry: str = Form(""),
         opt_type: str = Form(""),
     ) -> RedirectResponse:
-        self.trader.close_position_by_secid(sec_id, exchange_seg, net_qty)
+        self.trader.close_position_by_secid(sec_id, exchange_seg, net_qty, product_type)
 
         if self.cfg.clean_orphaned_super_orders:
             await asyncio.sleep(1)
@@ -593,6 +603,9 @@ class TradePortalApp:
                 force_qty=True,
                 opt_type=opt_type,
                 limit_price=reentry_limit_price,
+                stop_loss=reentry_stop_loss,
+                target_price=reentry_target_price,
+                product_type=reentry_product_type,
             )
 
             inst_reentry = self.trader.resolve_instrument(
@@ -645,8 +658,9 @@ class TradePortalApp:
         sec_id: str = Form(...),
         exchange_seg: str = Form(...),
         net_qty: int = Form(...),
+        product_type: str = Form("INTRADAY"),
     ) -> RedirectResponse:
-        self.trader.close_position_by_secid(sec_id, exchange_seg, net_qty)
+        self.trader.close_position_by_secid(sec_id, exchange_seg, net_qty, product_type)
         if self.cfg.clean_orphaned_super_orders:
             await asyncio.sleep(1)
             self.trader.clean_orphaned_orders()

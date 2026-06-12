@@ -62,6 +62,7 @@ class Instrument:
     limit_price: float = 0.0
     stop_loss: float = 0.0
     target_price: float = 0.0
+    product_type: str = "INTRADAY"
 
 
 @dataclass
@@ -75,6 +76,7 @@ class UIOverride:
     opt_type: str | None = None
     stop_loss: float = 0.0
     target_price: float = 0.0
+    product_type: str = "INTRADAY"
 
 
 @dataclass
@@ -597,6 +599,8 @@ class DhanTrader:
             sym_cfg,
         )
 
+        prod_type = overrides.product_type
+
         return Instrument(
             symb=symb,
             exch=exch,
@@ -612,6 +616,7 @@ class DhanTrader:
             limit_price=overrides.limit_price,
             stop_loss=overrides.stop_loss,
             target_price=overrides.target_price,
+            product_type=prod_type,
         )
 
     def get_instr_data(self, inst: Instrument) -> tuple[str, str]:
@@ -721,13 +726,19 @@ class DhanTrader:
                 err_msg,
             )
 
-    def _base_payload(self, signal: str, exchange_seg: str, sec_id: str) -> dict:
+    def _base_payload(
+        self,
+        signal: str,
+        exchange_seg: str,
+        sec_id: str,
+        product_type: str = "INTRADAY",
+    ) -> dict:
         return {
             "dhanClientId": self.client_id,
             "correlationId": f"auto_{self.client_id}",
             "transactionType": signal,
             "exchangeSegment": exchange_seg,
-            "productType": "INTRADAY",
+            "productType": product_type,
             "orderType": "MARKET",
             "validity": "DAY",
             "securityId": sec_id,
@@ -795,7 +806,9 @@ class DhanTrader:
         final_sl = inst.stop_loss if inst.stop_loss > 0 else levels.stop_loss
         final_target = inst.target_price if inst.target_price > 0 else levels.target
 
-        payload = self._base_payload(inst.signal, exchange_seg, sec_id) | {
+        payload = self._base_payload(
+            inst.signal, exchange_seg, sec_id, inst.product_type
+        ) | {
             "orderType": "LIMIT",
             "quantity": total_quant,
             "price": final_limit,
@@ -812,7 +825,9 @@ class DhanTrader:
 
     def place_market_order(self, sec_id: str, lot_size: int, inst: Instrument) -> None:
         _, exchange_seg = self.get_instr_data(inst)
-        payload = self._base_payload(inst.signal, exchange_seg, sec_id) | {
+        payload = self._base_payload(
+            inst.signal, exchange_seg, sec_id, inst.product_type
+        ) | {
             "quantity": inst.quant * lot_size,
         }
         self._post_order(self.api_cfg.urls.get("order", ""), payload, label="MARKET")
@@ -830,7 +845,9 @@ class DhanTrader:
         _, exchange_seg = self.get_instr_data(inst)
         ord_type = self._get_ord_type(inst)
 
-        payload = self._base_payload(inst.signal, exchange_seg, sec_id) | {
+        payload = self._base_payload(
+            inst.signal, exchange_seg, sec_id, inst.product_type
+        ) | {
             "quantity": inst.quant * lot_size,
             "orderType": ord_type,
             "price": inst.limit_price,
@@ -874,7 +891,7 @@ class DhanTrader:
             inst.quant,
         )
 
-        product_type = "MARGIN" if inst.seg in self.api_cfg.fno_segments else "CNC"
+        inst.product_type = "MARGIN" if inst.seg in self.api_cfg.fno_segments else "CNC"
         trig_price = inst.trigger_price if inst.trigger_price > 0 else levels.entry
         ord_type = self._get_ord_type(inst)
 
@@ -888,7 +905,7 @@ class DhanTrader:
             quant=total_quant,
             trigger_price=trig_price,
             limit_price=inst.limit_price,
-            product_type=product_type,
+            product_type=inst.product_type,
         )
         self.place_forever_order(sec_id, params)
 
@@ -909,7 +926,9 @@ class DhanTrader:
             inst.quant,
         )
 
-        ord_payload = self._base_payload(inst.signal, exchange_seg, sec_id) | {
+        ord_payload = self._base_payload(
+            inst.signal, exchange_seg, sec_id, inst.product_type
+        ) | {
             "quantity": total_quant,
         }
         condition = (
@@ -996,6 +1015,7 @@ class DhanTrader:
                     "sellQty": 0,
                     "totBuyVal": 0.0,
                     "totSellVal": 0.0,
+                    "productType": pos.get("productType", "INTRADAY"),
                 }
 
             agg = aggregated[sec_id]
@@ -1010,6 +1030,9 @@ class DhanTrader:
             agg["totSellVal"] += float(pos.get("sellAvg", 0)) * int(
                 pos.get("sellQty", 0)
             )
+            # Override active position's product type
+            if pos.get("netQty", 0) != 0:
+                agg["productType"] = pos.get("productType", "INTRADAY")
 
         return aggregated
 
@@ -1037,6 +1060,19 @@ class DhanTrader:
 
         for agg in aggregated.values():
             qty = agg["netQty"]
+
+            # Extract underlying scrip details for Re-Entry mirroring
+            details = self.scrip.get_instrument_details(agg["security_id"])
+            raw_inst = details.get("inst_type", "")
+            if "OPT" in raw_inst:
+                ui_inst = "OPT"
+            elif "FUT" in raw_inst:
+                ui_inst = "FUT"
+            elif "EQ" in raw_inst or raw_inst == "INDEX":
+                ui_inst = "EQ"
+            else:
+                ui_inst = ""
+
             entry = {
                 "display_name": agg["display_name"],
                 "base_symbol": agg["base_symbol"],
@@ -1049,6 +1085,11 @@ class DhanTrader:
                 "pnl": 0.0,
                 "entry_price": 0.0,
                 "ltp": 0.0,
+                "product_type": agg["productType"],
+                "ui_inst_type": ui_inst,
+                "strike": details.get("strike") or 0.0,
+                "opt_type": details.get("opt_type") or "",
+                "expiry": details.get("expiry") or "",
             }
 
             if qty != 0:
@@ -1315,11 +1356,12 @@ class DhanTrader:
         sec_id: str,
         exchange_seg: str,
         net_qty: int,
+        product_type: str = "INTRADAY",
     ) -> None:
         if net_qty == 0:
             return
         signal = "SELL" if net_qty > 0 else "BUY"
-        payload = self._base_payload(signal, exchange_seg, sec_id) | {
+        payload = self._base_payload(signal, exchange_seg, sec_id, product_type) | {
             "quantity": abs(net_qty),
         }
         self._post_order(self.api_cfg.urls.get("order", ""), payload, label="CLOSE_POS")

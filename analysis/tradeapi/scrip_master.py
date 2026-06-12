@@ -186,6 +186,24 @@ class ScripMaster:
         key = self._secid_info.get(str(sec_id))
         return key[2] if key else fallback
 
+    def get_instrument_details(self, sec_id: str) -> dict:
+        """Returns the full instrument details for a given security ID."""
+        if not self._secid_info:
+            return {}
+        info = self._secid_info.get(str(sec_id))
+        if not info:
+            return {}
+        # Info tuple: (exch_id, inst, underlying, exp, strike, opt_type, disp_name)
+        return {
+            "exch": info[0],
+            "inst_type": info[1],
+            "symbol": info[2],
+            "expiry": info[3],
+            "strike": info[4],
+            "opt_type": info[5],
+            "disp_name": info[6],
+        }
+
     def lookup(
         self,
         exch: str,

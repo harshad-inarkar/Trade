@@ -69,14 +69,18 @@
     <div class="panel">
       <div class="panel-header">Place Order</div>
       <form action="/place_order{% if view == 'order' %}?view=order{% endif %}" method="post" class="order-form">
-        <div class="form-group">
-          <label>Symbol</label>
-          <div class="symbol-search-wrap">
-            <input type="text" name="symbol" placeholder="e.g. TCS" autocomplete="off" required />
-            <div id="symbol-search-dropdown" class="symbol-search-dropdown"></div>
-          </div>
-        </div>
         <div class="form-group flex-row-gap-10">
+
+          <div class="flex-1">
+            <div class="flex-col">
+              <label>Symbol</label>
+              <div class="symbol-search-wrap">
+                <input type="text" name="symbol" placeholder="e.g. TCS" autocomplete="off" required />
+                <div id="symbol-search-dropdown" class="symbol-search-dropdown"></div>
+              </div>
+            </div>
+          </div>
+
           <div class="flex-1">
             <div class="flex-col">
               <label>Exchange</label>
@@ -86,16 +90,29 @@
               </select>
             </div>
           </div>
+        </div>
+
+        <div class="form-group flex-row-gap-10">
+          <div class="flex-1">
+            <label>Product Type</label>
+            <select name="product_type">
+              <option value="CNC" selected>CNC</option>
+              <option value="INTRADAY">INTRADAY</option>
+              <option value="MARGIN">MARGIN</option>
+            </select>
+          </div>
+
           <div class="flex-1">
             <label>Inst Type</label>
             <select name="inst_type">
-              <option value="">Config Default</option>
+              <option value="" selected>Config Default</option>
               <option value="EQ">Equity (EQ)</option>
-              <option value="OPT" selected>Options (OPT)</option>
+              <option value="OPT">Options (OPT)</option>
               <option value="FUT">Futures (FUT)</option>
             </select>
           </div>
         </div>
+
         <div class="form-group flex-row-gap-10">
           <div class="flex-1">
             <label>Order Mode</label>
@@ -114,6 +131,7 @@
             </select>
           </div>
         </div>
+
         <div class="form-group flex-row-gap-10">
           <div class="flex-1">
             <label>Strike (OPT)</label>
@@ -228,6 +246,7 @@
                       <input type="hidden" name="sec_id" value="{{ pos.security_id }}">
                       <input type="hidden" name="exchange_seg" value="{{ pos.exchange_seg }}">
                       <input type="hidden" name="net_qty" value="{{ pos.qty }}">
+                      <input type="hidden" name="product_type" value="{{ pos.product_type }}">
                       <button type="submit" class="btn-action btn-close-mkt"
                         title="Immediate market close">Close</button>
                     </form>
@@ -236,25 +255,45 @@
                         Re-entry ▸
                       </summary>
                       <div class="reentry-form-wrap">
-                        <form action="/close_reentry" method="post">
+                        <form action="/close_reentry" method="post" class="reentry-form">
                           <input type="hidden" name="sec_id" value="{{ pos.security_id }}">
                           <input type="hidden" name="exchange_seg" value="{{ pos.exchange_seg }}">
                           <input type="hidden" name="net_qty" value="{{ pos.qty }}">
                           <input type="hidden" name="symbol" value="{{ pos.base_symbol }}">
                           <input type="hidden" name="exchange" value="{{ pos.exchange }}">
-                          <label>Re-entry Side</label>
-                          <select name="reentry_side">
-                            <option value="BUY">BUY (re-enter long)</option>
-                            <option value="SELL">SELL (re-enter short)</option>
-                          </select>
+                          <input type="hidden" name="product_type" value="{{ pos.product_type }}">
+
+                          <div class="mt-10-flex-gap-10">
+                            <div class="flex-1">
+                              <label class="mt-0">Re-entry Side</label>
+                              <select name="reentry_side">
+                                <option value="BUY">BUY</option>
+                                <option value="SELL">SELL</option>
+                              </select>
+                            </div>
+                            <div class="flex-1">
+                              <label class="mt-0">Product Type</label>
+                              <select name="reentry_product_type">
+                                <option value="CNC" {% if pos.product_type=='CNC' or pos.product_type=='MARGIN'
+                                  %}selected{% endif %}>CNC / MARGIN</option>
+                                <option value="INTRADAY" {% if pos.product_type=='INTRADAY' %}selected{% endif %}>
+                                  INTRADAY</option>
+                              </select>
+                            </div>
+                          </div>
+
                           <div class="mt-10-flex-gap-10">
                             <div class="flex-1">
                               <label class="mt-0">Instrument</label>
                               <select name="inst_type">
-                                <option value="">Config Default</option>
-                                <option value="EQ">Equity (EQ)</option>
-                                <option value="OPT">Options (OPT)</option>
-                                <option value="FUT">Futures (FUT)</option>
+                                <option value="" {% if not pos.ui_inst_type %}selected{% endif %}>Config Default
+                                </option>
+                                <option value="EQ" {% if pos.ui_inst_type=='EQ' %}selected{% endif %}>Equity (EQ)
+                                </option>
+                                <option value="OPT" {% if pos.ui_inst_type=='OPT' %}selected{% endif %}>Options (OPT)
+                                </option>
+                                <option value="FUT" {% if pos.ui_inst_type=='FUT' %}selected{% endif %}>Futures (FUT)
+                                </option>
                               </select>
                             </div>
                             <div class="flex-1">
@@ -268,35 +307,39 @@
                               </select>
                             </div>
                           </div>
+
                           <label>Alert Target (If Alert)</label>
                           <select name="reentry_alert_base">
                             <option value="PARENT">Underlying Asset</option>
                             <option value="SELF">Same Symbol</option>
                           </select>
+
                           <div class="mt-10-flex-gap-10">
                             <div class="flex-1">
                               <label class="mt-0">Strike (OPT)</label>
-                              <input type="number" name="strike" value="0.0" step="0.05" />
+                              <input type="number" name="strike" value="{{ pos.strike }}" step="0.05" />
                             </div>
                             <div class="flex-1">
                               <label class="mt-0">Opt Type (OPT)</label>
                               <select name="opt_type">
-                                <option value="">Auto</option>
-                                <option value="CE">CE</option>
-                                <option value="PE">PE</option>
+                                <option value="" {% if not pos.opt_type %}selected{% endif %}>Auto</option>
+                                <option value="CE" {% if pos.opt_type=='CE' %}selected{% endif %}>CE</option>
+                                <option value="PE" {% if pos.opt_type=='PE' %}selected{% endif %}>PE</option>
                               </select>
                             </div>
                           </div>
+
                           <div class="mt-10-flex-gap-10">
                             <div class="flex-1">
                               <label class="mt-0">Expiry Date</label>
-                              <input type="text" name="expiry" placeholder="YYYY-MM-DD" />
+                              <input type="text" name="expiry" value="{{ pos.expiry }}" placeholder="YYYY-MM-DD" />
                             </div>
                             <div class="flex-1">
                               <label class="mt-0">New Lot Qty</label>
                               <input type="number" name="qty" value="1" min="1" />
                             </div>
                           </div>
+
                           <div class="mt-10-flex-gap-10">
                             <div class="flex-1">
                               <label class="mt-0">Trigger Price</label>
@@ -309,6 +352,18 @@
                                 min="0" />
                             </div>
                           </div>
+
+                          <div class="mt-10-flex-gap-10">
+                            <div class="flex-1">
+                              <label class="mt-0">Target (Super)</label>
+                              <input type="number" name="reentry_target_price" value="0.0" step="0.05" />
+                            </div>
+                            <div class="flex-1">
+                              <label class="mt-0">Stop Loss (Super)</label>
+                              <input type="number" name="reentry_stop_loss" value="0.0" step="0.05" />
+                            </div>
+                          </div>
+
                           <button type="submit" class="reentry-submit">Close &amp; Set Re-entry</button>
                         </form>
                       </div>
