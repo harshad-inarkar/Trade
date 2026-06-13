@@ -250,7 +250,8 @@ class LiveDashboard {
             if (newData && oldData) {
                 // Seamlessly swap the raw HTML
                 oldData.innerHTML = newData.innerHTML;
-                document.querySelectorAll('.reentry-form').forEach(f => new OrderFormLogic(f));
+                // Re-bind logic specifically to the newly swapped-in dropdown forms
+                document.querySelectorAll('.data-stack .order-form').forEach(f => new OrderFormLogic(f));
             }
 
             const newHdrCount = doc.getElementById("hdr-live-position-count");
@@ -393,9 +394,9 @@ class LiveDashboard {
 document.addEventListener('DOMContentLoaded', () => {
     window.UI = new UITableManager();
     
-    // FIX: Properly initialize both the main Left Panel and existing Re-entry panels
-    document.querySelectorAll('.order-form, .reentry-form').forEach(f => new OrderFormLogic(f));
-
+    // Initialize logic for the main Left Panel AND all inline dropdown forms
+    document.querySelectorAll('.order-form').forEach(f => new OrderFormLogic(f));
+    
     if (window.DhanConfig) {
         window.UI.totals.active = window.DhanConfig.initActivePnl || 0;
         window.UI.totals.closed = window.DhanConfig.initClosedPnl || 0;
