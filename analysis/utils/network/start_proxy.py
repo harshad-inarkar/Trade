@@ -173,6 +173,7 @@ class SSHProxyManager:
         self.stop()
         time.sleep(self.restart_delay)
         self.start()
+        time.sleep(self.restart_delay)
 
 
 if __name__ == "__main__":

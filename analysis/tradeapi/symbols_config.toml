@@ -1,5 +1,5 @@
 # Global Config
-place_order_mode= "NA"  # 'SUPER' 'FOREVER' 'ALERT' 
+place_order_mode= "SUPER"  # 'SUPER' 'FOREVER' 'ALERT' 
 #def_expiry_date  = "2026-05-26"
 def_trade_amount = 10000
 def_quantity     = 1
@@ -19,7 +19,7 @@ stop_trail_perc  = 0.5
 # NSE Configs
 # ─────────────────────────────────────────────
 [nse.stocks.config]
-    order_mode   = "NA" # EQ /OPT/ FUT
+    order_mode   = "EQ" # EQ /OPT/ FUT
     trade_amount = 50000
     #expiry_date = "2026-05-26"
 
