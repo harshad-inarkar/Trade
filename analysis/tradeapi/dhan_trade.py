@@ -895,8 +895,8 @@ class DhanTrader:
         trig_price = inst.trigger_price if inst.trigger_price > 0 else levels.entry
         ord_type = self._get_ord_type(inst)
 
-        if ord_type != "MARKET":
-            ord_type = "LIMIT"
+        # if ord_type != "MARKET":
+        ord_type = "LIMIT"
 
         params = ForeverOrderParams(
             ord_type=ord_type,
@@ -904,7 +904,7 @@ class DhanTrader:
             exchange_seg=exchange_seg,
             quant=total_quant,
             trigger_price=trig_price,
-            limit_price=inst.limit_price,
+            limit_price=inst.limit_price if inst.limit_price > 0 else levels.limit,
             product_type=inst.product_type,
         )
         self.place_forever_order(sec_id, params)
@@ -1398,7 +1398,7 @@ class DhanTrader:
             if is_fno and is_opt:
                 self.place_simple_order(sec_id, lot_size, inst)
                 return
-            if mode == "FOREVER":
+            if mode == "FOREVER" and inst.seg in self.api_cfg.fut_segments:
                 self.place_trigger_forever_order(sec_id, lot_size, inst)
             else:
                 self.place_super_order(sec_id, lot_size, inst)
@@ -1415,7 +1415,9 @@ class DhanTrader:
         entry_val: float = 0.0,
     ) -> None:
         trade_key = f"{exch}:{symb}:{signal}"
-        if trade_key in self.traded_this_scan:
+        ignore_traded_scan = self.api_cfg.settings.get("ignore_traded_scan", True)
+
+        if not ignore_traded_scan and trade_key in self.traded_this_scan:
             LOGGER.info("[skip] %s already traded this scan cycle.", trade_key)
             return
 

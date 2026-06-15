@@ -2,6 +2,7 @@
 
 [settings]
 log_level = ""
+ignore_traded_scan = true
 
 [urls]
 order         = "https://api.dhan.co/v2/orders"
