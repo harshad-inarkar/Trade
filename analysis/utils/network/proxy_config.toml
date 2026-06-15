@@ -5,3 +5,8 @@ key_path = "~/.ssh/oracle_dhan.key"
 port = 9090
 restart_delay = 1.0
 proxy_host = 'localhost'
+webhook_port = 8000
+
+# AutoSSH keep-alive settings
+server_alive_interval = 30
+server_alive_count_max = 3

@@ -4,17 +4,18 @@
 
 # ── Uvicorn server settings ───────────────────────────────────────────────────
 [server]
-host      = "127.0.0.1"
+host      = "localhost"
 port      = 8000
 reload    = false          # Set to false to prevent double-loading
 log_level = ""         # debug | info | warning | error | critical
+webhook_secret = "mytradingwebhooksecret"
 
 # ── App-level settings ────────────────────────────────────────────────────────
 [app]
 title            = "Dhan Trading Portal"
 template_subdir  = "template_trade_client"  # relative to TEMPLATES_ROOT_DIR
 refresh_master_script = false
-reset_proxy_at_start = false
+reset_proxy_at_start = true
 
 # ── Position close defaults ────────────────────────────────────────────────────
 [close]

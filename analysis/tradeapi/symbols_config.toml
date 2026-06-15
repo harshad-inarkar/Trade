@@ -19,7 +19,7 @@ stop_trail_perc  = 0.5
 # NSE Configs
 # ─────────────────────────────────────────────
 [nse.stocks.config]
-    order_mode   = "NA" # EQ / FUT
+    order_mode   = "NA" # EQ /OPT/ FUT
     trade_amount = 50000
     #expiry_date = "2026-05-26"
 

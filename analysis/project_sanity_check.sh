@@ -8,6 +8,7 @@ targets=(
     tradeapi/dhan_trade.py
     tradeapi/scrip_master.py
     tradeapi/scrip_search.py
+    utils/network
 )
 
 ruff check --fix "${targets[@]}"

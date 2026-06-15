@@ -1,13 +1,14 @@
 """FastAPI dashboard for the Dhan trading portal."""
 
 import asyncio
+import hmac
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 import tomllib
 import uvicorn
-from fastapi import APIRouter, FastAPI, Form, Query, Request
+from fastapi import APIRouter, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -33,6 +34,14 @@ class SymbolSearchItem(BaseModel):
     strike: float
     opt_type: str
     expiry: str
+    exch: str
+
+
+class TradeAlert(BaseModel):
+    secret: str
+    symbol: str
+    signal: str
+    price: float
     exch: str
 
 
@@ -97,6 +106,7 @@ class AppConfig:
         self.port: int = srv.get("port", 8000)
         self.reload: bool = srv.get("reload", False)
         self.log_level: str = srv.get("log_level", "")
+        self.webhook_secret: str = srv.get("webhook_secret", "")
         if not self.log_level:
             self.log_level = "critical"
 
@@ -416,6 +426,11 @@ class TradePortalApp:
             methods=["POST"],
             response_class=RedirectResponse,
         )
+        router.add_api_route(
+            "/webhook/",
+            self._receive_webhook,
+            methods=["POST"],
+        )
 
         self.app.include_router(router)
 
@@ -700,6 +715,32 @@ class TradePortalApp:
         for o in self.trader.get_all_alerts(self.cfg.alert_active_statuses):
             self.trader.cancel_alert_order(o["order_id"])
         return RedirectResponse(url="/", status_code=303)
+
+    async def _receive_webhook(self, alert: TradeAlert) -> dict:
+        LOGGER.info("Incoming Webhook Alert: %s", alert.model_dump())
+
+        if not self.cfg.webhook_secret or not hmac.compare_digest(
+            alert.secret, self.cfg.webhook_secret
+        ):
+            LOGGER.warning("Unauthorized webhook attempt rejected!")
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        try:
+            self.trader.fire_trade(
+                symb=alert.symbol,
+                exch=alert.exch,
+                signal=alert.signal.upper(),
+                entry_val=alert.price,
+            )
+        except Exception as err:
+            LOGGER.exception("Failed to execute webhook trade")
+            raise HTTPException(
+                status_code=500, detail="Internal Execution Error"
+            ) from err
+        else:
+            return {
+                "status": "success",
+                "message": f"Executed {alert.signal} for {alert.symbol}",
+            }
 
     def run(self) -> None:
         uvicorn.run(
