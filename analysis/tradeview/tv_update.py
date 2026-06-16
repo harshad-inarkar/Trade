@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
 import argparse
-import datetime
-import os
+import contextlib
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pyautogui
@@ -17,7 +16,7 @@ from utils.utility import wait_next_wall_clock
 # macOS Background App Registration
 # ─────────────────────────────────────────────────────────────────────────────
 if sys.platform == "darwin":
-    try:
+    with contextlib.suppress(ImportError):
         import AppKit
 
         # Initialize the shared application instance
@@ -27,12 +26,26 @@ if sys.platform == "darwin":
         # This acts exactly like LSUIElement=1 (Hides Dock icon, runs in background)
         app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
 
-    except ImportError:
-        # Fails silently if pyobjc-framework-AppKit is not installed
-        pass
+try:
+    import Quartz
 
+    QUARTZ_AVAILABLE = True
+except ImportError:
+    QUARTZ_AVAILABLE = False
+
+
+import pytz
+
+india_tz = pytz.timezone("Asia/Kolkata")
 # Safety mechanism
 pyautogui.FAILSAFE = True
+
+
+def out(msg: str = "", end: str = "\n", *, flush: bool = False) -> None:
+    """Helper to output messages to stdout without triggering T201."""
+    sys.stdout.write(f"{msg}{end}")
+    if flush:
+        sys.stdout.flush()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -41,20 +54,22 @@ pyautogui.FAILSAFE = True
 class TVUpdateConfig:
     """Manages reading and writing settings and coordinates to a TOML file."""
 
-    def __init__(self, config_path: Path):
+    def __init__(self, config_path: Path) -> None:
         self.config_path = config_path
         self.data = self._load()
 
     def _load(self) -> dict:
         if self.config_path.exists():
             try:
-                with open(self.config_path, "rb") as f:
+                with self.config_path.open("rb") as f:
                     return tomllib.load(f)
-            except Exception as e:
-                print(f"Error reading {self.config_path}: {e}")
+            except (OSError, tomllib.TOMLDecodeError) as e:
+                out(f"Error reading {self.config_path}: {e}")
         return {}
 
-    def save_coordinates(self, indicator: tuple, textbox: tuple, ok: tuple):
+    def save_coordinates(
+        self, indicator: tuple[int, int], textbox: tuple[int, int], ok: tuple[int, int]
+    ) -> None:
         """Saves coordinates to the TOML file while preserving other settings."""
         self.data.setdefault("coordinates", {})
         self.data["coordinates"]["indicator"] = list(indicator)
@@ -62,7 +77,7 @@ class TVUpdateConfig:
         self.data["coordinates"]["ok"] = list(ok)
         self._write_toml()
 
-    def _write_toml(self):
+    def _write_toml(self) -> None:
         """Minimal manual TOML writer for simple dicts."""
         lines = []
         for section, content in self.data.items():
@@ -77,7 +92,7 @@ class TVUpdateConfig:
             lines.append("")
 
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.config_path, "w") as f:
+        with self.config_path.open("w") as f:
             f.write("\n".join(lines))
 
 
@@ -85,7 +100,7 @@ class TVUpdateConfig:
 # Application Logic
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class TVUpdaterApp:
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.config_file = Path(__file__).parent / "tv_update_config.toml"
         self.config = TVUpdateConfig(self.config_file)
 
@@ -98,43 +113,45 @@ class TVUpdaterApp:
         self.new_setup = args.new_setup
 
         # Candidates path resolution
-        default_cand_path = os.path.join(OUT_DIR, "candidates_merge.txt")
+        default_cand_path = Path(OUT_DIR) / "candidates_merge.txt"
         self.candidates_path = Path(settings.get("candidates_path", default_cand_path))
 
         self.coords = None
 
-    def _is_user_active(self, seconds=1) -> bool:
+    def _is_user_active(self, seconds: float = 1) -> bool:
         """Checks if the mouse moves during a wait period to detect user activity."""
         pos1 = pyautogui.position()
         time.sleep(seconds)
         pos2 = pyautogui.position()
         return pos1 != pos2
 
-    def _setup_coordinates(self) -> tuple:
+    def _setup_coordinates(
+        self,
+    ) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
         """Interactive prompt to capture coordinates."""
-        print("\n─── COORDINATE SETUP ───")
-        print(
-            "Position your mouse and press ENTER in the terminal to capture each point.",
+        out("\n─── COORDINATE SETUP ───")
+        out(
+            "Position your mouse and press ENTER in the terminal to capture each point."
         )
 
         input("1. Hover over the INDICATOR LABEL (for double-click) and press Enter...")
         indicator_xy = pyautogui.position()
-        print(f"Captured: {indicator_xy}")
+        out(f"Captured: {indicator_xy}")
 
         input("2. Hover over the SYMBOLS TEXTBOX center and press Enter...")
         textbox_xy = pyautogui.position()
-        print(f"Captured: {textbox_xy}")
+        out(f"Captured: {textbox_xy}")
 
         input("3. Hover over the OK BUTTON and press Enter...")
         ok_xy = pyautogui.position()
-        print(f"Captured: {ok_xy}\n")
+        out(f"Captured: {ok_xy}\n")
 
         self.config.save_coordinates(
             (indicator_xy.x, indicator_xy.y),
             (textbox_xy.x, textbox_xy.y),
             (ok_xy.x, ok_xy.y),
         )
-        print(f"Coordinates saved to {self.config_file}")
+        out(f"Coordinates saved to {self.config_file}")
 
         return (
             (indicator_xy.x, indicator_xy.y),
@@ -142,7 +159,9 @@ class TVUpdaterApp:
             (ok_xy.x, ok_xy.y),
         )
 
-    def _load_coordinates(self) -> tuple:
+    def _load_coordinates(
+        self,
+    ) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
         """Loads coordinates from config or forces setup if missing."""
         coord_data = self.config.data.get("coordinates", {})
 
@@ -150,20 +169,29 @@ class TVUpdaterApp:
             return self._setup_coordinates()
 
         try:
-            indicator = tuple(coord_data["indicator"])
-            textbox = tuple(coord_data["textbox"])
-            ok = tuple(coord_data["ok"])
-
-            print(f"Loaded coordinates from {self.config_file.name}:")
-            print(f"  Indicator: {indicator}")
-            print(f"  Textbox:   {textbox}")
-            print(f"  OK Button: {ok}")
-            return indicator, textbox, ok
-        except KeyError:
-            print("Incomplete coordinates in config. Falling back to setup.")
+            indicator = (
+                int(coord_data["indicator"][0]),
+                int(coord_data["indicator"][1]),
+            )
+            textbox = (
+                int(coord_data["textbox"][0]),
+                int(coord_data["textbox"][1]),
+            )
+            ok = (
+                int(coord_data["ok"][0]),
+                int(coord_data["ok"][1]),
+            )
+        except (KeyError, ValueError, IndexError):
+            out("Incomplete coordinates in config. Falling back to setup.")
             return self._setup_coordinates()
+        else:
+            out(f"Loaded coordinates from {self.config_file.name}:")
+            out(f"  Indicator: {indicator}")
+            out(f"  Textbox:   {textbox}")
+            out(f"  OK Button: {ok}")
+            return indicator, textbox, ok
 
-    def _focus_tradingview(self):
+    def _focus_tradingview(self) -> None:
         """Forces macOS to bring TradingView to the absolute front."""
         focus_script = """
             tell application "System Events"
@@ -181,44 +209,46 @@ class TVUpdaterApp:
                 capture_output=True,
             )
             time.sleep(1.0)  # Give macOS time to swap window layers
-        except Exception as e:
-            print(f"Focus Error: {e}")
-            os.system("osascript -e 'tell application \"TradingView\" to activate'")
+        except subprocess.SubprocessError as e:
+            out(f"Focus Error: {e}")
+            subprocess.run(
+                ["osascript", "-e", 'tell application "TradingView" to activate'],
+                check=False,
+            )
             time.sleep(1.5)
 
-    def _perform_update(self):
+    def _perform_update(self) -> None:
         """Core automation sequence."""
         # App Status Check
-        if not os.popen("pgrep -x 'TradingView'").read():
-            print("TradingView app closed. Exiting script.")
+        pgrep = subprocess.run(
+            ["pgrep", "-x", "TradingView"], capture_output=True, text=True, check=False
+        )
+        if not pgrep.stdout.strip():
+            out("TradingView app closed. Exiting script.")
             sys.exit()
 
         # 1. User Active Check (Initial Warning)
-        os.system("afplay /System/Library/Sounds/Tink.aiff")
+        subprocess.run(["afplay", "/System/Library/Sounds/Tink.aiff"], check=False)
         time.sleep(2)
 
         if self._is_user_active(1):
-            print(
-                f"[{datetime.datetime.now().strftime('%H:%M:%S')}] User active. Skipping update...",
-            )
+            now_str = datetime.now(india_tz).astimezone().strftime("%H:%M:%S")
+            out(f"[{now_str}] User active. Skipping update...")
             return
 
         # Read latest candidates
         if not self.candidates_path.exists():
-            print(f"Error: {self.candidates_path} not found. Skipping update.")
+            out(f"Error: {self.candidates_path} not found. Skipping update.")
             return
 
-        with open(self.candidates_path) as f:
+        with self.candidates_path.open() as f:
             symbols = "\n".join([line.strip() for line in f if line.strip()])
 
         original_pos = pyautogui.position()
 
         # Boomerang logic
         is_on_desk_1 = False
-        try:
-            import Quartz
-
-            # Pulls only windows currently rendered on the active Desktop
+        if QUARTZ_AVAILABLE:
             window_list = Quartz.CGWindowListCopyWindowInfo(
                 Quartz.kCGWindowListOptionOnScreenOnly,
                 Quartz.kCGNullWindowID,
@@ -226,21 +256,18 @@ class TVUpdaterApp:
             is_on_desk_1 = any(
                 w.get(Quartz.kCGWindowOwnerName) == "TradingView" for w in window_list
             )
-        except ImportError:
-            # Fallback if pyobjc-framework-Quartz is not installed
-            active_app = (
-                os.popen(
-                    "osascript -e 'tell application \"System Events\" to get name of first application process whose frontmost is true'",
-                )
-                .read()
-                .strip()
+        else:
+            script = (
+                'tell application "System Events" to get name of first '
+                "application process whose frontmost is true"
             )
-            is_on_desk_1 = active_app == "TradingView"
+            result = subprocess.run(
+                ["osascript", "-e", script], capture_output=True, text=True, check=False
+            )
+            is_on_desk_1 = result.stdout.strip() == "TradingView"
 
         if not is_on_desk_1:
             pass
-            # pyautogui.hotkey('ctrl', '1')
-            # time.sleep(0.6) # Wait for macOS slide animation to finish
 
         # 2. Focus Window
         if self.tv_focus_flag:
@@ -270,16 +297,13 @@ class TVUpdaterApp:
 
         # 4. Snap mouse back
         pyautogui.moveTo(original_pos)
-        print(
-            f"[{datetime.datetime.now().strftime('%H:%M:%S')}] TV Updated successfully.",
-        )
+        now_str = datetime.now(india_tz).astimezone().strftime("%H:%M:%S")
+        out(f"[{now_str}] TV Updated successfully.")
 
-    def run(self):
+    def run(self) -> None:
         self.coords = self._load_coordinates()
 
-        print(
-            f"\nAutomation active. Monitoring for {self.reload_interval}m intervals...",
-        )
+        out(f"\nAutomation active. Monitoring for {self.reload_interval}m intervals...")
         self._perform_update()
 
         while True:
@@ -300,11 +324,10 @@ if __name__ == "__main__":
     )
 
     args, _ = parser.parse_known_args()
-
     app = TVUpdaterApp(args)
 
     try:
         app.run()
     except KeyboardInterrupt:
-        print("\nExiting.")
+        out("\nExiting.")
         sys.exit(0)

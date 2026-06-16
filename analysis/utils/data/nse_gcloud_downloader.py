@@ -1,19 +1,27 @@
 #!/usr/bin/env python3
 """
-NSE Intraday Data Downloader — Cloud Function Gen 2
-Triggered by Cloud Scheduler every 3 mins, 09:15–15:30 IST, Mon–Fri
+NSE Intraday Data Downloader - Cloud Function Gen 2
+Triggered by Cloud Scheduler every 3 mins, 09:15-15:30 IST, Mon-Fri
 Uploads directly to GCS bucket (no rclone, no GDrive)
 """
 
+import contextlib
 import csv
+import sys
 import time
 from datetime import datetime
 from io import StringIO
+from typing import Any
 
 import functions_framework
 import pytz
 import requests
 from google.cloud import storage
+
+
+def out(msg: str = "", end: str = "\n") -> None:
+    sys.stdout.write(f"{msg}{end}")
+
 
 # ── Timezone ──────────────────────────────────────────────────────────────────
 india_tz = pytz.timezone("Asia/Kolkata")
@@ -39,48 +47,44 @@ column_map = [
     ("Value (₹ Lakhs) - Futures", "vol_val_cum"),
     ("Underlying", "price"),
 ]
-output_columns = [out for _, out in column_map]
+output_columns = [v_out for _, v_out in column_map]
 
 # ── Module-level singletons (survive warm invocations) ────────────────────────
-# HTTP session: reused across warm calls — skips NSE cookie handshake each time
-_http_session: requests.Session | None = None
-
-# GCS client: reuses auth token across warm calls
-_gcs_client: storage.Client | None = None
+_cache: dict[str, Any] = {"http_session": None, "gcs_client": None}
 
 
 def get_http_session() -> requests.Session:
-    global _http_session
-    if _http_session is None:
-        print("Cold: initialising HTTP session")
+    if _cache["http_session"] is None:
+        out("Cold: initialising HTTP session")
         s = requests.Session()
         s.headers.update(
             {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                ),
                 "Referer": REFER_URL,
             },
         )
-        s.get(SESSION_URL, timeout=10)  # establish NSE session cookie
-        _http_session = s
-    return _http_session
+        s.get(SESSION_URL, timeout=10)
+        _cache["http_session"] = s
+    return _cache["http_session"]
 
 
 def get_gcs_client() -> storage.Client:
-    global _gcs_client
-    if _gcs_client is None:
-        print("Cold: initialising GCS client")
-        _gcs_client = (
-            storage.Client()
-        )  # uses Cloud Function service account automatically
-    return _gcs_client
+    if _cache["gcs_client"] is None:
+        out("Cold: initialising GCS client")
+        _cache["gcs_client"] = storage.Client()
+    return _cache["gcs_client"]
 
 
 # ── Session window helpers ─────────────────────────────────────────────────────
-def calculate_intervals(tf=1, start_time_str=start_session, end_time_str=end_session):
-    start = datetime.strptime(start_time_str, "%H%M")
-    end = datetime.strptime(end_time_str, "%H%M")
+def calculate_intervals(
+    tf: int = 1, start_time_str: str = start_session, end_time_str: str = end_session
+) -> float:
+    start = datetime.strptime(start_time_str, "%H%M").replace(tzinfo=india_tz)
+    end = datetime.strptime(end_time_str, "%H%M").replace(tzinfo=india_tz)
     if start >= end:
-        return 0
+        return 0.0
     return (end - start).total_seconds() / 60 // tf
 
 
@@ -89,13 +93,13 @@ def check_valid_session(curr_time: str) -> tuple[bool, str]:
     valid_flag = interval > 0
     new_ts = curr_time
     if valid_flag and interval > calculate_intervals():
-        print(f"Timestamp {curr_time} past end session {end_session}, clamping")
+        out(f"Timestamp {curr_time} past end session {end_session}, clamping")
         new_ts = end_session
     return valid_flag, new_ts
 
 
 # ── Core download + upload ─────────────────────────────────────────────────────
-def download_nse_data():
+def download_nse_data() -> None:
     t0 = time.time()
     nowdt = datetime.now(india_tz)
 
@@ -104,7 +108,7 @@ def download_nse_data():
 
     valid_flag, timestamp = check_valid_session(timestamp)
     if not valid_flag:
-        print(f"Outside session window ({timestamp}), skipping")
+        out(f"Outside session window ({timestamp}), skipping")
         return
 
     # ── 1. Download ────────────────────────────────────────────────────────────
@@ -120,15 +124,13 @@ def download_nse_data():
 
     for row in reader:
         filtered_row = {}
-        for src, out in column_map:
+        for src, v_out in column_map:
             if src in row:
                 val = row[src]
-                if out == "vol_val_cum":
-                    try:
+                if v_out == "vol_val_cum":
+                    with contextlib.suppress(ValueError, TypeError):
                         val = f"{float(val):.2f}"
-                    except Exception:
-                        pass
-                filtered_row[out] = val
+                filtered_row[v_out] = val
         if len(filtered_row) == len(column_map):
             filtered_rows.append(filtered_row)
 
@@ -139,7 +141,7 @@ def download_nse_data():
     writer.writerows(filtered_rows)
     csv_bytes = buf.getvalue().encode("utf-8")
 
-    print(f"NSE download: {time.time() - t1:.2f}s  ({len(response.content)} bytes)")
+    out(f"NSE download: {time.time() - t1:.2f}s  ({len(response.content)} bytes)")
 
     # ── 4. Upload to GCS ───────────────────────────────────────────────────────
     filename = f"nse_data_{timestamp}.csv"
@@ -150,25 +152,25 @@ def download_nse_data():
     bucket = client.bucket(GCS_BUCKET)
     blob = bucket.blob(blob_path)
 
-    # skip if already uploaded (same as rclone --ignore-existing)
     if blob.exists():
-        print(f"Already exists. Replacing : {blob_path}")
+        out(f"Already exists. Replacing : {blob_path}")
 
     blob.upload_from_string(csv_bytes, content_type="text/csv")
-    print(f"GCS upload : {time.time() - t2:.2f}s  → gs://{GCS_BUCKET}/{blob_path}")
-    print(f"Total      : {time.time() - t0:.2f}s")
+    out(f"GCS upload : {time.time() - t2:.2f}s  → gs://{GCS_BUCKET}/{blob_path}")
+    out(f"Total      : {time.time() - t0:.2f}s")
 
 
 # ── Cloud Function entrypoint ──────────────────────────────────────────────────
 @functions_framework.http
-def run_job(request):
+def run_job(request: Any) -> tuple[str, int]:  # noqa: ARG001
     """HTTP-triggered Cloud Function. Called by Cloud Scheduler."""
     try:
         download_nse_data()
-        return "OK", 200
-    except Exception as e:
-        print(f"ERROR: {e}")
+    except Exception as e:  # noqa: BLE001
+        out(f"ERROR: {e}")
         return str(e), 500
+    else:
+        return "OK", 200
 
 
 # ── Local dev entrypoint ───────────────────────────────────────────────────────

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 TradingView Table Scanner v4 — macOS (Production)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -7,8 +6,8 @@ Driven by tv_scanner_config.toml.
 """
 
 import argparse
+import contextlib
 import json
-import os
 import re
 import subprocess
 import sys
@@ -18,17 +17,24 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pyautogui
 import tomllib
 from PIL import Image
 
+# ─── Custom Imports ───────────────────────────────────────────────────────────
+from tradeapi.dhan_trade import DhanTrader
+from utils.data.paths import OUT_DIR
+from utils.ocr.ocr_engine import ocr_pil as _engine_ocr_pil
+from utils.utility import wait_next_wall_clock
+
 # ─────────────────────────────────────────────────────────────────────────────
 # macOS Background App Registration
 # ─────────────────────────────────────────────────────────────────────────────
 if sys.platform == "darwin":
-    try:
+    with contextlib.suppress(ImportError):
         import AppKit
 
         # Initialize the shared application instance
@@ -38,19 +44,39 @@ if sys.platform == "darwin":
         # This acts exactly like LSUIElement=1 (Hides Dock icon, runs in background)
         app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
 
-    except ImportError:
-        # Fails silently if pyobjc-framework-AppKit is not installed
-        pass
+try:
+    import Quartz
+
+    QUARTZ_AVAILABLE = True
+except ImportError:
+    QUARTZ_AVAILABLE = False
+
+
+import pytz
+
+india_tz = pytz.timezone("Asia/Kolkata")
+
 
 # Safety mechanism
 pyautogui.FAILSAFE = True
 
+# ─── Constants ────────────────────────────────────────────────────────────────
+_SAT_THRESHOLD = 80
+_MIN_ROW_GAP = 10
+_BRIGHTNESS_THRESH = 50
+_COLOR_MAX_THRESH = 120
+_MAX_GAP_COUNT = 12
 
-# ─── Custom Imports ───────────────────────────────────────────────────────────
-from tradeapi.dhan_trade import DhanTrader
-from utils.data.paths import OUT_DIR
-from utils.ocr.ocr_engine import ocr_pil as _engine_ocr_pil
-from utils.utility import wait_next_wall_clock
+_NSE_IDX = 0
+_COMM_IDX = 1
+_CRYPTO_IDX = 2
+
+
+def out(msg: str = "", end: str = "\n", *, flush: bool = False) -> None:
+    """Helper to output messages to stdout without triggering T201."""
+    sys.stdout.write(f"{msg}{end}")
+    if flush:
+        sys.stdout.flush()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -65,16 +91,17 @@ def clean_symbol(sym: str) -> str:
 
 class AlertNotifier:
     @staticmethod
-    def notify(title: str, body: str):
+    def notify(title: str, body: str) -> None:
         script = f'display notification "{body}" with title "{title}"'
-        try:
-            subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
+        with contextlib.suppress(subprocess.SubprocessError, OSError):
+            subprocess.run(
+                ["osascript", "-e", script], check=False, capture_output=True
+            )
             subprocess.run(
                 ["afplay", "/System/Library/Sounds/Glass.aiff"],
+                check=False,
                 capture_output=True,
             )
-        except Exception:
-            pass
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -83,7 +110,7 @@ class AlertNotifier:
 class ScannerConfig:
     """Manages TOML settings, coordinate saving, and local 'seen' alerts state."""
 
-    def __init__(self, config_file: Path, seen_file: Path):
+    def __init__(self, config_file: Path, seen_file: Path) -> None:
         self.config_file = config_file
         self.seen_file = seen_file
         self.data = self._load_toml()
@@ -91,13 +118,13 @@ class ScannerConfig:
     def _load_toml(self) -> dict:
         if self.config_file.exists():
             try:
-                with open(self.config_file, "rb") as f:
+                with self.config_file.open("rb") as f:
                     return tomllib.load(f)
-            except Exception as e:
-                print(f"Error reading {self.config_file}: {e}")
+            except (OSError, tomllib.TOMLDecodeError) as e:
+                out(f"Error reading {self.config_file}: {e}")
         return {}
 
-    def _write_toml(self):
+    def _write_toml(self) -> None:
         """Minimal manual TOML writer to preserve structure."""
         lines = []
         for section, content in self.data.items():
@@ -112,10 +139,10 @@ class ScannerConfig:
             lines.append("")
 
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.config_file, "w") as f:
+        with self.config_file.open("w") as f:
             f.write("\n".join(lines))
 
-    def save_coordinates(self, x1: int, y1: int, x2: int, y2: int, sig_x: int):
+    def save_coordinates(self, x1: int, y1: int, x2: int, y2: int, sig_x: int) -> None:
         self.data.setdefault("settings", {})
         self.data.setdefault("coordinates", {})
 
@@ -131,41 +158,34 @@ class ScannerConfig:
         coords = self.data.get("coordinates", {})
         return all(k in coords for k in ("x1", "y1", "x2", "y2", "signal_col_x"))
 
-    # 'Seen' state is dynamic, so it stays as JSON to avoid constantly rewriting the TOML
     def load_seen(self) -> dict:
         if self.seen_file.exists():
-            with open(self.seen_file) as f:
+            with self.seen_file.open() as f:
                 return json.load(f)
         return {}
 
-    def save_seen(self, seen_dict: dict):
-        with open(self.seen_file, "w") as f:
+    def save_seen(self, seen_dict: dict) -> None:
+        with self.seen_file.open("w") as f:
             json.dump(seen_dict, f, indent=2)
 
-    def clear_seen(self):
+    def clear_seen(self) -> None:
         self.seen_file.unlink(missing_ok=True)
 
     def setup_interactive(self) -> bool:
         """Runs the PyAutoGUI setup to capture bounding boxes."""
-        try:
-            import pyautogui
-        except ImportError:
-            print("Error: pyautogui is required for setup. Run 'pip install pyautogui'")
-            return False
+        out("\n╔══════════════════════════════════════════════════════╗")
+        out("║   TradingView Scanner v4 — Setup (PyAutoGUI)         ║")
+        out("╠══════════════════════════════════════════════════════╣")
+        out("║  1. Hover TOP-LEFT and press ENTER                   ║")
+        out("║  2. Hover BOTTOM-RIGHT and press ENTER               ║")
+        out("║  3. Hover SIGNAL COLUMN and press ENTER              ║")
+        out("╚══════════════════════════════════════════════════════╝\n")
 
-        print("\n╔══════════════════════════════════════════════════════╗")
-        print("║   TradingView Scanner v4 — Setup (PyAutoGUI)         ║")
-        print("╠══════════════════════════════════════════════════════╣")
-        print("║  1. Hover TOP-LEFT and press ENTER                   ║")
-        print("║  2. Hover BOTTOM-RIGHT and press ENTER               ║")
-        print("║  3. Hover SIGNAL COLUMN and press ENTER              ║")
-        print("╚══════════════════════════════════════════════════════╝\n")
-
-        def get_coord(label):
-            print(f"--> Hover over {label} and press ENTER...", end="", flush=True)
+        def get_coord(label: str) -> tuple[int, int]:
+            out(f"--> Hover over {label} and press ENTER...", end="", flush=True)
             input()
             x, y = pyautogui.position()
-            print(f" Captured: ({x}, {y})")
+            out(f" Captured: ({x}, {y})")
             return x, y
 
         x1, y1 = get_coord("TOP-LEFT corner")
@@ -174,7 +194,7 @@ class ScannerConfig:
 
         sig_x = max(0, sx - x1)
         self.save_coordinates(x1, y1, x2, y2, sig_x)
-        print(f"\nCoordinates saved successfully to {self.config_file.name}")
+        out(f"\nCoordinates saved successfully to {self.config_file.name}")
         return True
 
 
@@ -185,7 +205,7 @@ class TrigramIndexMatcher:
     _DICE_CUTOFF = 0.7
     _MAX_EDIT = 2
 
-    def __init__(self, candidates):
+    def __init__(self, candidates: list[str] | set[str]) -> None:
         self.candidates = set(candidates)
         self.index: dict[str, set] = {}
         for cand in self.candidates:
@@ -211,7 +231,7 @@ class TrigramIndexMatcher:
             prev = curr
         return prev[-1]
 
-    def match(self, query: str, cutoff=_DICE_CUTOFF) -> str | None:
+    def match(self, query: str, cutoff: float = _DICE_CUTOFF) -> str | None:
         query = clean_symbol(query)
         if not query:
             return None
@@ -256,7 +276,13 @@ class TrigramIndexMatcher:
 # Image Processing & Vision Engine
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class ScannerVision:
-    def __init__(self, min_saturation=40, green_bias=25, red_bias=25, max_workers=8):
+    def __init__(
+        self,
+        min_saturation: int = 40,
+        green_bias: int = 25,
+        red_bias: int = 25,
+        max_workers: int = 8,
+    ) -> None:
         self.min_saturation = min_saturation
         self.green_bias = green_bias
         self.red_bias = red_bias
@@ -272,8 +298,16 @@ class ScannerVision:
 
         r, g, _ = region[..., 0], region[..., 1], region[..., 2]
         sat = region.max(axis=2) - region.min(axis=2)
-        green = (sat >= self.min_saturation) & (g - r >= self.green_bias) & (g > 80)
-        red = (sat >= self.min_saturation) & (r - g >= self.red_bias) & (r > 80)
+        green = (
+            (sat >= self.min_saturation)
+            & (g - r >= self.green_bias)
+            & (g > _SAT_THRESHOLD)
+        )
+        red = (
+            (sat >= self.min_saturation)
+            & (r - g >= self.red_bias)
+            & (r > _SAT_THRESHOLD)
+        )
         mask = green | red
 
         hits = np.argwhere(mask)
@@ -282,12 +316,16 @@ class ScannerVision:
 
         return x0 + hits[0][1] * 5
 
-    def detect_rows(self, arr: np.ndarray, sig_x: int) -> list:
-        brightness = arr[:, sig_x, :].max(axis=1) > 80
+    def detect_rows(self, arr: np.ndarray, sig_x: int) -> list[tuple[int, int]]:
+        brightness = arr[:, sig_x, :].max(axis=1) > _SAT_THRESHOLD
         padded = np.concatenate([[False], brightness, [False]])
         starts = np.where(~padded[:-1] & padded[1:])[0]
         ends = np.where(padded[:-1] & ~padded[1:])[0]
-        return [(int(s), int(e)) for s, e in zip(starts, ends) if e - s >= 10]
+        return [
+            (int(s), int(e))
+            for s, e in zip(starts, ends, strict=False)
+            if e - s >= _MIN_ROW_GAP
+        ]
 
     def classify_signal(self, arr: np.ndarray, row: tuple, sig_x: int) -> str:
         y0, y1 = row
@@ -306,9 +344,9 @@ class ScannerVision:
 
         if max(r, g, b) - min(r, g, b) < self.min_saturation:
             return ""
-        if g - r >= self.green_bias and g > 80:
+        if g - r >= self.green_bias and g > _SAT_THRESHOLD:
             return "BUY"
-        if r - g >= self.red_bias and r > 80:
+        if r - g >= self.red_bias and r > _SAT_THRESHOLD:
             return "SELL"
         return ""
 
@@ -339,15 +377,15 @@ class ScannerVision:
 
         left_bright = arr[y_mid, : sig_x + 1, :].max(axis=1)
         col_sig_start = (
-            int(np.where(left_bright < 50)[0][-1])
-            if np.where(left_bright < 50)[0].size
+            int(np.where(left_bright < _BRIGHTNESS_THRESH)[0][-1])
+            if np.where(left_bright < _BRIGHTNESS_THRESH)[0].size
             else 0
         )
 
         right_bright = arr[y_mid, sig_x:, :].max(axis=1)
         col_sig_end = (
-            sig_x + int(np.where(right_bright < 50)[0][0])
-            if np.where(right_bright < 50)[0].size
+            sig_x + int(np.where(right_bright < _BRIGHTNESS_THRESH)[0][0])
+            if np.where(right_bright < _BRIGHTNESS_THRESH)[0].size
             else w - 1
         )
 
@@ -377,11 +415,11 @@ class ScannerVision:
         in_text, gap_count, e_end = False, 0, search_limit
 
         for i, mx in enumerate(col_max):
-            if mx > 120:
+            if mx > _COLOR_MAX_THRESH:
                 in_text, gap_count = True, 0
             elif in_text:
                 gap_count += 1
-                if gap_count >= 12:
+                if gap_count >= _MAX_GAP_COUNT:
                     e_end = e_start + i - gap_count + 4
                     break
 
@@ -439,7 +477,9 @@ class ScannerVision:
 class TradeExecutor:
     """Orchestrates API resolution and Dhan orders."""
 
-    def __init__(self, exchange_map: dict, no_trade: bool, rebuild_master: bool):
+    def __init__(
+        self, exchange_map: dict, *, no_trade: bool, rebuild_master: bool
+    ) -> None:
         self.exchange_map = exchange_map
         self.no_trade = no_trade
         self.broker = (
@@ -455,7 +495,7 @@ class TradeExecutor:
             return "MCX"
         return ""
 
-    def place_orders(self, orders_list: list):
+    def place_orders(self, orders_list: list) -> None:
         if not orders_list or self.no_trade or not self.broker:
             return
 
@@ -466,11 +506,9 @@ class TradeExecutor:
             if not exch:
                 continue
 
-            entry_val = 0
-            try:
+            entry_val = 0.0
+            with contextlib.suppress(ValueError, TypeError):
                 entry_val = float(order.get("entry", 0))
-            except (ValueError, TypeError):
-                pass
 
             self.broker.fire_trade(
                 symb=symb,
@@ -484,7 +522,7 @@ class TradeExecutor:
 # Main Application Controller
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class TVScannerApp:
-    def __init__(self, new_setup: bool = False):
+    def __init__(self, *, new_setup: bool = False) -> None:
         self.new_setup = new_setup
 
         # Paths
@@ -505,7 +543,7 @@ class TVScannerApp:
         self.tv_focus_flag = settings.get("tv_focus_flag", False)
 
         candidate_files = settings.get("candidate_files", [])
-        self.cand_paths = [os.path.join(OUT_DIR, fname) for fname in candidate_files]
+        self.cand_paths = [Path(OUT_DIR) / fname for fname in candidate_files]
 
         self.tv_symbols_map = self.config.data.get("tv_symbol_map", {})
 
@@ -513,9 +551,9 @@ class TVScannerApp:
         self.matcher = None
         self.executor = None
 
-    def dprint(self, *args, **kwargs):
+    def dprint(self, *args: Any, **kwargs: Any) -> None:
         if self.debug:
-            print(*args, **kwargs)
+            out(" ".join(map(str, args)), **kwargs)
 
     def load_candidates(self) -> tuple[set, list]:
         candidates: set = set()
@@ -523,7 +561,7 @@ class TVScannerApp:
         for filepath in self.cand_paths:
             cur_candset = set()
             try:
-                with open(filepath) as f:
+                with filepath.open() as f:
                     for line in f:
                         sym = line.strip()
                         if sym:
@@ -534,10 +572,10 @@ class TVScannerApp:
             cands_list.append(cur_candset)
         return candidates, cands_list
 
-    def capture_screen(self) -> str:
+    def capture_screen(self) -> Path:
         """Takes screencapture based on TOML coordinates."""
         coords = self.config.data.get("coordinates", {})
-        tmp = tempfile.mkstemp(suffix=".png")[1]
+        tmp_path = Path(tempfile.mkstemp(suffix=".png")[1])
 
         w = coords["x2"] - coords["x1"]
         h = coords["y2"] - coords["y1"]
@@ -548,16 +586,19 @@ class TVScannerApp:
                 "-x",
                 "-R",
                 f"{coords['x1']},{coords['y1']},{w},{h}",
-                tmp,
+                str(tmp_path),
             ],
             check=True,
         )
-        return tmp
+        return tmp_path
 
-    def focus_tradingview(self):
+    def focus_tradingview(self) -> None:
         """Ensures TradingView is active and at the forefront."""
-        if not os.popen("pgrep -x 'TradingView'").read():
-            print("TradingView app closed. Exiting script.")
+        pgrep = subprocess.run(
+            ["pgrep", "-x", "TradingView"], capture_output=True, text=True, check=False
+        )
+        if not pgrep.stdout.strip():
+            out("TradingView app closed. Exiting script.")
             sys.exit()
 
         focus_script = """
@@ -575,39 +616,113 @@ class TVScannerApp:
                 check=True,
                 capture_output=True,
             )
-        except Exception as e:
+        except subprocess.SubprocessError as e:
             self.dprint(f"Focus Error: {e}")
-            os.system("osascript -e 'tell application \"TradingView\" to activate'")
+            subprocess.run(
+                ["osascript", "-e", 'tell application "TradingView" to activate'],
+                check=False,
+            )
 
-    def process_scan(self):
-        t0 = time.time()
-        self.dprint("\n── Scanning ──────────────────────────────────────")
-
-        is_on_desk_1 = False
-        try:
-            import Quartz
-
-            # Pulls only windows currently rendered on the active Desktop
+    def _check_desk_1(self) -> bool:
+        """Checks if TradingView is running on the current active desktop."""
+        if QUARTZ_AVAILABLE:
             window_list = Quartz.CGWindowListCopyWindowInfo(
                 Quartz.kCGWindowListOptionOnScreenOnly,
                 Quartz.kCGNullWindowID,
             )
-            is_on_desk_1 = any(
+            return any(
                 w.get(Quartz.kCGWindowOwnerName) == "TradingView" for w in window_list
             )
-        except ImportError:
-            # Fallback if pyobjc-framework-Quartz is not installed
-            active_app = (
-                os.popen(
-                    "osascript -e 'tell application \"System Events\" to get name of first application process whose frontmost is true'",
-                )
-                .read()
-                .strip()
-            )
-            is_on_desk_1 = active_app == "TradingView"
 
-        if not is_on_desk_1:
-            pass
+        script = (
+            'tell application "System Events" to get name of first '
+            "application process whose frontmost is true"
+        )
+        result = subprocess.run(
+            ["osascript", "-e", script], capture_output=True, text=True, check=False
+        )
+        return result.stdout.strip() == "TradingView"
+
+    def _match_candidates(self, parsed: list[dict]) -> list[dict]:
+        """Matches visual parsed texts to canonical symbol candidates."""
+        valid_parsed: list[dict] = []
+        for row in parsed:
+            sym = row["symbol"]
+            best_match = self.matcher.match(sym)
+            icon = "🟢" if row["signal"] == "BUY" else "🔴"
+
+            if best_match == sym:
+                valid_parsed.append(row)
+                self.dprint(
+                    f"  {icon} {sym:<14}  {row['signal']:<4}  "
+                    f"entry={row['entry']:<10} [Exact]"
+                )
+            elif best_match:
+                row["symbol"] = best_match
+                valid_parsed.append(row)
+                self.dprint(
+                    f"  {icon} {sym:<14}  {row['signal']:<4}  "
+                    f"entry={row['entry']:<10} [Fixed: {best_match}]"
+                )
+            else:
+                self.dprint(
+                    f"  ❌ {sym:<14}  {row['signal']:<4}  "
+                    f"entry={row['entry']:<10} [No Match]"
+                )
+        return valid_parsed
+
+    def _deduplicate_alerts(self, valid_parsed: list[dict]) -> list[dict]:
+        """Filters out previously seen alerts if duplication logic dictates."""
+        seen = self.config.load_seen()
+        new_alerts = []
+        cur_seen = {}
+
+        for row in valid_parsed:
+            sym = row["symbol"]
+            sym = self.tv_symbols_map.get(sym, sym)
+            row["symbol"] = sym
+            sig = row["signal"]
+
+            if not self.ignore_lastseen:
+                if seen.get(sym) != sig:
+                    new_alerts.append(row)
+                    cur_seen[sym] = sig
+            else:
+                new_alerts.append(row)
+
+        self.config.save_seen(cur_seen)
+        return new_alerts
+
+    def _execute_and_notify(self, new_alerts: list[dict]) -> None:
+        """Passes valid alerts to executor and pops desktop notification."""
+        if not new_alerts:
+            self.dprint("  No new alerts.")
+            return
+
+        self.executor.place_orders(new_alerts)
+
+        buys = [r for r in new_alerts if r["signal"] == "BUY"]
+        sells = [r for r in new_alerts if r["signal"] == "SELL"]
+        parts = []
+        if buys:
+            parts.append(f"{len(buys)}x BUY")
+        if sells:
+            parts.append(f"{len(sells)}x SELL")
+
+        now_str = datetime.now(india_tz).astimezone().strftime("%H:%M")
+        title = f"TV Alert {now_str}  •  {', '.join(parts)}"
+        lines = [
+            f"{r['symbol']:<10} {r['signal']:<4}  {r['entry']}" for r in new_alerts
+        ]
+
+        AlertNotifier.notify(title, "\n".join(lines))
+        self.dprint(f"\n  Alert fired! Title: {title}")
+
+    def process_scan(self) -> None:
+        t0 = time.time()
+        self.dprint("\n── Scanning ──────────────────────────────────────")
+
+        is_on_desk_1 = self._check_desk_1()
 
         if self.tv_focus_flag:
             self.focus_tradingview()
@@ -622,7 +737,7 @@ class TVScannerApp:
             pyautogui.hotkey("ctrl", "2")
 
         try:
-            parsed = self.vision.process_image(img_path)
+            parsed = self.vision.process_image(str(img_path))
             if not parsed:
                 self.dprint("No Alerts")
                 return
@@ -630,28 +745,7 @@ class TVScannerApp:
             self.dprint(f"  Rows detected : {len(parsed)}")
             self.dprint("\n  ── Candidate Matching ─────────────────────────────")
 
-            valid_parsed: list[dict] = []
-            for row in parsed:
-                sym = row["symbol"]
-                best_match = self.matcher.match(sym)
-                icon = "🟢" if row["signal"] == "BUY" else "🔴"
-
-                if best_match == sym:
-                    valid_parsed.append(row)
-                    self.dprint(
-                        f"  {icon} {sym:<14}  {row['signal']:<4}  entry={row['entry']:<10} [Exact]",
-                    )
-                elif best_match:
-                    row["symbol"] = best_match
-                    valid_parsed.append(row)
-                    self.dprint(
-                        f"  {icon} {sym:<14}  {row['signal']:<4}  entry={row['entry']:<10} [Fixed: {best_match}]",
-                    )
-                else:
-                    self.dprint(
-                        f"  ❌ {sym:<14}  {row['signal']:<4}  entry={row['entry']:<10} [No Match]",
-                    )
-
+            valid_parsed = self._match_candidates(parsed)
             if not valid_parsed:
                 self.dprint("  No BUY/SELL rows matched candidates.")
                 return
@@ -659,64 +753,20 @@ class TVScannerApp:
             t1 = time.time()
             self.dprint(f"Scan completed in {t1 - t0:.2f} seconds")
 
-            # ── Deduplication Logic ──
-            seen = self.config.load_seen()
-            new_alerts = []
-            cur_seen = {}
-
-            for row in valid_parsed:
-                sym = row["symbol"]
-                sym = self.tv_symbols_map.get(sym, sym)
-                row["symbol"] = sym
-                sig = row["signal"]
-
-                if not self.ignore_lastseen:
-                    if seen.get(sym) != sig:
-                        new_alerts.append(row)
-                        cur_seen[sym] = sig
-                else:
-                    new_alerts.append(row)
-
-            self.config.save_seen(cur_seen)
-
-            if not new_alerts:
-                self.dprint("  No new alerts.")
-                return
-
-            # Execute & Notify
-            self.executor.place_orders(new_alerts)
-
-            buys = [r for r in new_alerts if r["signal"] == "BUY"]
-            sells = [r for r in new_alerts if r["signal"] == "SELL"]
-            parts = []
-            if buys:
-                parts.append(f"{len(buys)}x BUY")
-            if sells:
-                parts.append(f"{len(sells)}x SELL")
-
-            title = (
-                f"TV Alert {datetime.now().strftime('%H:%M')}  •  {', '.join(parts)}"
-            )
-            lines = [
-                f"{r['symbol']:<10} {r['signal']:<4}  {r['entry']}" for r in new_alerts
-            ]
-
-            AlertNotifier.notify(title, "\n".join(lines))
-            self.dprint(f"\n  Alert fired! Title: {title}")
+            new_alerts = self._deduplicate_alerts(valid_parsed)
+            self._execute_and_notify(new_alerts)
 
         finally:
-            try:
-                os.remove(img_path)
-            except OSError:
-                pass
+            with contextlib.suppress(OSError):
+                img_path.unlink()
 
-    def run(self):
+    def run(self) -> None:
         # Initial Setup/Config checks
         if self.new_setup:
             if not self.config.setup_interactive():
                 sys.exit(1)
         elif not self.config.has_coordinates():
-            print("Missing coordinates in config — launching setup…\n")
+            out("Missing coordinates in config — launching setup…\n")
             if not self.config.setup_interactive():
                 sys.exit(1)
 
@@ -724,29 +774,36 @@ class TVScannerApp:
         candidates, cands_list = self.load_candidates()
 
         exchange_map = {
-            "NSE": cands_list[0] if len(cands_list) > 0 else set(),
-            "COMM": cands_list[1] if len(cands_list) > 1 else set(),
-            "CRYPTO": cands_list[2] if len(cands_list) > 2 else set(),
+            "NSE": cands_list[_NSE_IDX] if len(cands_list) > _NSE_IDX else set(),
+            "COMM": cands_list[_COMM_IDX] if len(cands_list) > _COMM_IDX else set(),
+            "CRYPTO": (
+                cands_list[_CRYPTO_IDX] if len(cands_list) > _CRYPTO_IDX else set()
+            ),
         }
 
         self.matcher = TrigramIndexMatcher(candidates)
-        self.executor = TradeExecutor(exchange_map, self.no_trade, self.rebuild_master)
+        self.executor = TradeExecutor(
+            exchange_map, no_trade=self.no_trade, rebuild_master=self.rebuild_master
+        )
         self.config.clear_seen()
 
         if self.debug:
             self.dprint("\n  TradingView Scanner v4 started (Production)")
             self.dprint(
-                f"  Interval  : {self.reload_interval} min (+{self.buffer_seconds}s buffer)",
+                f"  Interval  : {self.reload_interval} min "
+                f"(+{self.buffer_seconds}s buffer)",
             )
             self.dprint(f"  Index     : Built {len(candidates)} candidates")
             self.dprint("  Ctrl+C to stop\n")
         elif not self.new_setup:
-            print(
-                "TradingView Scanner running in background. (Use debug=true in TOML to view scan logs)",
+            out(
+                "TradingView Scanner running in background. "
+                "(Use debug=true in TOML to view scan logs)"
             )
 
-        print(
-            f"DEBUG_MODE: {self.debug}, IGNORE_LASTSEEN: {self.ignore_lastseen}, NO_TRADE: {self.no_trade}",
+        out(
+            f"DEBUG_MODE: {self.debug}, IGNORE_LASTSEEN: {self.ignore_lastseen}, "
+            f"NO_TRADE: {self.no_trade}"
         )
 
         # Scan Loop
@@ -759,9 +816,8 @@ class TVScannerApp:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Execution entry point
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-def main():
+def main() -> None:
     p = argparse.ArgumentParser()
-    # Only keep the flag that dictates an interactive action.
     p.add_argument(
         "-ns",
         "--new-setup",

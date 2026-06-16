@@ -1,4 +1,6 @@
+import sys
 import threading
+from typing import Any
 
 import tesserocr
 from PIL import Image, ImageOps
@@ -7,13 +9,18 @@ from PIL import Image, ImageOps
 _thread_local = threading.local()
 
 
-def get_api():
+def out(msg: str = "", end: str = "\n") -> None:
+    sys.stdout.write(f"{msg}{end}")
+    sys.stdout.flush()
+
+
+def get_api() -> Any:
     """Fetch or initialize the Tesseract API for the current thread."""
     if not hasattr(_thread_local, "api"):
         try:
             _thread_local.api = tesserocr.PyTessBaseAPI(psm=tesserocr.PSM.SINGLE_LINE)
-        except Exception as e:
-            print(f"Failed to init tesserocr in thread: {e}")
+        except Exception as e:  # noqa: BLE001
+            out(f"Failed to init tesserocr in thread: {e}")
             _thread_local.api = None
     return _thread_local.api
 
@@ -33,10 +40,8 @@ def _preprocess(img: Image.Image) -> Image.Image:
     )
 
     # 4. Add padding (Tesseract struggles if text touches the edge)
-    img = ImageOps.expand(img, border=30, fill="white")
-
     # Return the grayscale image directly. Do NOT force a manual binary threshold.
-    return img
+    return ImageOps.expand(img, border=30, fill="white")
 
 
 # ─── Public API ──────────────────────────────────────────────────────────────
@@ -68,10 +73,10 @@ def ocr(image_path: str, region: tuple | None = None, whitelist: str = "") -> st
 
 # ─── CLI self-test ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) < 2:
-        print("Usage: python3 ocr_engine.py <image.png>")
+    _MIN_ARGS = 2
+    if len(sys.argv) < _MIN_ARGS:
+        out("Usage: python3 ocr_engine.py <image.png>")
         sys.exit(1)
-    print("─── OCR result ───")
-    print(ocr(sys.argv[1]))
+
+    out("─── OCR result ───")
+    out(ocr(sys.argv[1]))

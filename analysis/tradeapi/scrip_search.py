@@ -143,7 +143,7 @@ class SearchEngine:
 
         return ctx
 
-    def _get_candidates(self, ctx: SearchQueryContext) -> list[dict]:  # noqa: C901, PLR0912
+    def _get_candidates(self, ctx: SearchQueryContext) -> list[dict]:
         if not ctx.name_tokens:
             candidate_idx = self._all_indices
             ctx.used_and = False
@@ -207,7 +207,7 @@ class SearchEngine:
 
         return candidates
 
-    def _score_candidate(self, entry: dict, ctx: SearchQueryContext) -> float:  # noqa: C901
+    def _score_candidate(self, entry: dict, ctx: SearchQueryContext) -> float:
         sym = entry["symbol"]
         ntok = entry["_name_tokens"]
         s = 0.0

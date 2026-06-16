@@ -12,7 +12,8 @@
 # )
 
 targets=(
-    web_scripts/trade_client/trade_app.py
+    web_scripts/trade_client
+    web_scripts/nse_vol_tracker
     tradeapi
     utils
     tradeview

@@ -1,7 +1,17 @@
+import logging
 import math
 from pathlib import Path
 
 import tomllib  # Requires Python 3.11+
+
+logger = logging.getLogger(__name__)
+
+
+def out(msg: str = "", end: str = "\n") -> None:
+    """Helper to output messages using logger instead of direct stdout."""
+    if end != "\n":
+        msg += end
+    logger.info(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -11,9 +21,10 @@ def load_config(filename: str = "price_config.toml") -> dict:
     """Loads exchange interval settings from a TOML configuration file."""
     config_path = Path(__file__).parent / filename
     if not config_path.exists():
-        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        err_msg = f"Configuration file not found: {config_path}"
+        raise FileNotFoundError(err_msg)
 
-    with open(config_path, "rb") as f:
+    with config_path.open("rb") as f:
         return tomllib.load(f)
 
 
@@ -75,11 +86,13 @@ def get_strike_price_full_data(
     Calculate the naked option strike price.
     """
     if entry_price <= 0:
-        raise ValueError(f"entry_price must be > 0, got {entry_price}")
+        err_msg = f"entry_price must be > 0, got {entry_price}"
+        raise ValueError(err_msg)
 
     sig = signal.strip().upper()
     if sig not in ("BUY", "SELL"):
-        raise ValueError(f"signal must be 'BUY' or 'SELL', got {signal!r}")
+        err_msg = f"signal must be 'BUY' or 'SELL', got {signal!r}"
+        raise ValueError(err_msg)
 
     interval = custom_interval or get_strike_interval(symbol, entry_price)
 
@@ -136,11 +149,14 @@ if __name__ == "__main__":
         ("HDFCBANK", 1725, "SELL", 1740),  # stock >1000, step=20
     ]
 
-    print(
-        f"\n{'Symbol':<14}{'Price':>8}{'Signal':>7}{'Step':>6}{'Strike':>8}{'Expected':>10}{'Pass':>6}",
+    header = (
+        f"\n{'Symbol':<14}{'Price':>8}{'Signal':>7}{'Step':>6}"
+        f"{'Strike':>8}{'Expected':>10}{'Pass':>6}"
     )
-    print("─" * 62)
+    out(header)
+    out("─" * 62)
     all_pass = True
+
     for sym, price, sig, expected in test_cases:
         result = get_strike_price_full_data(sym, price, sig)
         strike = result["strike"]
@@ -148,9 +164,12 @@ if __name__ == "__main__":
         passed = strike == expected
         all_pass = all_pass and passed
         status = "✓" if passed else f"✗ (got {strike})"
-        print(
-            f"{sym:<14}{price:>8}{sig:>7}{interval:>6}{strike:>8}{expected:>10}   {status}",
-        )
 
-    print("─" * 62)
-    print("All tests passed ✓" if all_pass else "Some tests FAILED ✗")
+        row_str = (
+            f"{sym:<14}{price:>8}{sig:>7}{interval:>6}"
+            f"{strike:>8}{expected:>10}   {status}"
+        )
+        out(row_str)
+
+    out("─" * 62)
+    out("All tests passed ✓" if all_pass else "Some tests FAILED ✗")

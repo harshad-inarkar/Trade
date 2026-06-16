@@ -1,5 +1,5 @@
 """
-app.py  –  NSE Intraday FastAPI Web Portal
+app.py  -  NSE Intraday FastAPI Web Portal
 ------------------------------------------
 Refactored for strict Object-Oriented Design, Dependency Injection,
 and TOML-based configuration (removing all global state and CLI clutter).
@@ -7,14 +7,17 @@ and TOML-based configuration (removing all global state and CLI clutter).
 
 import csv as _csv
 import heapq
-import os
+import sys
 import threading
 import time
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Annotated, Any
 
+import pytz
 import tomllib
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -40,7 +43,14 @@ from web_scripts.nse_vol_tracker.sector_loader import (
     load_sector_symbols,
 )
 
+india_tz = pytz.timezone("Asia/Kolkata")
+
 app_config_file = Path(__file__).parent / "app_config.toml"
+
+
+def out(msg: str = "", end: str = "\n") -> None:
+    sys.stdout.write(f"{msg}{end}")
+    sys.stdout.flush()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -66,11 +76,12 @@ class AppConfig:
 
     @classmethod
     def load_from_toml(cls, path: str | Path) -> "AppConfig":
-        if not os.path.exists(path):
-            print(f"[!] Config file {path} not found. Using defaults.")
+        config_path = Path(path)
+        if not config_path.exists():
+            out(f"[!] Config file {path} not found. Using defaults.")
             return cls()
 
-        with open(path, "rb") as f:
+        with config_path.open("rb") as f:
             data = tomllib.load(f)
 
         c = cls()
@@ -107,7 +118,7 @@ class MarketDataService:
 
     REFRESH_DT_PAT = "Date: %d  Time: %H:%M"
 
-    def __init__(self, config: AppConfig):
+    def __init__(self, config: AppConfig) -> None:
         self.config = config
         self.cache = CacheManager()
 
@@ -124,19 +135,19 @@ class MarketDataService:
         template_dir = Path(TEMPLATES_ROOT_DIR) / "template_vol"
         self.templates = Jinja2Templates(directory=template_dir)
 
-    def _sync_data(self):
+    def _sync_data(self) -> None:
         if self.config.remote_sync and self.remote_intraday_path:
             sync_data_args(self.remote_intraday_path, self.intraday_path)
 
-    def load_all_data(self):
+    def load_all_data(self) -> None:
         self._sync_data()
         self.cache.load_files(self.intraday_path, self.config.last_ndays)
 
         ref_t = self.get_refresh_time_str()
         self.dump_merge(
             MIN_TF,
-            self.config.filter_ltp,
-            self.config.sort_keys,
+            self.config.filter_ltp or "",
+            self.config.sort_keys or [],
             ref_t,
             "desc",
         )
@@ -173,10 +184,10 @@ class MarketDataService:
 
         return filtered, pos_count, neg_count, neut_count
 
-    def dump_index(self):
+    def dump_index(self) -> None:
         ref_t = self.get_refresh_time_str()
-        symbols_list = self.cache.get_symbols_avg(MIN_TF)
-        os.makedirs(OUT_DIR, exist_ok=True)
+        symbols_list = self.cache.get_symbols_avg(MIN_TF) or []
+        Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
 
         sym_idx = INDEX_FIELDS.index("symbol")
         ltp_idx = INDEX_FIELDS.index("ltp")
@@ -185,14 +196,16 @@ class MarketDataService:
         data_rows = symbols_list[1:]
         data_rows_sorted = sorted(
             data_rows,
-            key=lambda x: (x[ltp_idx] if x[ltp_idx] is not None else float('-inf')),
-            reverse=True
+            key=lambda x: x[ltp_idx] if x[ltp_idx] is not None else float("-inf"),
+            reverse=True,
         )
 
         # Group by ltp in steps of 500 and add comments for each range
         step = 1000
-        max_ltp = max((row[ltp_idx] for row in data_rows_sorted if row[ltp_idx] is not None), default=0)
-        min_ltp = min((row[ltp_idx] for row in data_rows_sorted if row[ltp_idx] is not None), default=0)
+        max_ltp = max(
+            (row[ltp_idx] for row in data_rows_sorted if row[ltp_idx] is not None),
+            default=0,
+        )
 
         # Compute group boundaries
         group_ranges = []
@@ -201,20 +214,23 @@ class MarketDataService:
             group_ranges.append((curr, curr + step))
             curr += step
 
-        with open(os.path.join(OUT_DIR, "candidates.txt"), "w") as out:
+        cand_txt = Path(OUT_DIR) / "candidates.txt"
+        with cand_txt.open("w") as write_out:
             # Write groups in descending order (from max to min)
             for start, end in reversed(group_ranges):
                 group_symbols = [
-                    sym_data for sym_data in data_rows_sorted
-                    if sym_data[ltp_idx] is not None and start <= sym_data[ltp_idx] < end
+                    sym_data
+                    for sym_data in data_rows_sorted
+                    if sym_data[ltp_idx] is not None
+                    and start <= sym_data[ltp_idx] < end
                 ]
                 if not group_symbols:
                     continue  # Skip writing group name if group is empty
-                out.write(f"# Less than {end}\n")
-                for sym_data in group_symbols:
-                    out.write(f"{sym_data[sym_idx]}\n")
-            out.write(f"# Timeframe: {MIN_TF} | Refresh Time: {ref_t}\n")
-
+                write_out.write(f"# Less than {end}\n")
+                write_out.writelines(
+                    f"{sym_data[sym_idx]}\n" for sym_data in group_symbols
+                )
+            write_out.write(f"# Timeframe: {MIN_TF} | Refresh Time: {ref_t}\n")
 
     def dump_merge(
         self,
@@ -223,29 +239,30 @@ class MarketDataService:
         sort_key_list: list,
         ref_t: str,
         order_by: str,
+        *,
         from_web: bool = False,
-    ):
+    ) -> None:
         top = 40
         sym_idx = INDEX_FIELDS.index("symbol")
         initiator = "Web" if from_web else "Refresh"
 
         full_symb_list = self.cache.get_symbols_avg(tf)
 
-        force_syms_path = os.path.join(OUT_DIR, "candidates_force.txt")
+        force_syms_path = Path(OUT_DIR) / "candidates_force.txt"
         forced_symbols = set()
-        if os.path.exists(force_syms_path):
-            with open(force_syms_path) as f:
+        if force_syms_path.exists():
+            with force_syms_path.open() as f:
                 forced_symbols = set()
-                for line in f:
-                    line = line.strip()
+                for raw_line in f:
+                    line = raw_line.strip()
                     if not line or line.startswith("#"):
                         continue
                     forced_symbols.add(line)
 
-        with (
-            open(os.path.join(OUT_DIR, "sym_table.csv"), "w", newline="") as out_csv,
-            open(os.path.join(OUT_DIR, "candidates_merge.txt"), "w") as out,
-        ):
+        sym_tbl = Path(OUT_DIR) / "sym_table.csv"
+        cand_mrg = Path(OUT_DIR) / "candidates_merge.txt"
+
+        with sym_tbl.open("w", newline="") as out_csv, cand_mrg.open("w") as write_out:
             writer = _csv.writer(out_csv)
             writer.writerow(INDEX_FIELDS)
 
@@ -297,15 +314,15 @@ class MarketDataService:
             )
 
             if forced_symbols:
-                out.writelines(f"{fsym}\n" for fsym in sorted(forced_symbols))
+                write_out.writelines(f"{fsym}\n" for fsym in sorted(forced_symbols))
 
             for sym, _ in sorted_symbols:
                 row = symbol_full_row_map.get(sym)
                 if row is not None:
                     writer.writerow(row)
-                    out.write(f"{sym}\n")
+                    write_out.write(f"{sym}\n")
 
-            out.write(
+            write_out.write(
                 f"#{initiator}|Timeframe: {tf} | sorted by {sort_key_list} {order_by} "
                 f"| Filter ltp {filt} | Refresh Time: {ref_t}\n",
             )
@@ -317,9 +334,9 @@ class MarketDataService:
         filt: str,
         sort_key: str,
         order_by: str,
-        sector_list=None,
-        sector_name=None,
-    ):
+        sector_list: list | None = None,
+        sector_name: str | None = None,
+    ) -> Any:
         desc = order_by != "asc"
         symbols_list, pos, neg, neut = self.filter_list(
             sector_list if sector_list is not None else self.cache.get_symbols_avg(tf),
@@ -362,38 +379,51 @@ class MarketDataService:
 class BackgroundReloader:
     """Manages the periodic cache reloading loop."""
 
-    def __init__(self, service: MarketDataService, config: AppConfig):
+    def __init__(self, service: MarketDataService, config: AppConfig) -> None:
         self.service = service
         self.config = config
 
-    def start(self):
+    def start(self) -> None:
         if self.config.reload_interval:
             threading.Thread(target=self._run_loop, daemon=True).start()
 
-    def _run_loop(self):
-        print(
-            f"🔁 Reloads every {self.config.reload_interval} minutes – buffer: {self.config.buffer_seconds}s",
+    def _run_loop(self) -> None:
+        out(
+            f"🔁 Reloads every {self.config.reload_interval} minutes - "
+            f"buffer: {self.config.buffer_seconds}s"
         )
-        start_session_time = datetime.strptime(self.config.start_session, "%H%M").time()
-        cutoff = datetime.strptime(self.config.end_session, "%H%M").time()
+        if not self.config.start_session or not self.config.end_session:
+            return
+
+        start_session_time = (
+            datetime.strptime(self.config.start_session, "%H%M")
+            .replace(tzinfo=india_tz)
+            .time()
+        )
+        cutoff = (
+            datetime.strptime(self.config.end_session, "%H%M")
+            .replace(tzinfo=india_tz)
+            .time()
+        )
 
         while True:
             wait_next_wall_clock(
                 self.config.reload_interval,
-                self.config.buffer_seconds,
+                self.config.buffer_seconds or 0,
             )
-            current_time = datetime.now().time()
+            current_time = datetime.now(india_tz).time()
 
             if current_time > cutoff or current_time < start_session_time:
-                print(
-                    f"⏹ Reload skipped: outside session {self.config.start_session}–{self.config.end_session}. "
-                    f"Current: {current_time.strftime('%H%M')}",
+                out(
+                    f"⏹ Reload skipped: outside session {self.config.start_session}-"
+                    f"{self.config.end_session}. "
+                    f"Current: {current_time.strftime('%H%M')}"
                 )
                 continue
 
             t0 = time.time()
             self.service.load_all_data()
-            print(f"⏱ Reload took {time.time() - t0:.2f}s")
+            out(f"⏱ Reload took {time.time() - t0:.2f}s")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -405,11 +435,11 @@ reloader = BackgroundReloader(data_service, app_cfg)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     t0 = time.time()
     data_service.load_all_data()
     data_service.dump_index()
-    print(f"⏱ Initial load took {time.time() - t0:.2f}s")
+    out(f"⏱ Initial load took {time.time() - t0:.2f}s")
 
     reloader.start()
     yield
@@ -439,16 +469,17 @@ def _sort_safe(sort: str) -> str:
 @app.get("/")
 def index(
     request: Request,
-    tf: str = Query(default=MIN_TF),
-    filter: str = Query(default=""),
-    sort: str = Query(default=""),
-    order: str = Query(default=""),
-    service: MarketDataService = Depends(get_service),
-):
+    service: Annotated[MarketDataService, Depends(get_service)],
+    *,
+    tf: Annotated[str, Query()] = MIN_TF,
+    filt: Annotated[str, Query(alias="filter")] = "",
+    sort: Annotated[str, Query()] = "",
+    order: Annotated[str, Query()] = "",
+) -> Any:
     return service.render_index(
         request,
         _tf_safe(tf),
-        filter,
+        filt,
         _sort_safe(sort),
         "asc" if order == "asc" else "desc",
     )
@@ -458,9 +489,10 @@ def index(
 def symbol_detail(
     request: Request,
     symbol_name: str,
-    tf: str = Query(default=MIN_TF),
-    service: MarketDataService = Depends(get_service),
-):
+    service: Annotated[MarketDataService, Depends(get_service)],
+    *,
+    tf: Annotated[str, Query()] = MIN_TF,
+) -> Any:
     tf = _tf_safe(tf)
     symbols_data = service.cache.get_symbols_data(tf)
     if symbol_name not in symbols_data:
@@ -480,9 +512,10 @@ def symbol_detail(
 @app.get("/api/symbol/{symbol_name}")
 def api_symbol(
     symbol_name: str,
-    tf: str = Query(default=MIN_TF),
-    service: MarketDataService = Depends(get_service),
-):
+    service: Annotated[MarketDataService, Depends(get_service)],
+    *,
+    tf: Annotated[str, Query()] = MIN_TF,
+) -> Any:
     tf = _tf_safe(tf)
     symbols_data = service.cache.get_symbols_data(tf)
     if symbol_name not in symbols_data:
@@ -494,30 +527,29 @@ def api_symbol(
 def sector_index(
     request: Request,
     sector: str,
-    tf: str = Query(default=MIN_TF),
-    uniq_cat: bool = Query(default=False),
-    filter: str = Query(default=""),
-    sort: str = Query(default=""),
-    order: str = Query(default=""),
-    service: MarketDataService = Depends(get_service),
-):
+    service: Annotated[MarketDataService, Depends(get_service)],
+    *,
+    tf: Annotated[str, Query()] = MIN_TF,
+    uniq_cat: Annotated[bool, Query()] = False,
+    filt: Annotated[str, Query(alias="filter")] = "",
+    sort: Annotated[str, Query()] = "",
+    order: Annotated[str, Query()] = "",
+) -> Any:
     tf = _tf_safe(tf)
-    csv_path = UNIQ_CATEGORIES_CSV if uniq_cat else CATEGORIES_CSV
+    csv_path = str(UNIQ_CATEGORIES_CSV) if uniq_cat else str(CATEGORIES_CSV)
     sector_symbols = load_sector_symbols(csv_path=csv_path)
 
-    all_syms_data = service.cache.get_symbols_avg(tf)
+    all_syms_data = service.cache.get_symbols_avg(tf) or []
     sector_syms_set = set(sector_symbols.get(sector, []))
     sym_idx = INDEX_FIELDS.index("symbol")
 
     sector_list = [all_syms_data[0]]  # header
-    for sym_data in all_syms_data[1:]:
-        if sym_data[sym_idx] in sector_syms_set:
-            sector_list.append(sym_data)
+    sector_list.extend(sd for sd in all_syms_data[1:] if sd[sym_idx] in sector_syms_set)
 
     return service.render_index(
         request,
         tf,
-        filter,
+        filt,
         _sort_safe(sort),
         "asc" if order == "asc" else "desc",
         sector_list=sector_list,
@@ -529,25 +561,28 @@ def sector_index(
 @app.get("/sectors/")
 def sectors(
     request: Request,
-    tf: str = Query(default=MIN_TF),
-    uniq_cat: bool = Query(default=False),
-    filter: str = Query(default=""),
-    sort: str = Query(default=""),
-    order: str = Query(default="desc"),
-    service: MarketDataService = Depends(get_service),
-):
+    service: Annotated[MarketDataService, Depends(get_service)],
+    *,
+    tf: Annotated[str, Query()] = MIN_TF,
+    uniq_cat: Annotated[bool, Query()] = False,
+    filt: Annotated[str, Query(alias="filter")] = "",
+    sort: Annotated[str, Query()] = "",
+    order: Annotated[str, Query()] = "desc",
+) -> Any:
     tf = _tf_safe(tf)
     sort_key = _sort_safe(sort)
     order_by = "asc" if order == "asc" else "desc"
     desc_flag = order_by != "asc"
 
-    csv_path = UNIQ_CATEGORIES_CSV if uniq_cat else CATEGORIES_CSV
+    csv_path = str(UNIQ_CATEGORIES_CSV) if uniq_cat else str(CATEGORIES_CSV)
     sector_symbols = load_sector_symbols(csv_path=csv_path)
 
     sort_v_idx = INDEX_FIELDS.index(sort_key)
     sym_idx = INDEX_FIELDS.index("symbol")
 
-    avg_rows, _, _, _ = service.filter_list(service.cache.get_symbols_avg(tf), filter)
+    avg_rows, _, _, _ = service.filter_list(
+        service.cache.get_symbols_avg(tf) or [], filt
+    )
 
     vol_lookup = {}
     for row in avg_rows[1:]:
@@ -559,13 +594,13 @@ def sectors(
     for sector_name, syms in sector_symbols.items():
         if not syms:
             continue
-        syms = [s for s in syms if s in vol_lookup]
-        vols = [vol_lookup[s] for s in syms]
+        valid_syms = [s for s in syms if s in vol_lookup]
+        vols = [vol_lookup[s] for s in valid_syms]
         if not vols:
             continue
 
         avg_vol = sum(vols) / len(vols)
-        sorted_syms = sorted(syms, key=lambda s: vol_lookup[s], reverse=desc_flag)
+        sorted_syms = sorted(valid_syms, key=lambda s: vol_lookup[s], reverse=desc_flag)
 
         sector_list.append(
             {
@@ -597,7 +632,7 @@ def sectors(
             "sectors": sector_list,
             "timeframe": tf,
             "refresh_time": service.get_refresh_time_str(),
-            "filter": filter,
+            "filter": filt,
             "sort": sort_key,
             "order": order_by,
         },
@@ -607,6 +642,9 @@ def sectors(
 # ── RUN ────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Provide a tiny fallback parser solely for pointing to a custom config file path
-
-    uvicorn.run(app, host=app_cfg.host, port=app_cfg.port, log_level=app_cfg.log_level)
+    uvicorn.run(
+        app,
+        host=app_cfg.host or "localhost",
+        port=app_cfg.port or 5000,
+        log_level=app_cfg.log_level,
+    )

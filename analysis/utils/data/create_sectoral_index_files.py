@@ -1,14 +1,20 @@
 import argparse
-import os
 import re
+import sys
 import time
+from pathlib import Path
 
 import pandas as pd
 import requests
 
 from utils.data.paths import NSE_INDX_DATA
 
-os.makedirs(NSE_INDX_DATA, exist_ok=True)
+
+def out(msg: str = "", end: str = "\n") -> None:
+    sys.stdout.write(f"{msg}{end}")
+
+
+Path(NSE_INDX_DATA).mkdir(parents=True, exist_ok=True)
 
 NIFTY_INDICES = [
     "NIFTY BANK",
@@ -86,7 +92,7 @@ SECTORAL_INDICES = [
 ]
 
 
-def get_file_name_from_index(index_name):
+def get_file_name_from_index(index_name: str) -> str:
     """
     Convert an index name to a clean filename format.
 
@@ -96,42 +102,33 @@ def get_file_name_from_index(index_name):
     Returns:
         Cleaned filename with .csv extension
     """
-    # Convert to lowercase
     filename = index_name.lower()
-
-    # Replace '&' with 'and' (optional, or you can remove it)
     filename = filename.replace("&", "")
-
-    # Replace forward slashes and other special chars with underscores
     filename = re.sub(r"[/\-\s]+", "_", filename)
-
-    # Remove any remaining special characters except underscores
     filename = re.sub(r"[^a-z0-9_]", "", filename)
-
-    # Replace multiple consecutive underscores with single underscore
     filename = re.sub(r"_+", "_", filename)
-
-    # Remove leading/trailing underscores
     filename = filename.strip("_")
-
-    # Add .csv extension
-    filename = filename + ".csv"
-
-    return filename
+    return filename + ".csv"
 
 
-def download_sectoral_indices(index_list=SECTORAL_INDICES):
+def download_sectoral_indices(index_list: list[str] | None = None) -> None:
     """Download all 21 sectoral indices to CSV files"""
+    if index_list is None:
+        index_list = SECTORAL_INDICES
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9",
         "Referer": "https://www.nseindia.com/",
     }
 
-    print(f"Downloading {len(index_list)}  Files...")
-    print("=" * 60)
+    out(f"Downloading {len(index_list)}  Files...")
+    out("=" * 60)
 
     successful_downloads = 0
     failed_list = []
@@ -139,17 +136,13 @@ def download_sectoral_indices(index_list=SECTORAL_INDICES):
         filename = f"{NSE_INDX_DATA}/{get_file_name_from_index(index_name)}"
 
         try:
-            # Create session for NSE cookies
             session = requests.Session()
             session.headers.update(headers)
-
-            # Establish session with NSE
             session.get(
                 "https://www.nseindia.com/market-data/live-equity-market",
                 headers=headers,
             )
 
-            # URL encode index name
             encoded_index = (
                 index_name.upper()
                 .replace(" ", "%20")
@@ -159,15 +152,13 @@ def download_sectoral_indices(index_list=SECTORAL_INDICES):
             )
             url = f"https://www.nseindia.com/api/equity-stockIndices?index={encoded_index}"
 
-            print(f"📊 Downloading {index_name}...")
+            out(f"📊 Downloading {index_name}...")
 
-            # Download data
             response = session.get(url, headers=headers)
             response.raise_for_status()
 
             data = response.json()
 
-            # Extract symbols (skip first record if present)
             symbols = []
             if "data" in data and len(data["data"]) > 0:
                 symbols = [
@@ -179,44 +170,48 @@ def download_sectoral_indices(index_list=SECTORAL_INDICES):
             if symbols:
                 df = pd.DataFrame({"Symbol": symbols})
                 df.to_csv(filename, index=False)
-                print(f"   ✓ {filename} ({len(symbols)} stocks)")
+                out(f"   ✓ {filename} ({len(symbols)} stocks)")
                 successful_downloads += 1
             else:
-                print(f"   ⚠️  No symbols found for {index_name}")
+                out(f"   ⚠️  No symbols found for {index_name}")
                 failed_list.append(index_name)
 
-        except Exception as e:
-            print(f"   ❌ Error: {index_name} - {str(e)[:50]}")
+        except requests.RequestException as e:
+            err_msg = str(e)[:50]
+            out(f"   ❌ Error: {index_name} - {err_msg}")
             failed_list.append(index_name)
 
-        # Rate limiting - NSE restriction
         time.sleep(0.001)
 
-    print("\n" + "=" * 60)
-    print(f"✅ SUCCESS: {successful_downloads}/{len(index_list)} indices downloaded!")
-    print(f"Failed List:\n{'\n'.join(failed_list)}")
+    out("\n" + "=" * 60)
+    out(f"✅ SUCCESS: {successful_downloads}/{len(index_list)} indices downloaded!")
+    fail_str = "\n".join(failed_list)
+    out(f"Failed List:\n{fail_str}")
     create_summary_report(index_list)
 
 
-def create_summary_report(index_list=SECTORAL_INDICES):
+def create_summary_report(index_list: list[str] | None = None) -> None:
     """Create summary report of all downloaded files"""
-    print("\n📋 SUMMARY REPORT:")
+    if index_list is None:
+        index_list = SECTORAL_INDICES
+
+    out("\n📋 SUMMARY REPORT:")
     total_stocks = 0
 
     for indx_name in index_list:
         filename = f"{NSE_INDX_DATA}/{get_file_name_from_index(indx_name)}"
-        if os.path.exists(filename):
+        if Path(filename).exists():
             df = pd.read_csv(filename)
             count = len(df)
             total_stocks += count
-            print(f"   {filename}: {count} stocks")
+            out(f"   {filename}: {count} stocks")
 
-    print(f"\n🎯 GRAND TOTAL: {total_stocks} stocks across sectors")
+    out(f"\n🎯 GRAND TOTAL: {total_stocks} stocks across sectors")
 
 
 if __name__ == "__main__":
-    print("🏦 NSE INDICES DOWNLOADER")
-    print("=" * 60)
+    out("🏦 NSE INDICES DOWNLOADER")
+    out("=" * 60)
 
     parser = argparse.ArgumentParser(description="Indices Downloader")
     parser.add_argument(
@@ -233,8 +228,8 @@ if __name__ == "__main__":
         index_flag = True
 
     if index_flag:
-        print("\nDownload Nifty Broad Indices only")
+        out("\nDownload Nifty Broad Indices only")
         download_sectoral_indices(NIFTY_INDICES)
     else:
-        print("\nDownload Sectoral Indices")
+        out("\nDownload Sectoral Indices")
         download_sectoral_indices()

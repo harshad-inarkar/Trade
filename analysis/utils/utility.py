@@ -1,12 +1,21 @@
+import sys
 import time
 from datetime import datetime, timedelta
 
+from pytz import timezone as _pytz_timezone
+
+india_tz = _pytz_timezone("Asia/Kolkata")
 BUFFER_SECONDS = 5
+
+
+def out(msg: str = "", end: str = "\n") -> None:
+    sys.stdout.write(f"{msg}{end}")
+    sys.stdout.flush()
 
 
 def next_wall_clock(interval_min: int, buf: int = BUFFER_SECONDS) -> datetime:
     """Calculates the next wall-clock target time."""
-    now = datetime.now()
+    now = datetime.now(india_tz)
 
     # Calculate the next minute that is a multiple of the interval
     next_minute_multiple = ((now.minute // interval_min) + 1) * interval_min
@@ -14,12 +23,10 @@ def next_wall_clock(interval_min: int, buf: int = BUFFER_SECONDS) -> datetime:
     # Anchor to the top of the hour.
     # timedelta naturally handles rolling over to the next hour if minutes >= 60.
     base = now.replace(minute=0, second=0, microsecond=0)
-    target = base + timedelta(minutes=next_minute_multiple, seconds=buf)
-
-    return target
+    return base + timedelta(minutes=next_minute_multiple, seconds=buf)
 
 
-def wait_next_wall_clock(interval_min: int, buf: int = BUFFER_SECONDS):
+def wait_next_wall_clock(interval_min: int, buf: int = BUFFER_SECONDS) -> None:
     """Waits until the next wall-clock multiple, strictly ensuring a positive sleep."""
     # Failsafe to prevent 0-minute infinite loops
     if not interval_min or interval_min <= 0:
@@ -27,15 +34,15 @@ def wait_next_wall_clock(interval_min: int, buf: int = BUFFER_SECONDS):
         return
 
     target = next_wall_clock(interval_min, buf)
-    wait = (target - datetime.now()).total_seconds()
+    wait = (target - datetime.now(india_tz)).total_seconds()
 
     # Failsafe: If a negative buffer pushes the target time into the past,
     # advance by one full interval to guarantee a future wake-up time.
     if wait <= 0:
         target += timedelta(minutes=interval_min)
-        wait = (target - datetime.now()).total_seconds()
+        wait = (target - datetime.now(india_tz)).total_seconds()
 
-    print(f"\n  Next scan at {target.strftime('%H:%M:%S')}  ({wait:.0f}s)")
+    out(f"\n  Next scan at {target.strftime('%H:%M:%S')}  ({wait:.0f}s)")
 
     if wait > 0:
         time.sleep(wait)

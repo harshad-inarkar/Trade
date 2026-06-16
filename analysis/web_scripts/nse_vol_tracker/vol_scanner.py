@@ -1,9 +1,11 @@
 import argparse
+import contextlib
 import csv
-import os
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
+import pytz
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
@@ -16,6 +18,11 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+# ── Environment Setup ────────────────────────────────────────────────────────
+from utils.data.paths import OUT_DIR
+
+india_tz = pytz.timezone("Asia/Kolkata")
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 # DISPLAY_FIELDS = ['symbol', 'volume_fast','vol_surge','price_surge','ltp']
 DISPLAY_FIELDS = ["symbol", "ltp"]
@@ -23,12 +30,7 @@ DISPLAY_FIELDS = ["symbol", "ltp"]
 SIZE_PERCENT = 75
 BUFFER_SECONDS = 18
 
-
-# ── Environment Setup ────────────────────────────────────────────────────────
-
-from utils.data.paths import OUT_DIR
-
-CSV_PATH = os.path.join(OUT_DIR, "sym_table.csv")
+CSV_PATH = str(Path(OUT_DIR) / "sym_table.csv")
 
 # ── CLI args ──────────────────────────────────────────────────────────────────
 _parser = argparse.ArgumentParser()
@@ -46,19 +48,24 @@ NEGATIVE_BG = QColor("#3d1a1a")
 NEGATIVE_FG = QColor("#ff6b6b")
 
 
+def out(msg: str = "", end: str = "\n") -> None:
+    sys.stdout.write(f"{msg}{end}")
+    sys.stdout.flush()
+
+
 class NumericTableItem(QTableWidgetItem):
-    def __init__(self, display_text: str, sort_value: float):
+    def __init__(self, display_text: str, sort_value: float) -> None:
         super().__init__(display_text)
         self._sort_value = sort_value
 
-    def __lt__(self, other):
+    def __lt__(self, other: object) -> bool:
         if isinstance(other, NumericTableItem):
             return self._sort_value < other._sort_value
         return super().__lt__(other)
 
 
 class CSVTableViewer(QMainWindow):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Market Monitor")
         self._price_surge_idx = -1
@@ -70,11 +77,13 @@ class CSVTableViewer(QMainWindow):
         if _ARGS.reload_interval > 0:
             self._schedule_reload()
 
-    def _apply_theme(self):
+    def _apply_theme(self) -> None:
         s = SIZE_PERCENT / 100
         f_size = max(8, int(13 * s))
         self.setStyleSheet(f"""
-            QMainWindow, QWidget {{ background-color: #11111b; color: #cdd6f4; font-family: Helvetica Neue; }}
+            QMainWindow, QWidget {{
+                background-color: #11111b; color: #cdd6f4; font-family: Helvetica Neue;
+            }}
             QTableWidget {{
                 background-color: #181825; alternate-background-color: #1e1e2e;
                 gridline-color: #313244; border: none; font-size: {f_size}px;
@@ -85,7 +94,7 @@ class CSVTableViewer(QMainWindow):
             }}
         """)
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
@@ -99,8 +108,8 @@ class CSVTableViewer(QMainWindow):
         self.table.verticalHeader().setVisible(False)
         layout.addWidget(self.table)
 
-    def _schedule_reload(self):
-        now = datetime.now()
+    def _schedule_reload(self) -> None:
+        now = datetime.now(india_tz)
         interval_sec = _ARGS.reload_interval * 60
 
         # Calculate seconds since midnight
@@ -117,18 +126,20 @@ class CSVTableViewer(QMainWindow):
         ms = int((next_time - now).total_seconds() * 1000)
         QTimer.singleShot(ms, self._reload_callback)
 
-    def _reload_callback(self):
+    def _reload_callback(self) -> None:
         self._load_data()
         self._schedule_reload()
 
-    def _load_data(self):
-        if not os.path.exists(CSV_PATH):
+    def _load_data(self) -> None:
+        if not Path(CSV_PATH).exists():
             return
 
         try:
             filtered_rows = []
-            with open(CSV_PATH, newline="", encoding="utf-8-sig") as f:
+            with Path(CSV_PATH).open(newline="", encoding="utf-8-sig") as f:
                 reader = csv.DictReader(f)
+                if not reader.fieldnames:
+                    return
                 for row in reader:
                     # Map the raw CSV keys to our target DISPLAY_FIELDS
                     cleaned_row = {k.strip(): v.strip() for k, v in row.items()}
@@ -142,10 +153,10 @@ class CSVTableViewer(QMainWindow):
                 else -1
             )
             self._populate(filtered_rows)
-        except Exception as e:
-            print(f"❌ Error: {e}")
+        except Exception as e:  # noqa: BLE001
+            out(f"❌ Error: {e}")
 
-    def _populate(self, rows):
+    def _populate(self, rows: list[dict]) -> None:
         n_rows = min(DISPLAY_COUNT, len(rows))
         rows = rows[:n_rows]
         self.table.setSortingEnabled(False)
@@ -156,10 +167,8 @@ class CSVTableViewer(QMainWindow):
         for r_idx, row in enumerate(rows):
             # Parse price_surge for coloring
             surge_val = 0.0
-            try:
+            with contextlib.suppress(ValueError):
                 surge_val = float(row["price_surge"].replace("%", "").replace(",", ""))
-            except:
-                pass
 
             for c_idx, field in enumerate(DISPLAY_FIELDS):
                 val = row[field]
@@ -182,7 +191,8 @@ class CSVTableViewer(QMainWindow):
                 item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(r_idx, c_idx, item)
 
-        if SIZE_PERCENT != 100:
+        max_percent = 100
+        if max_percent != SIZE_PERCENT:
             h = max(16, int(24 * SIZE_PERCENT / 100))
             for i in range(self.table.rowCount()):
                 self.table.setRowHeight(i, h)
@@ -198,8 +208,8 @@ class CSVTableViewer(QMainWindow):
 
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    print(f"Reload Interval {_ARGS.reload_interval}m and Buffer {BUFFER_SECONDS}s")
+    qt_app = QApplication(sys.argv)
+    out(f"Reload Interval {_ARGS.reload_interval}m and Buffer {BUFFER_SECONDS}s")
     window = CSVTableViewer()
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(qt_app.exec_())
