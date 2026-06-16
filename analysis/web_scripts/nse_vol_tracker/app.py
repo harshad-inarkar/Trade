@@ -179,9 +179,42 @@ class MarketDataService:
         os.makedirs(OUT_DIR, exist_ok=True)
 
         sym_idx = INDEX_FIELDS.index("symbol")
+        ltp_idx = INDEX_FIELDS.index("ltp")
+
+        # Sort symbols_list (excluding header) in reverse order by 'ltp' field
+        data_rows = symbols_list[1:]
+        data_rows_sorted = sorted(
+            data_rows,
+            key=lambda x: (x[ltp_idx] if x[ltp_idx] is not None else float('-inf')),
+            reverse=True
+        )
+
+        # Group by ltp in steps of 500 and add comments for each range
+        step = 1000
+        max_ltp = max((row[ltp_idx] for row in data_rows_sorted if row[ltp_idx] is not None), default=0)
+        min_ltp = min((row[ltp_idx] for row in data_rows_sorted if row[ltp_idx] is not None), default=0)
+
+        # Compute group boundaries
+        group_ranges = []
+        curr = 0
+        while curr <= max_ltp:
+            group_ranges.append((curr, curr + step))
+            curr += step
+
         with open(os.path.join(OUT_DIR, "candidates.txt"), "w") as out:
-            out.writelines(f"{sym_data[sym_idx]}\n" for sym_data in symbols_list[1:])
-            out.write(f"Timeframes: {MIN_TF} | Refresh Time: {ref_t}\n")
+            # Write groups in descending order (from max to min)
+            for start, end in reversed(group_ranges):
+                group_symbols = [
+                    sym_data for sym_data in data_rows_sorted
+                    if sym_data[ltp_idx] is not None and start <= sym_data[ltp_idx] < end
+                ]
+                if not group_symbols:
+                    continue  # Skip writing group name if group is empty
+                out.write(f"# Less than {end}\n")
+                for sym_data in group_symbols:
+                    out.write(f"{sym_data[sym_idx]}\n")
+            out.write(f"# Timeframe: {MIN_TF} | Refresh Time: {ref_t}\n")
+
 
     def dump_merge(
         self,
@@ -273,7 +306,7 @@ class MarketDataService:
                     out.write(f"{sym}\n")
 
             out.write(
-                f"{initiator}|Timeframes: {tf} | sorted by {sort_key_list} {order_by} "
+                f"#{initiator}|Timeframe: {tf} | sorted by {sort_key_list} {order_by} "
                 f"| Filter ltp {filt} | Refresh Time: {ref_t}\n",
             )
 

@@ -101,6 +101,7 @@ class UITableManager {
             tbody.appendChild(row);
         });
     }
+
     restoreSortState() {
         if (this.currentSort.active.col !== null) {
             this.sortTable('table-active', this.currentSort.active.col, this.currentSort.active.isNum, this.currentSort.active.isAsc);
@@ -108,6 +109,12 @@ class UITableManager {
         if (this.currentSort.closed.col !== null) {
             this.sortTable('table-closed', this.currentSort.closed.col, this.currentSort.closed.isNum, this.currentSort.closed.isAsc);
         }
+    }
+
+    closeAllDropdowns() {
+        document.querySelectorAll('details.action-dropdown-panel').forEach(details => {
+            details.removeAttribute('open');
+        });
     }
 }
 /**
@@ -545,3 +552,32 @@ class OrderFormLogic {
         this.stopLoss.value = stopLoss.toFixed(2);
     }
 }
+
+
+/**
+ * Global Dropdown Management (Mutual Exclusion & Hotkeys)
+ */
+document.addEventListener('click', (e) => {
+    const summary = e.target.closest('summary');
+    if (summary) {
+        const parentDetails = summary.parentElement;
+        // If a user clicks a closed dropdown to open it, close all others first
+        if (parentDetails && parentDetails.tagName === 'DETAILS' && !parentDetails.hasAttribute('open')) {
+            if (window.UI && typeof window.UI.closeAllDropdowns === 'function') {
+                window.UI.closeAllDropdowns();
+            }
+        }
+    }
+});
+
+// Allow the Escape key to instantly clear any open form menus
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        if (window.UI && typeof window.UI.closeAllDropdowns === 'function') {
+            window.UI.closeAllDropdowns();
+        } else {
+            // Fallback in case UI hasn't initialized
+            document.querySelectorAll('details.action-dropdown-panel').forEach(d => d.removeAttribute('open'));
+        }
+    }
+});

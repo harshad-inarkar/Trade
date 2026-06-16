@@ -43,3 +43,7 @@ ignore = [
     "S603",
     "S607",
 ]
+
+
+[tool.djlint]
+ignore = "H025"

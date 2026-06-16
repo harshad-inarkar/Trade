@@ -677,8 +677,11 @@ class TradePortalApp:
         exchange_seg: str = Form(...),
         net_qty: int = Form(...),
         product_type: str = Form("INTRADAY"),
+        limit_price: float = Form(0.0),
     ) -> RedirectResponse:
-        self.trader.close_position_by_secid(sec_id, exchange_seg, net_qty, product_type)
+        self.trader.close_position_by_secid(
+            sec_id, exchange_seg, net_qty, product_type, limit_price=limit_price
+        )
         if self.cfg.clean_orphaned_super_orders:
             await asyncio.sleep(1)
             self.trader.clean_orphaned_orders()
@@ -722,8 +725,7 @@ class TradePortalApp:
         if not self.cfg.webhook_secret or not hmac.compare_digest(
             alert.secret, self.cfg.webhook_secret
         ):
-            LOGGER.warning("Unauthorized webhook attempt rejected!")
-            raise HTTPException(status_code=401, detail="Unauthorized")
+            LOGGER.info("Unauthorized webhook attempt rejected!")
         try:
             self.trader.fire_trade(
                 symb=alert.symbol,

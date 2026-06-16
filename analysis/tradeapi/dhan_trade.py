@@ -1357,6 +1357,7 @@ class DhanTrader:
         exchange_seg: str,
         net_qty: int,
         product_type: str = "INTRADAY",
+        limit_price: float = 0.0,
     ) -> None:
         if net_qty == 0:
             return
@@ -1364,6 +1365,10 @@ class DhanTrader:
         payload = self._base_payload(signal, exchange_seg, sec_id, product_type) | {
             "quantity": abs(net_qty),
         }
+        if limit_price > 0:
+            payload["price"] = limit_price
+            payload["orderType"] = "LIMIT"
+
         self._post_order(self.api_cfg.urls.get("order", ""), payload, label="CLOSE_POS")
 
     def dispatch_order(
