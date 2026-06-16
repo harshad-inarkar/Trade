@@ -449,6 +449,18 @@ class ScripMaster:
 
         for row in chunk[eq_mask].itertuples(index=False):
             str_sec_id = str(row.SECURITY_ID)
+
+            # --- SEC_ID COLLISION FIX ---
+            # Dhan's CSV reuses security IDs between INDEX and EQUITY segments.
+            # Prioritize tradable instruments over INDEX to ensure active
+            # positions on the dashboard display the correct symbol.
+            if str_sec_id in secid_info:
+                existing_inst = secid_info[str_sec_id][1]
+                # If an EQUITY is already saved, skip overwriting it with an INDEX
+                if str(row.INSTRUMENT).upper() == "INDEX" and existing_inst != "INDEX":
+                    continue
+            # ----------------------------
+
             eq_index[(row.EXCH_ID, row.UNDERLYING_SYMBOL)] = (
                 str_sec_id,
                 int(row.LOT_SIZE),
