@@ -1,6 +1,6 @@
 from pathlib import Path
-import tomllib
 
+import tomllib
 
 # ─── Internal Directory Constants (Kept as is) ──────────────────────────────
 _nse_data_dir = "nse_data"
@@ -30,7 +30,7 @@ class PathManager:
             try:
                 with self.config_path.open("rb") as f:
                     return tomllib.load(f).get("paths", {})
-            except tomllib.TOMLDecodeError as e:
+            except tomllib.TOMLDecodeError:
                 pass
         return {}
 

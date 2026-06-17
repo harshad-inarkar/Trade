@@ -43,8 +43,8 @@ class ScriptManager:
         Path(log_root_dir).mkdir(parents=True, exist_ok=True)
 
         self.load_config()
-        set_logger_config(log_level=self.config.get('log_level',''))
-        
+        set_logger_config(log_level=self.config.get("log_level", ""))
+
         self.max_bytes = self.config.get("max_log_size", MAX_LOG_SIZE_KB) * 1024
         self.log_monitor_interval = (
             self.config.get("log_monitor_interval", LOG_MONITOR_INT) * 60

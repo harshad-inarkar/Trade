@@ -1,8 +1,6 @@
 """Dhan HQ automated order placement client."""
 
-import logging
 import math
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -268,7 +266,6 @@ class DhanTrader:
         log_level = log_level or cfg_log_level
         if bool(log_level):
             set_logger_config(log_level=log_level)
-
 
     def _apply_proxy(self) -> None:
         try:
