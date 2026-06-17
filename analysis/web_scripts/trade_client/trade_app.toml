@@ -27,9 +27,3 @@ reentry_product_type = "INTRADAY"     # CNC | INTRADAY | MARGIN
 # Automatically clean up orphaned super orders when a position is closed
 clean_orphaned_super_orders = true
 
-# ── Order-book filters ────────────────────────────────────────────────────────
-[orders]
-pending_statuses        = ["TRANSIT", "PENDING", "PART_TRADED"]
-forever_active_statuses = ["PENDING", "CONFIRM"]
-alert_active_statuses   = ["ACTIVE"]
-

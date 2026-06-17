@@ -127,17 +127,6 @@ class AppConfig:
             False,
         )
 
-        ord_cfg = self.raw_cfg.get("orders", {})
-        self.pending_statuses: tuple[str, ...] = tuple(
-            ord_cfg.get("pending_statuses", ["TRANSIT", "PENDING", "PART_TRADED"]),
-        )
-        self.forever_active_statuses: tuple[str, ...] = tuple(
-            ord_cfg.get("forever_active_statuses", ["PENDING", "CONFIRM"]),
-        )
-        self.alert_active_statuses: tuple[str, ...] = tuple(
-            ord_cfg.get("alert_active_statuses", ["ACTIVE"]),
-        )
-
     def _load(self) -> dict:
         try:
             with self.path.open("rb") as config_file:
@@ -260,7 +249,7 @@ class DashboardService:
                     order.get("trigger_price"),
                 ),
             }
-            for order in self.trader.get_pending_orders(self.config.pending_statuses)
+            for order in self.trader.get_pending_orders()
         ]
 
     def _get_super_orders(self) -> list[dict]:
@@ -303,9 +292,7 @@ class DashboardService:
                     order.get("trigger_price"),
                 ),
             }
-            for order in self.trader.get_forever_orders(
-                self.config.forever_active_statuses,
-            )
+            for order in self.trader.get_forever_orders()
         ]
 
     def _get_alerts(self) -> list[dict]:
@@ -322,7 +309,7 @@ class DashboardService:
                     order.get("comparing_value"),
                 ),
             }
-            for order in self.trader.get_all_alerts(self.config.alert_active_statuses)
+            for order in self.trader.get_all_alerts()
         ]
 
 

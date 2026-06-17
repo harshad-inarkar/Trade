@@ -15,12 +15,8 @@ with (ROOT_SRC_DIR_PATH_OBJ / "pyproject.toml").open("rb") as f:
     _pyproject = tomllib.load(f)
 
 PROJECT_NAME = _pyproject.get("project", {}).get("name", __name__)
-LOGGER = logging.getLogger(PROJECT_NAME)
 BUFFER_SECONDS = 5
-
-
-def out(msg: str = "", end: str = "\n") -> None:
-    LOGGER.info("%s%s", msg, end)
+LOGGER = logging.getLogger(PROJECT_NAME)
 
 
 def set_logger_config(log_level: str = "", log_handle: object = sys.stdout) -> None:
@@ -29,9 +25,20 @@ def set_logger_config(log_level: str = "", log_handle: object = sys.stdout) -> N
     )
     logging.basicConfig(
         level=numeric_level,
-        format="[%(levelname)s] %(message)s",
+        format="%(message)s",
         handlers=[logging.StreamHandler(log_handle)],
+        force=True,
     )
+
+
+set_logger_config()
+
+
+def out(msg: str = "", end: str = "\n") -> None:
+    if end == "\n":
+        end = ""
+
+    LOGGER.info("%s%s", msg, end)
 
 
 def next_wall_clock(interval_min: int, buf: int = BUFFER_SECONDS) -> datetime:
@@ -67,6 +74,3 @@ def wait_next_wall_clock(interval_min: int, buf: int = BUFFER_SECONDS) -> None:
 
     if wait > 0:
         time.sleep(wait)
-
-
-set_logger_config()

@@ -3,6 +3,8 @@
 [settings]
 log_level = ""
 ignore_traded_scan = true
+pending_statuses = ("TRANSIT", "PENDING", "PART_TRADED", "TRIGGERED", "ACTIVE", "CONFIRM")
+
 
 [urls]
 order         = "https://api.dhan.co/v2/orders"

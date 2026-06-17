@@ -350,8 +350,6 @@ def main() -> None:
 
     manager = ScriptManager()
 
-    out(f"Project Root Detected: {ROOT_SRC_DIR}")
-
     if args.module_list:
         out(f"Starting scripts: {', '.join(args.module_list)}")
         for module_name in args.module_list:

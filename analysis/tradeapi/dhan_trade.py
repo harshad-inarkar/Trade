@@ -27,10 +27,6 @@ API_CONFIG_PATH = BASE_DIR / "dhan_trade.toml"
 REQUEST_TIMEOUT_SECONDS = 3
 OPT_BUMP_MULT = 10
 
-PENDING_STATUSES: frozenset[str] = frozenset(
-    ("TRANSIT", "PENDING", "PART_TRADED", "TRIGGERED")
-)
-
 
 class PriceCondition(Enum):
     GREATER_THAN = "GREATER_THAN"
@@ -214,8 +210,11 @@ class DhanTrader:
         self.api_cfg = DhanAPIConfig(API_CONFIG_PATH)
         self.cfg = SymbolsConfig(symb_config)
         self.cfg.refresh()
-
         self._set_logging(log_level)
+
+        self.pending_statuses = frozenset(
+            self.api_cfg.settings.get("pending_statuses", ())
+        )
 
         self._defaults_config: MappingProxyType = MappingProxyType(
             {
@@ -1134,10 +1133,7 @@ class DhanTrader:
         active, _ = self.get_positions()
         return active
 
-    def get_pending_orders(
-        self,
-        pending_statuses: tuple[str, ...] = PENDING_STATUSES,
-    ) -> list[dict]:
+    def get_pending_orders(self) -> list[dict]:
         resp = self._request_with_retry(
             "GET",
             self.api_cfg.urls.get("order", ""),
@@ -1153,7 +1149,7 @@ class DhanTrader:
 
         results = []
         for order in resp_data:
-            if order.get("orderStatus", "") not in pending_statuses:
+            if order.get("orderStatus", "") not in self.pending_statuses:
                 continue
 
             sec_id = str(order.get("securityId", ""))
@@ -1198,11 +1194,11 @@ class DhanTrader:
             prc = order.get("price", 0.0)
             trg = order.get("triggerPrice", 0.0)
 
-            if status in PENDING_STATUSES:
+            if status in self.pending_statuses:
                 active_orders.add((sym, oid, "ENTRY_LEG", txn, qty, prc, trg))
 
             for leg in order.get("legDetails", []):
-                if leg.get("orderStatus") in PENDING_STATUSES:
+                if leg.get("orderStatus") in self.pending_statuses:
                     active_orders.add(
                         (
                             sym,
@@ -1216,10 +1212,7 @@ class DhanTrader:
                     )
         return active_orders
 
-    def get_forever_orders(
-        self,
-        active_statuses: tuple[str, ...] = ("PENDING", "CONFIRM"),
-    ) -> list[dict]:
+    def get_forever_orders(self) -> list[dict]:
         resp = self._request_with_retry(
             "GET",
             self.api_cfg.urls.get("forever_order", ""),
@@ -1235,7 +1228,7 @@ class DhanTrader:
 
         results = []
         for order in resp_data:
-            if order.get("orderStatus", "") not in active_statuses:
+            if order.get("orderStatus", "") not in self.pending_statuses:
                 continue
 
             sec_id = str(order.get("securityId", ""))
@@ -1258,10 +1251,7 @@ class DhanTrader:
             )
         return results
 
-    def get_all_alerts(
-        self,
-        active_statuses: tuple[str, ...] = ("ACTIVE",),
-    ) -> list[dict]:
+    def get_all_alerts(self) -> list[dict]:
         resp = self._request_with_retry(
             "GET",
             self.api_cfg.urls.get("alert_order", ""),
@@ -1277,7 +1267,7 @@ class DhanTrader:
 
         results = []
         for alert in resp_data:
-            if alert.get("alertStatus", "") not in active_statuses:
+            if alert.get("alertStatus", "") not in self.pending_statuses:
                 continue
 
             cond = alert.get("condition", {})
