@@ -7,24 +7,16 @@ Uploads directly to GCS bucket (no rclone, no GDrive)
 
 import contextlib
 import csv
-import sys
 import time
 from datetime import datetime
 from io import StringIO
 from typing import Any
 
 import functions_framework
-import pytz
 import requests
 from google.cloud import storage
 
-
-def out(msg: str = "", end: str = "\n") -> None:
-    sys.stdout.write(f"{msg}{end}")
-
-
-# ── Timezone ──────────────────────────────────────────────────────────────────
-india_tz = pytz.timezone("Asia/Kolkata")
+from utils.utility import INDIA_TZ, out
 
 # ── GCS config ────────────────────────────────────────────────────────────────
 GCS_BUCKET = "nse-data-bucket"
@@ -81,8 +73,8 @@ def get_gcs_client() -> storage.Client:
 def calculate_intervals(
     tf: int = 1, start_time_str: str = start_session, end_time_str: str = end_session
 ) -> float:
-    start = datetime.strptime(start_time_str, "%H%M").replace(tzinfo=india_tz)
-    end = datetime.strptime(end_time_str, "%H%M").replace(tzinfo=india_tz)
+    start = datetime.strptime(start_time_str, "%H%M").replace(tzinfo=INDIA_TZ)
+    end = datetime.strptime(end_time_str, "%H%M").replace(tzinfo=INDIA_TZ)
     if start >= end:
         return 0.0
     return (end - start).total_seconds() / 60 // tf
@@ -101,7 +93,7 @@ def check_valid_session(curr_time: str) -> tuple[bool, str]:
 # ── Core download + upload ─────────────────────────────────────────────────────
 def download_nse_data() -> None:
     t0 = time.time()
-    nowdt = datetime.now(india_tz)
+    nowdt = datetime.now(INDIA_TZ)
 
     date_str = nowdt.strftime("%d%m%Y")
     timestamp = nowdt.strftime("%H%M")

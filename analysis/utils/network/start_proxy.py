@@ -8,10 +8,10 @@ from pathlib import Path
 
 import tomllib
 
+from utils.utility import LOGGER
+
 script_dir = Path(__file__).parent
 config_file = script_dir / "proxy_config.toml"
-
-LOGGER = logging.getLogger(__name__)
 
 
 class SSHProxyManager:

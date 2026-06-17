@@ -2,7 +2,6 @@
 
 import asyncio
 import hmac
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,11 +15,11 @@ from pydantic import BaseModel
 
 from tradeapi.dhan_trade import DhanTrader, UIOverride
 from utils.data.paths import TEMPLATES_ROOT_DIR
+from utils.utility import LOGGER
 
 BASE_DIR = Path(__file__).parent
 APP_CONFIG_PATH = BASE_DIR / "trade_app.toml"
 
-LOGGER = logging.getLogger(__name__)
 _MIN_QUERY_LEN = 2
 
 
@@ -511,7 +510,7 @@ class TradePortalApp:
                     },
                 )
 
-        except Exception:
+        except (ValueError, TypeError, KeyError):
             LOGGER.exception("[search_symbols API ERROR] q=%s", q)
             return []
         else:

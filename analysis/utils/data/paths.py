@@ -1,7 +1,8 @@
-import sys
 from pathlib import Path
 
 import tomllib
+
+from utils.utility import out
 
 # ─── Internal Directory Constants (Kept as is) ──────────────────────────────
 _nse_data_dir = "nse_data"
@@ -10,10 +11,6 @@ _indx_dir = "index"
 _web_scr = "web_scripts"
 _templates_dir = "templates"
 _logs_dir = "logs"
-
-
-def out(msg: str = "", end: str = "\n") -> None:
-    sys.stdout.write(f"{msg}{end}")
 
 
 class PathManager:
@@ -77,23 +74,33 @@ class PathManager:
 _manager = PathManager()
 
 # Base Path Objects & Strings
-ROOT_SRC_DIR_PATH_OBJ = _manager.root_src
-ROOT_SRC_DIR = str(ROOT_SRC_DIR_PATH_OBJ)
+ROOT_SRC_DIR_PATH_OBJ: Path = _manager.root_src
+ROOT_SRC_DIR: str = str(ROOT_SRC_DIR_PATH_OBJ)
 
-ROOT_DATA_DIR_PATH_OBJ = _manager.root_data
-ROOT_DATA_DIR = str(ROOT_DATA_DIR_PATH_OBJ)
+ROOT_DATA_DIR_PATH_OBJ: Path = _manager.root_data
+ROOT_DATA_DIR: str = str(ROOT_DATA_DIR_PATH_OBJ)
 
-REMOTE_DIR_PATH_OBJ = _manager.remote
-REMOTE_DIR = str(REMOTE_DIR_PATH_OBJ)
+REMOTE_DIR_PATH_OBJ: Path | None = _manager.remote
+REMOTE_DIR: str | None = (
+    str(REMOTE_DIR_PATH_OBJ) if REMOTE_DIR_PATH_OBJ is not None else None
+)
 
 # Derived Paths
-OUT_DIR = str(ROOT_DATA_DIR_PATH_OBJ / "out")
+OUT_DIR: str = str(ROOT_DATA_DIR_PATH_OBJ / "out")
 
-NSE_LOGS_DIR = str(ROOT_DATA_DIR_PATH_OBJ / _nse_data_dir / _logs_dir)
-NSE_INDX_DATA = str(ROOT_DATA_DIR_PATH_OBJ / _nse_data_dir / _indx_dir)
-REMOTE_NSE_INDX_DATA = str(REMOTE_DIR_PATH_OBJ / _nse_data_dir / _indx_dir)
+NSE_LOGS_DIR: str = str(ROOT_DATA_DIR_PATH_OBJ / _nse_data_dir / _logs_dir)
+NSE_INDX_DATA: str = str(ROOT_DATA_DIR_PATH_OBJ / _nse_data_dir / _indx_dir)
+REMOTE_NSE_INDX_DATA: str | None = (
+    str(REMOTE_DIR_PATH_OBJ / _nse_data_dir / _indx_dir)
+    if REMOTE_DIR_PATH_OBJ is not None
+    else None
+)
 
-NSE_INTRADAY_DIR_PATH = str(ROOT_DATA_DIR_PATH_OBJ / _nse_data_dir / _intraday_dir)
-REMOTE_INTRADAY_DIR_PATH = str(REMOTE_DIR_PATH_OBJ / _nse_data_dir / _intraday_dir)
+NSE_INTRADAY_DIR_PATH: str = str(ROOT_DATA_DIR_PATH_OBJ / _nse_data_dir / _intraday_dir)
+REMOTE_INTRADAY_DIR_PATH: str | None = (
+    str(REMOTE_DIR_PATH_OBJ / _nse_data_dir / _intraday_dir)
+    if REMOTE_DIR_PATH_OBJ is not None
+    else None
+)
 
-TEMPLATES_ROOT_DIR = str(ROOT_SRC_DIR_PATH_OBJ / _web_scr / _templates_dir)
+TEMPLATES_ROOT_DIR: str = str(ROOT_SRC_DIR_PATH_OBJ / _web_scr / _templates_dir)

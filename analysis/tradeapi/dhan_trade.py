@@ -16,12 +16,11 @@ import tomllib
 from requests.exceptions import RequestException
 
 from tradeapi.price_strike_calc import get_price_strike, get_strike_interval
-from tradeapi.scrip_master import ScripMaster, _get_today_str, india_tz
+from tradeapi.scrip_master import ScripMaster, _get_today_str
 from utils.network.start_proxy import SSHProxyManager
+from utils.utility import INDIA_TZ, LOGGER
 
 __all__ = ["DhanTrader", "Instrument", "PriceLevels", "UIOverride"]
-
-LOGGER = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent
 SYMBOLS_CONFIG = BASE_DIR / "symbols_config.toml"
@@ -108,7 +107,7 @@ def _format_expiry_time(expiry_time: str) -> str:
     try:
         # Expecting ISO format, parse and reformat to 'YYYY-MM-DD  HH:MM'
         dt = datetime.strptime(expiry_time[:16], "%Y-%m-%dT%H:%M").astimezone(
-            tz=india_tz
+            tz=INDIA_TZ
         )
         expiry_time = dt.strftime("%Y-%m-%d  %H:%M")
 
@@ -358,8 +357,11 @@ class DhanTrader:
                     new_expiry_time=data.get("expiryTime", ""),
                 )
             LOGGER.error("Generate Token Failed: %s", resp.text)
-        except Exception:
+        except RequestException:
             LOGGER.exception("Generate Token Exception")
+            return False
+        except (ValueError, KeyError, OSError):
+            LOGGER.exception("Generate Token Response Handling Exception")
             return False
         else:
             return False
@@ -380,7 +382,7 @@ class DhanTrader:
                 )
             LOGGER.error("Renew Token Failed: %s", resp.text)
 
-        except Exception:
+        except (RequestException, ValueError, KeyError, OSError):
             LOGGER.exception("Renew Token Exception")
             return False
         else:

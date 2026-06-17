@@ -5,13 +5,10 @@ from typing import Any
 import tesserocr
 from PIL import Image, ImageOps
 
+from utils.utility import out
+
 # ─── Thread-Local API Storage ────────────────────────────────────────────────
 _thread_local = threading.local()
-
-
-def out(msg: str = "", end: str = "\n") -> None:
-    sys.stdout.write(f"{msg}{end}")
-    sys.stdout.flush()
 
 
 def get_api() -> Any:

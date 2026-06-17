@@ -1,32 +1,27 @@
 """Instrument master-data loading and lookup."""
 
 import io
-import logging
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-import pytz
 import requests
 import tomllib
 from requests.exceptions import RequestException
 
 from tradeapi.scrip_search import SearchEngine
 from utils.data.paths import OUT_DIR
-
-india_tz = pytz.timezone("Asia/Kolkata")
-
-LOGGER = logging.getLogger(__name__)
+from utils.utility import INDIA_TZ, LOGGER
 
 BASE_DIR = Path(__file__).parent
 LOCAL_CSV = Path(OUT_DIR) / "scrip_master.csv"
 CONFIG_PATH = BASE_DIR / "scrip_master.toml"
 
-REQUEST_TIMEOUT_SECONDS = 10
+REQUEST_TIMEOUT_SECONDS = 3
 
 
 def _get_today_str() -> str:
-    return datetime.now(tz=india_tz).strftime("%Y-%m-%d")
+    return datetime.now(tz=INDIA_TZ).strftime("%Y-%m-%d")
 
 
 class ScripConfig:

@@ -1,5 +1,4 @@
 import argparse
-import logging
 import subprocess
 import sys
 import threading
@@ -18,21 +17,13 @@ except ImportError:
 
 # ─── Custom Imports ───────────────────────────────────────────────────────────
 from utils.data.paths import NSE_LOGS_DIR, ROOT_SRC_DIR
+from utils.utility import out
 
 # Default configurations
 MAX_LOG_SIZE_KB = 100  # KB
 LOG_MONITOR_INT = 15  # min
 STATS_MONITOR_INT = 3  # min
 log_root_dir = NSE_LOGS_DIR
-
-
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s")
-
-
-def out(message: str = "") -> None:
-    """Helper to output messages using logger instead of direct stdout."""
-    logger.info(message)
 
 
 class ScriptManager:

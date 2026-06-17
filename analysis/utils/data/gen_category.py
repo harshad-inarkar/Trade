@@ -12,7 +12,6 @@ Final fallback → 'OTHERS'
 """
 
 import argparse
-import sys
 from pathlib import Path
 
 import pandas as pd
@@ -23,11 +22,7 @@ from create_sectoral_index_files import (
 )
 
 from utils.data.paths import NSE_INDX_DATA
-
-
-def out(msg: str = "", end: str = "\n") -> None:
-    sys.stdout.write(f"{msg}{end}")
-
+from utils.utility import out
 
 CATEGORIES_CSV = Path(NSE_INDX_DATA) / "categories.csv"
 UNIQ_CATEGORIES_CSV = Path(NSE_INDX_DATA) / "uniq_categories.csv"

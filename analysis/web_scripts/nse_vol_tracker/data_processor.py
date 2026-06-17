@@ -28,23 +28,16 @@ import csv
 import math
 import os
 import re
-import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytz
 
-india_tz = pytz.timezone("Asia/Kolkata")
+from utils.utility import INDIA_TZ, out
 
 _NDIM_2 = 2
-
-
-def out(msg: str = "", end: str = "\n") -> None:
-    sys.stdout.write(f"{msg}{end}")
-    sys.stdout.flush()
 
 
 # ── field schemas ─────────────────────────────────────────────────────────────
@@ -129,8 +122,8 @@ _READ_WORKERS = min(16, (os.cpu_count() or 4) + 4)
 def calculate_intervals(
     tf: int, start_time_str: str = START_SESSION, end_time_str: str = END_SESSION
 ) -> int:
-    start = datetime.strptime(start_time_str, "%H%M").replace(tzinfo=india_tz)
-    end = datetime.strptime(end_time_str, "%H%M").replace(tzinfo=india_tz)
+    start = datetime.strptime(start_time_str, "%H%M").replace(tzinfo=INDIA_TZ)
+    end = datetime.strptime(end_time_str, "%H%M").replace(tzinfo=INDIA_TZ)
     if start >= end:
         return 0
     total_minutes = (end - start).total_seconds() / 60
@@ -158,7 +151,7 @@ def get_dt_obj_from_fileindex(
     dayindx = (indx - 1) // odi
     start_date = datetime.strptime(
         sorted_dates[dayindx] + START_SESSION, "%d%m%Y%H%M"
-    ).replace(tzinfo=india_tz)
+    ).replace(tzinfo=INDIA_TZ)
     return start_date + timedelta(minutes=(ninterval + 1) * tf)
 
 
@@ -188,7 +181,7 @@ def discover_files(
         date_str = "".join(m.groups())
         if not check_valid_session(date_str[-4:]):
             continue
-        file_date = datetime.strptime(date_str, DT_FRMT).replace(tzinfo=india_tz)
+        file_date = datetime.strptime(date_str, DT_FRMT).replace(tzinfo=INDIA_TZ)
         files_with_dates.append(
             {
                 "filename": filename,

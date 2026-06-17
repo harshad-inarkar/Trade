@@ -7,7 +7,6 @@ Downloads intraday CSV reports from NSE and syncs with GCP.
 import contextlib
 import csv
 import subprocess
-import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -17,17 +16,11 @@ from typing import ClassVar
 
 import requests
 import tomllib
-from pytz import timezone as _pytz_timezone
 
 # ─── Custom Imports ───────────────────────────────────────────────────────────
 from utils.data.paths import NSE_INTRADAY_DIR_PATH, REMOTE_INTRADAY_DIR_PATH
 from utils.data.sync_data import sync_data_args
-
-india_tz = _pytz_timezone("Asia/Kolkata")
-
-
-def out(msg: str = "", end: str = "\n") -> None:
-    sys.stdout.write(f"{msg}{end}")
+from utils.utility import INDIA_TZ, out
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -101,8 +94,8 @@ class NSEDailyDownloader:
         start_str = start_time_str or self.config.start_session
         end_str = end_time_str or self.config.end_session
 
-        start = datetime.strptime(start_str, "%H%M").replace(tzinfo=india_tz)
-        end = datetime.strptime(end_str, "%H%M").replace(tzinfo=india_tz)
+        start = datetime.strptime(start_str, "%H%M").replace(tzinfo=INDIA_TZ)
+        end = datetime.strptime(end_str, "%H%M").replace(tzinfo=INDIA_TZ)
 
         if start >= end:
             return 0.0
@@ -188,10 +181,10 @@ class NSEDailyDownloader:
 
     def download(self) -> None:
         t1 = time.time()
-        now = datetime.now(india_tz) + timedelta(seconds=30)
+        now = datetime.now(INDIA_TZ) + timedelta(seconds=30)
         timestamp = now.strftime("%H%M")
 
-        date_timestamp = datetime.now(india_tz).strftime("%d%m%Y")
+        date_timestamp = datetime.now(INDIA_TZ).strftime("%d%m%Y")
         data_dir = f"{NSE_INTRADAY_DIR_PATH}/{date_timestamp}"
 
         valid_flag, timestamp, time_exceeded_flag = self._check_valid_session(timestamp)

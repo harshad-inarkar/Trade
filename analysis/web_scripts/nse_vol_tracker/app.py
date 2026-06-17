@@ -7,7 +7,6 @@ and TOML-based configuration (removing all global state and CLI clutter).
 
 import csv as _csv
 import heapq
-import sys
 import threading
 import time
 from collections.abc import AsyncIterator
@@ -17,7 +16,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
-import pytz
 import tomllib
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -32,7 +30,7 @@ from utils.data.paths import (
     _nse_data_dir,
 )
 from utils.data.sync_data import sync_data_args
-from utils.utility import wait_next_wall_clock
+from utils.utility import INDIA_TZ, out, wait_next_wall_clock
 from web_scripts.nse_vol_tracker.cache_manager import MIN_TF, TF_KEYS, CacheManager
 
 # ─── Custom Imports ───────────────────────────────────────────────────────────
@@ -43,14 +41,7 @@ from web_scripts.nse_vol_tracker.sector_loader import (
     load_sector_symbols,
 )
 
-india_tz = pytz.timezone("Asia/Kolkata")
-
 app_config_file = Path(__file__).parent / "app_config.toml"
-
-
-def out(msg: str = "", end: str = "\n") -> None:
-    sys.stdout.write(f"{msg}{end}")
-    sys.stdout.flush()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -397,12 +388,12 @@ class BackgroundReloader:
 
         start_session_time = (
             datetime.strptime(self.config.start_session, "%H%M")
-            .replace(tzinfo=india_tz)
+            .replace(tzinfo=INDIA_TZ)
             .time()
         )
         cutoff = (
             datetime.strptime(self.config.end_session, "%H%M")
-            .replace(tzinfo=india_tz)
+            .replace(tzinfo=INDIA_TZ)
             .time()
         )
 
@@ -411,7 +402,7 @@ class BackgroundReloader:
                 self.config.reload_interval,
                 self.config.buffer_seconds or 0,
             )
-            current_time = datetime.now(india_tz).time()
+            current_time = datetime.now(INDIA_TZ).time()
 
             if current_time > cutoff or current_time < start_session_time:
                 out(

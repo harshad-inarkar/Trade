@@ -1,6 +1,5 @@
 import argparse
 import re
-import sys
 import time
 from pathlib import Path
 
@@ -8,11 +7,7 @@ import pandas as pd
 import requests
 
 from utils.data.paths import NSE_INDX_DATA
-
-
-def out(msg: str = "", end: str = "\n") -> None:
-    sys.stdout.write(f"{msg}{end}")
-
+from utils.utility import out
 
 Path(NSE_INDX_DATA).mkdir(parents=True, exist_ok=True)
 

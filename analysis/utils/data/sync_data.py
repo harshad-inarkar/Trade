@@ -1,6 +1,5 @@
 import argparse
 import subprocess
-import sys
 import time
 
 from utils.data.paths import (
@@ -9,10 +8,7 @@ from utils.data.paths import (
     REMOTE_INTRADAY_DIR_PATH,
     REMOTE_NSE_INDX_DATA,
 )
-
-
-def out(msg: str = "", end: str = "\n") -> None:
-    sys.stdout.write(f"{msg}{end}")
+from utils.utility import out
 
 
 def sync_data_args(src: str, dst: str) -> None:

@@ -5,7 +5,6 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import pytz
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
@@ -20,8 +19,7 @@ from PyQt5.QtWidgets import (
 
 # ── Environment Setup ────────────────────────────────────────────────────────
 from utils.data.paths import OUT_DIR
-
-india_tz = pytz.timezone("Asia/Kolkata")
+from utils.utility import INDIA_TZ, out
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 # DISPLAY_FIELDS = ['symbol', 'volume_fast','vol_surge','price_surge','ltp']
@@ -46,11 +44,6 @@ POSITIVE_BG = QColor("#1a3d2b")
 POSITIVE_FG = QColor("#4cde8a")
 NEGATIVE_BG = QColor("#3d1a1a")
 NEGATIVE_FG = QColor("#ff6b6b")
-
-
-def out(msg: str = "", end: str = "\n") -> None:
-    sys.stdout.write(f"{msg}{end}")
-    sys.stdout.flush()
 
 
 class NumericTableItem(QTableWidgetItem):
@@ -109,7 +102,7 @@ class CSVTableViewer(QMainWindow):
         layout.addWidget(self.table)
 
     def _schedule_reload(self) -> None:
-        now = datetime.now(india_tz)
+        now = datetime.now(INDIA_TZ)
         interval_sec = _ARGS.reload_interval * 60
 
         # Calculate seconds since midnight

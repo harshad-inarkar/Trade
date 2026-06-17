@@ -1,17 +1,9 @@
-import logging
 import math
 from pathlib import Path
 
-import tomllib  # Requires Python 3.11+
+import tomllib
 
-logger = logging.getLogger(__name__)
-
-
-def out(msg: str = "", end: str = "\n") -> None:
-    """Helper to output messages using logger instead of direct stdout."""
-    if end != "\n":
-        msg += end
-    logger.info(msg)
+from utils.utility import out
 
 
 # ---------------------------------------------------------------------------

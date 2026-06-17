@@ -1,21 +1,30 @@
-import sys
+import logging
 import time
 from datetime import datetime, timedelta
 
+import tomllib
 from pytz import timezone as _pytz_timezone
 
-india_tz = _pytz_timezone("Asia/Kolkata")
+from utils.data.paths import ROOT_SRC_DIR_PATH_OBJ
+
+INDIA_TZ = _pytz_timezone("Asia/Kolkata")
+
+_pyproject = {}
+with (ROOT_SRC_DIR_PATH_OBJ / "pyproject.toml").open("rb") as f:
+    _pyproject = tomllib.load(f)
+
+PROJECT_NAME = _pyproject.get("project", {}).get("name", __name__)
+LOGGER = logging.getLogger(PROJECT_NAME)
 BUFFER_SECONDS = 5
 
 
 def out(msg: str = "", end: str = "\n") -> None:
-    sys.stdout.write(f"{msg}{end}")
-    sys.stdout.flush()
+    LOGGER.info("%s%s", msg, end)
 
 
 def next_wall_clock(interval_min: int, buf: int = BUFFER_SECONDS) -> datetime:
     """Calculates the next wall-clock target time."""
-    now = datetime.now(india_tz)
+    now = datetime.now(INDIA_TZ)
 
     # Calculate the next minute that is a multiple of the interval
     next_minute_multiple = ((now.minute // interval_min) + 1) * interval_min
@@ -34,13 +43,13 @@ def wait_next_wall_clock(interval_min: int, buf: int = BUFFER_SECONDS) -> None:
         return
 
     target = next_wall_clock(interval_min, buf)
-    wait = (target - datetime.now(india_tz)).total_seconds()
+    wait = (target - datetime.now(INDIA_TZ)).total_seconds()
 
     # Failsafe: If a negative buffer pushes the target time into the past,
     # advance by one full interval to guarantee a future wake-up time.
     if wait <= 0:
         target += timedelta(minutes=interval_min)
-        wait = (target - datetime.now(india_tz)).total_seconds()
+        wait = (target - datetime.now(INDIA_TZ)).total_seconds()
 
     out(f"\n  Next scan at {target.strftime('%H:%M:%S')}  ({wait:.0f}s)")
 

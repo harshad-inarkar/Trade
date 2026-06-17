@@ -10,7 +10,7 @@ import pyautogui
 import tomllib
 
 from utils.data.paths import OUT_DIR
-from utils.utility import wait_next_wall_clock
+from utils.utility import INDIA_TZ, out, wait_next_wall_clock
 
 # ─────────────────────────────────────────────────────────────────────────────
 # macOS Background App Registration
@@ -34,18 +34,8 @@ except ImportError:
     QUARTZ_AVAILABLE = False
 
 
-import pytz
-
-india_tz = pytz.timezone("Asia/Kolkata")
 # Safety mechanism
 pyautogui.FAILSAFE = True
-
-
-def out(msg: str = "", end: str = "\n", *, flush: bool = False) -> None:
-    """Helper to output messages to stdout without triggering T201."""
-    sys.stdout.write(f"{msg}{end}")
-    if flush:
-        sys.stdout.flush()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -232,7 +222,7 @@ class TVUpdaterApp:
         time.sleep(2)
 
         if self._is_user_active(1):
-            now_str = datetime.now(india_tz).astimezone().strftime("%H:%M:%S")
+            now_str = datetime.now(INDIA_TZ).astimezone().strftime("%H:%M:%S")
             out(f"[{now_str}] User active. Skipping update...")
             return
 
@@ -297,7 +287,7 @@ class TVUpdaterApp:
 
         # 4. Snap mouse back
         pyautogui.moveTo(original_pos)
-        now_str = datetime.now(india_tz).astimezone().strftime("%H:%M:%S")
+        now_str = datetime.now(INDIA_TZ).astimezone().strftime("%H:%M:%S")
         out(f"[{now_str}] TV Updated successfully.")
 
     def run(self) -> None:

@@ -28,7 +28,7 @@ from PIL import Image
 from tradeapi.dhan_trade import DhanTrader
 from utils.data.paths import OUT_DIR
 from utils.ocr.ocr_engine import ocr_pil as _engine_ocr_pil
-from utils.utility import wait_next_wall_clock
+from utils.utility import INDIA_TZ, out, wait_next_wall_clock
 
 # ─────────────────────────────────────────────────────────────────────────────
 # macOS Background App Registration
@@ -52,11 +52,6 @@ except ImportError:
     QUARTZ_AVAILABLE = False
 
 
-import pytz
-
-india_tz = pytz.timezone("Asia/Kolkata")
-
-
 # Safety mechanism
 pyautogui.FAILSAFE = True
 
@@ -70,13 +65,6 @@ _MAX_GAP_COUNT = 12
 _NSE_IDX = 0
 _COMM_IDX = 1
 _CRYPTO_IDX = 2
-
-
-def out(msg: str = "", end: str = "\n", *, flush: bool = False) -> None:
-    """Helper to output messages to stdout without triggering T201."""
-    sys.stdout.write(f"{msg}{end}")
-    if flush:
-        sys.stdout.flush()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -709,7 +697,7 @@ class TVScannerApp:
         if sells:
             parts.append(f"{len(sells)}x SELL")
 
-        now_str = datetime.now(india_tz).astimezone().strftime("%H:%M")
+        now_str = datetime.now(INDIA_TZ).astimezone().strftime("%H:%M")
         title = f"TV Alert {now_str}  •  {', '.join(parts)}"
         lines = [
             f"{r['symbol']:<10} {r['signal']:<4}  {r['entry']}" for r in new_alerts

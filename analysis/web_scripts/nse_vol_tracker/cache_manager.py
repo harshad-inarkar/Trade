@@ -21,7 +21,6 @@ _apply_result() is shared: full load replaces the buffer, incremental appends.
 """
 
 import math
-import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -29,8 +28,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import pytz
 
+from utils.utility import INDIA_TZ, out
 from web_scripts.nse_vol_tracker.data_processor import (
     CACHE_FIELDS,
     NFIELDS,
@@ -53,17 +52,9 @@ from web_scripts.nse_vol_tracker.data_processor import (
     read_csv_files_to_arrays,
 )
 
-india_tz = pytz.timezone("Asia/Kolkata")
-
-
 MIN_TF = "3"
 TF_KEYS = (MIN_TF, "15", "D")
 _BUFFER_DAYS = 1
-
-
-def out(msg: str = "", end: str = "\n") -> None:
-    sys.stdout.write(f"{msg}{end}")
-    sys.stdout.flush()
 
 
 # ── lazy proxy ────────────────────────────────────────────────────────────────
@@ -182,12 +173,12 @@ class CacheManager:
         """
         incremental = self._ready and self._refresh_time is not None
         label = "Reloading" if incremental else "Loading data"
-        out(f"🔄 {datetime.now(india_tz).strftime('%M:%S')} : {label}...")
+        out(f"🔄 {datetime.now(INDIA_TZ).strftime('%M:%S')} : {label}...")
 
         result = self._load_csv_files(data_dir, last_n_days, incremental=incremental)
 
         if result is None:
-            out(f"✅ {datetime.now(india_tz).strftime('%M:%S')} : No updates.")
+            out(f"✅ {datetime.now(INDIA_TZ).strftime('%M:%S')} : No updates.")
             return
 
         with self._lock:
@@ -195,7 +186,7 @@ class CacheManager:
 
         ref = self._refresh_time
         out(
-            f"✅ {datetime.now(india_tz).strftime('%M:%S')} : Done. "
+            f"✅ {datetime.now(INDIA_TZ).strftime('%M:%S')} : Done. "
             f"Last: {ref.strftime('%d%m%Y-%H%M') if ref else '-'}",
         )
 
