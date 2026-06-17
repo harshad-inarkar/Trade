@@ -30,6 +30,10 @@ API_CONFIG_PATH = BASE_DIR / "dhan_trade.toml"
 REQUEST_TIMEOUT_SECONDS = 3
 OPT_BUMP_MULT = 10
 
+PENDING_STATUSES: frozenset[str] = frozenset(
+    ("TRANSIT", "PENDING", "PART_TRADED", "TRIGGERED")
+)
+
 
 class PriceCondition(Enum):
     GREATER_THAN = "GREATER_THAN"
@@ -1140,7 +1144,7 @@ class DhanTrader:
 
     def get_pending_orders(
         self,
-        pending_statuses: tuple[str, ...] = ("TRANSIT", "PENDING", "PART_TRADED"),
+        pending_statuses: tuple[str, ...] = PENDING_STATUSES,
     ) -> list[dict]:
         resp = self._request_with_retry(
             "GET",
@@ -1191,7 +1195,6 @@ class DhanTrader:
             resp_data = resp.json()
         except ValueError:
             return set()
-
         active_orders = set()
         for order in resp_data:
             status = order.get("orderStatus", "")
@@ -1203,23 +1206,22 @@ class DhanTrader:
             prc = order.get("price", 0.0)
             trg = order.get("triggerPrice", 0.0)
 
-            if status in {"PENDING", "PART_TRADED"}:
+            if status in PENDING_STATUSES:
                 active_orders.add((sym, oid, "ENTRY_LEG", txn, qty, prc, trg))
 
-            if status in {"PENDING", "PART_TRADED", "TRADED"}:
-                for leg in order.get("legDetails", []):
-                    if leg.get("orderStatus") == "PENDING":
-                        active_orders.add(
-                            (
-                                sym,
-                                oid,
-                                leg.get("legName", ""),
-                                leg.get("transactionType", txn),
-                                leg.get("quantity", qty),
-                                leg.get("price", prc),
-                                leg.get("triggerPrice", trg),
-                            ),
-                        )
+            for leg in order.get("legDetails", []):
+                if leg.get("orderStatus") in PENDING_STATUSES:
+                    active_orders.add(
+                        (
+                            sym,
+                            oid,
+                            leg.get("legName", ""),
+                            leg.get("transactionType", txn),
+                            leg.get("quantity", qty),
+                            leg.get("price", prc),
+                            leg.get("triggerPrice", trg),
+                        ),
+                    )
         return active_orders
 
     def get_forever_orders(
