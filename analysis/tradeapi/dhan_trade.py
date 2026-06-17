@@ -213,7 +213,7 @@ class DhanTrader:
         self._set_logging(log_level)
 
         self.pending_statuses = frozenset(
-            self.api_cfg.settings.get("pending_statuses", ())
+            self.api_cfg.settings.get("pending_statuses", [])
         )
 
         self._defaults_config: MappingProxyType = MappingProxyType(
@@ -699,13 +699,16 @@ class DhanTrader:
                     timeout=REQUEST_TIMEOUT_SECONDS,
                     **kwargs,
                 )
-            except RequestException:
+            except (requests.Timeout, requests.ConnectionError):
                 if attempt == 0:
                     LOGGER.warning(
                         "Request failed for %s — restarting proxy and retrying.",
                         label,
                     )
                     self.proxy_manager.restart()
+            except RequestException:
+                LOGGER.error("Request failed for %s", label)
+
         return None
 
     def _post_order(self, url: str, payload: dict, label: str = "") -> None:

@@ -105,10 +105,11 @@ class AppConfig:
         self.port: int = srv.get("port", 8000)
         self.reload: bool = srv.get("reload", False)
         self.log_level: str = srv.get("log_level", "")
-        self.webhook_secret: str = srv.get("webhook_secret", "")
-        if not self.log_level:
+
+        if not bool(self.log_level):
             self.log_level = "critical"
 
+        self.webhook_secret: str = srv.get("webhook_secret", "")
         app_cfg = self.raw_cfg.get("app", {})
         self.title: str = app_cfg.get("title", "Dhan Trading Portal")
         self.template_subdir: str = app_cfg.get(
@@ -319,7 +320,9 @@ class TradePortalApp:
     def __init__(self, config: AppConfig):
 
         self.cfg = config
-        set_logger_config(log_level=self.cfg.log_level)
+        if bool(self.cfg.log_level):
+            set_logger_config(log_level=self.cfg.log_level)
+
         self.app = FastAPI(title=self.cfg.title)
 
         template_dir = Path(TEMPLATES_ROOT_DIR) / self.cfg.template_subdir
@@ -697,13 +700,13 @@ class TradePortalApp:
         return RedirectResponse(url="/", status_code=303)
 
     async def _cancel_all(self) -> RedirectResponse:
-        for o in self.trader.get_pending_orders(self.cfg.pending_statuses):
+        for o in self.trader.get_pending_orders():
             self.trader.cancel_normal_order(o["order_id"])
         for _, oid, leg, *_ in self.trader.get_active_super_orders():
             self.trader.cancel_super_order(oid, leg)
-        for o in self.trader.get_forever_orders(self.cfg.forever_active_statuses):
+        for o in self.trader.get_forever_orders():
             self.trader.cancel_forever_order(o["order_id"])
-        for o in self.trader.get_all_alerts(self.cfg.alert_active_statuses):
+        for o in self.trader.get_all_alerts():
             self.trader.cancel_alert_order(o["order_id"])
         return RedirectResponse(url="/", status_code=303)
 
@@ -733,6 +736,7 @@ class TradePortalApp:
             }
 
     def run(self) -> None:
+
         uvicorn.run(
             self.app,
             host=self.cfg.host,
