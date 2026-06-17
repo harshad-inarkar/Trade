@@ -1,6 +1,6 @@
 max_log_size = 50 #KB
 
-[scripts.app]
+[scripts.vol_app]
 module = "web_scripts.nse_vol_tracker.app"
 args = []
 
@@ -10,4 +10,8 @@ args = []
 
 [scripts.tv_scanner]
 module = "tradeview.tv_scanner"
+args = []
+
+[scripts.trade_app]
+module = "web_scripts.trade_client.trade_app"
 args = []

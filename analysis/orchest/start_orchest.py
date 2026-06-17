@@ -1,3 +1,4 @@
+import argparse
 import logging
 import subprocess
 import sys
@@ -343,13 +344,30 @@ def handle_command(manager: ScriptManager, action: str, args: list[str]) -> bool
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Script Orchestrator")
+    parser.add_argument(
+        "-ml",
+        "--module-list",
+        nargs="+",
+        help="List of modules to start (e.g. -ml tv_update trade_app)",
+        dest="module_list",
+        default=None,
+    )
+    args = parser.parse_args()
+
     manager = ScriptManager()
 
     out(f"Project Root Detected: {ROOT_SRC_DIR}")
-    out("Starting all scripts based on config...")
-    manager.start_all()
-    manager.status()
 
+    if args.module_list:
+        out(f"Starting scripts: {', '.join(args.module_list)}")
+        for module_name in args.module_list:
+            manager.start(module_name)
+    else:
+        out("Starting all scripts based on config...")
+        manager.start_all()
+
+    manager.status()
     out("Type 'help' for available commands.")
 
     while True:
