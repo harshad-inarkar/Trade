@@ -1,10 +1,9 @@
-import logging
+import logging, sys
 import time
 from datetime import datetime, timedelta
 
 import tomllib
 from pytz import timezone as _pytz_timezone
-
 from utils.data.paths import ROOT_SRC_DIR_PATH_OBJ
 
 INDIA_TZ = _pytz_timezone("Asia/Kolkata")
@@ -21,6 +20,16 @@ BUFFER_SECONDS = 5
 def out(msg: str = "", end: str = "\n") -> None:
     LOGGER.info("%s%s", msg, end)
 
+
+def set_logger_config(self, log_level: str = "", log_handle = sys.stdout) -> None:
+    numeric_level = logging.getLevelNamesMapping().get(
+        log_level.upper(), logging.CRITICAL
+    )
+    logging.basicConfig(
+        level=numeric_level,
+        format="[%(levelname)s] %(message)s",
+        handlers=[logging.StreamHandler(log_handle)],
+    )
 
 def next_wall_clock(interval_min: int, buf: int = BUFFER_SECONDS) -> datetime:
     """Calculates the next wall-clock target time."""
@@ -55,3 +64,7 @@ def wait_next_wall_clock(interval_min: int, buf: int = BUFFER_SECONDS) -> None:
 
     if wait > 0:
         time.sleep(wait)
+
+
+
+set_logger_config()

@@ -1,8 +1,6 @@
 from pathlib import Path
-
 import tomllib
 
-from utils.utility import out
 
 # ─── Internal Directory Constants (Kept as is) ──────────────────────────────
 _nse_data_dir = "nse_data"
@@ -33,7 +31,7 @@ class PathManager:
                 with self.config_path.open("rb") as f:
                     return tomllib.load(f).get("paths", {})
             except tomllib.TOMLDecodeError as e:
-                out(f"Error loading {self.config_path.name}: {e}")
+                pass
         return {}
 
     def _find_pyproject_root(self) -> Path:

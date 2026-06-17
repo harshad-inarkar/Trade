@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from tradeapi.dhan_trade import DhanTrader, UIOverride
 from utils.data.paths import TEMPLATES_ROOT_DIR
-from utils.utility import LOGGER
+from utils.utility import LOGGER, set_logger_config
 
 BASE_DIR = Path(__file__).parent
 APP_CONFIG_PATH = BASE_DIR / "trade_app.toml"
@@ -330,7 +330,9 @@ class TradePortalApp:
     """FastAPI application wrapper for the trading portal."""
 
     def __init__(self, config: AppConfig):
+
         self.cfg = config
+        set_logger_config(log_level=self.cfg.log_level)
         self.app = FastAPI(title=self.cfg.title)
 
         template_dir = Path(TEMPLATES_ROOT_DIR) / self.cfg.template_subdir

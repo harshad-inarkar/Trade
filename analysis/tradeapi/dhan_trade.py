@@ -18,7 +18,7 @@ from requests.exceptions import RequestException
 from tradeapi.price_strike_calc import get_price_strike, get_strike_interval
 from tradeapi.scrip_master import ScripMaster, _get_today_str
 from utils.network.start_proxy import SSHProxyManager
-from utils.utility import INDIA_TZ, LOGGER
+from utils.utility import INDIA_TZ, LOGGER, set_logger_config
 
 __all__ = ["DhanTrader", "Instrument", "PriceLevels", "UIOverride"]
 
@@ -264,18 +264,11 @@ class DhanTrader:
         self.stop_trail_perc = self.cfg.get("stop_trail_perc", 0.5)
 
     def _set_logging(self, log_level: str = "") -> None:
-
         cfg_log_level = self.api_cfg.settings.get("log_level", "")
         log_level = log_level or cfg_log_level
         if bool(log_level):
-            numeric_level = logging.getLevelNamesMapping().get(
-                log_level.upper(), logging.CRITICAL
-            )
-            logging.basicConfig(
-                level=numeric_level,
-                format="[%(levelname)s] %(message)s",
-                handlers=[logging.StreamHandler(sys.stdout)],
-            )
+            set_logger_config(log_level=log_level)
+
 
     def _apply_proxy(self) -> None:
         try:
