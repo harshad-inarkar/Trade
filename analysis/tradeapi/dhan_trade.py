@@ -842,7 +842,8 @@ class DhanTrader:
     def place_simple_order(self, sec_id: str, lot_size: int, inst: Instrument) -> None:
         _, exchange_seg = self.get_instr_data(inst)
         ord_type = self._get_ord_type(inst)
-
+        if inst.product_type == "CNC" and inst.seg in self.api_cfg.fno_segments:
+            inst.product_type = "MARGIN"
         payload = self._base_payload(
             inst.signal, exchange_seg, sec_id, inst.product_type
         ) | {
