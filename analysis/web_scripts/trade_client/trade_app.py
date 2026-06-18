@@ -556,7 +556,7 @@ class TradePortalApp:
             if sec_id:
                 match order_mode:
                     case "MARKET":
-                        self.trader.place_market_order(sec_id, lot_size, inst)
+                        self.trader.place_simple_order(sec_id, lot_size, inst)
                     case "SUPER":
                         self.trader.place_super_order(sec_id, lot_size, inst)
                     case "FOREVER":
