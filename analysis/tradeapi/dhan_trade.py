@@ -1052,8 +1052,6 @@ class DhanTrader:
 
         aggregated = self._aggregate_positions(resp_data)
 
-        LOGGER.debug("All Positions:\n%s", resp_data)
-
         active = []
         closed = []
 
@@ -1231,6 +1229,7 @@ class DhanTrader:
             return []
 
         results = []
+
         for order in resp_data:
             if order.get("orderStatus", "") not in self.pending_statuses:
                 continue
