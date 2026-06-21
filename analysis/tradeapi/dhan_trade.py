@@ -118,6 +118,9 @@ def _adjust_price(
     *,
     opt_bump: bool = False,
 ) -> float:
+    if perc == 0:
+        return 0
+
     perc = OPT_BUMP_MULT * perc if opt_bump else perc
     if signal == "BUY":
         return math.ceil(base * (1 + perc / 100))
@@ -206,6 +209,7 @@ class DhanTrader:
         refresh_master_scrip: bool = False,
         restart_proxy: bool = False,
         log_level: str = "",
+        apply_proxy_flag: bool = True,
     ):
         self.api_cfg = DhanAPIConfig(API_CONFIG_PATH)
         self.cfg = SymbolsConfig(symb_config)
@@ -228,9 +232,11 @@ class DhanTrader:
 
         self.traded_this_scan = set()
 
+        self.apply_proxy_flag = apply_proxy_flag
         self.proxy_manager = SSHProxyManager()
+
         if restart_proxy:
-            self.proxy_manager.restart()
+            self._proxy_restart()
 
         self.session = requests.Session()
         self._apply_proxy()
@@ -254,11 +260,11 @@ class DhanTrader:
             refresh_master_scrip=refresh_master_scrip,
         )
 
-        self.entry_perc = self.cfg.get("entry_price_perc", 0.1)
-        self.limit_perc = self.cfg.get("limit_price_perc", 0.2)
-        self.target_perc = self.cfg.get("target_perc", 4.0)
-        self.stop_loss_perc = self.cfg.get("stop_loss_perc", 0.7)
-        self.stop_trail_perc = self.cfg.get("stop_trail_perc", 0.5)
+        self.entry_perc = self.cfg.get("entry_price_perc", 0)
+        self.limit_perc = self.cfg.get("limit_price_perc", 0)
+        self.target_perc = self.cfg.get("target_perc", 0)
+        self.stop_loss_perc = self.cfg.get("stop_loss_perc", 0)
+        self.stop_trail_perc = self.cfg.get("stop_trail_perc", 0)
 
     def _set_logging(self, log_level: str = "") -> None:
         cfg_log_level = self.api_cfg.settings.get("log_level", "")
@@ -266,7 +272,15 @@ class DhanTrader:
         if bool(log_level):
             set_logger_config(log_level=log_level)
 
+    def _proxy_restart(self) -> None:
+        if self.apply_proxy_flag:
+            self.proxy_manager.restart()
+            self._apply_proxy()
+
     def _apply_proxy(self) -> None:
+        if not self.apply_proxy_flag:
+            return
+
         try:
             proxy_cfg = self.proxy_manager.config.get("proxy", {})
             proxy_host = proxy_cfg.get("proxy_host", "")
@@ -395,7 +409,7 @@ class DhanTrader:
         stop_limit = _adjust_price(stop_loss, self.limit_perc, inv, opt_bump=opt_bump)
         target = _adjust_price(entry, self.target_perc, signal, opt_bump=opt_bump)
         trail_factor = self.stop_trail_perc * (OPT_BUMP_MULT if opt_bump else 1)
-        trail = math.ceil(entry * trail_factor / 100)
+        trail = math.ceil(entry * trail_factor / 100) if trail_factor > 0 else 0
         return PriceLevels(entry, limit, stop_loss, stop_limit, target, trail)
 
     def _get_symbol_config(self, symb: str, exch: str) -> dict:
@@ -705,7 +719,7 @@ class DhanTrader:
                         "Request failed for %s — restarting proxy and retrying.",
                         label,
                     )
-                    self.proxy_manager.restart()
+                    self._proxy_restart()
             except RequestException:
                 LOGGER.error("Request failed for %s", label)
 
@@ -812,7 +826,7 @@ class DhanTrader:
             "price": final_limit,
             "stopLossPrice": final_sl,
             "targetPrice": final_target,
-            # "trailingJump": levels.trail,
+            "trailingJump": levels.trail,
         }
 
         self._post_order(
@@ -1091,27 +1105,23 @@ class DhanTrader:
 
             if qty != 0:
                 mult = agg["multiplier"]
-                entry["pnl"] = agg["unrealizedProfit"]
+                entry["pnl"] = agg["unrealizedProfit"] + agg["realizedProfit"]
 
                 # Optimized Net Cash Flow approach (avoids ZeroDivisionError entirely)
                 if qty > 0:
-                    active_cost = (
-                        agg["totBuyVal"]
-                        - agg["totSellVal"]
-                        + (agg["realizedProfit"] / mult)
+                    entry["entry_price"] = (
+                        (agg["totBuyVal"] / agg["buyQty"]) if agg["buyQty"] > 0 else 0.0
                     )
-                    entry["entry_price"] = active_cost / qty
                     entry["ltp"] = entry["entry_price"] + (
                         agg["unrealizedProfit"] / (qty * mult)
                     )
                 else:
                     abs_qty = abs(qty)
-                    active_cost = (
-                        agg["totSellVal"]
-                        - agg["totBuyVal"]
-                        - (agg["realizedProfit"] / mult)
+                    entry["entry_price"] = (
+                        (agg["totSellVal"] / agg["sellQty"])
+                        if agg["sellQty"] > 0
+                        else 0.0
                     )
-                    entry["entry_price"] = active_cost / abs_qty
                     entry["ltp"] = entry["entry_price"] - (
                         agg["unrealizedProfit"] / (abs_qty * mult)
                     )

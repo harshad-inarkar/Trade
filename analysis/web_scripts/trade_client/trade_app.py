@@ -119,6 +119,7 @@ class AppConfig:
 
         self.refresh_master_script: bool = app_cfg.get("refresh_master_script", False)
         self.reset_proxy_at_start: bool = app_cfg.get("reset_proxy_at_start", False)
+        self.apply_proxy_flag: bool = app_cfg.get("apply_proxy_flag", True)
 
         cls_cfg = self.raw_cfg.get("close", {})
         self.reentry_order_mode: str = cls_cfg.get("reentry_order_mode", "FOREVER")
@@ -337,6 +338,7 @@ class TradePortalApp:
         self.trader = DhanTrader(
             refresh_master_scrip=self.cfg.refresh_master_script,
             restart_proxy=self.cfg.reset_proxy_at_start,
+            apply_proxy_flag=self.cfg.apply_proxy_flag,
         )
         self.trader.begin_session()
         self.dashboard = DashboardService(self.trader, self.cfg)

@@ -12,7 +12,7 @@ entry_price_perc = 0.13
 limit_price_perc = 0.5
 target_perc      = 5
 stop_loss_perc   = 0.7
-stop_trail_perc  = 0.5
+stop_trail_perc  = 0.35
 
 
 # ─────────────────────────────────────────────
