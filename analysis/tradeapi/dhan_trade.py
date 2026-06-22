@@ -2,6 +2,7 @@
 
 import json
 import math
+import stat
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -294,22 +295,42 @@ class DhanTrader:
         except (AttributeError, TypeError) as exc:
             LOGGER.warning("Unable to apply proxy configuration: %s", exc)
 
-    def _get_cipher(self) -> Fernet | None:
-        """Loads the master key from the secure home
-        directory to initialize the cipher."""
+    def _get_cipher(self, *, create_if_missing: bool = False) -> Fernet | None:
+        """Loads the master key, autonomously generating
+        and securing it if missing."""
+        if not MASTER_KEY_PATH.exists():
+            if not create_if_missing:
+                return None
+            try:
+                # 1. Generate a brand new AES Master Key
+                new_key = Fernet.generate_key()
+                # 2. Write it to the hidden home directory file
+                with MASTER_KEY_PATH.open("wb") as f:
+                    f.write(new_key)
+                # 3. CRITICAL: Lock file permissions to 600 (Owner Read/Write only)
+                MASTER_KEY_PATH.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+                LOGGER.info(
+                    "✨ Autonomously generated and secured new Master Key at %s",
+                    MASTER_KEY_PATH,
+                )
+            except OSError:
+                LOGGER.exception("Failed to create master key at %s", MASTER_KEY_PATH)
+                return None
+
         try:
             with MASTER_KEY_PATH.open("rb") as f:
                 key = f.read().strip()
             return Fernet(key)
         except OSError:
-            LOGGER.error("Master key not found at %s", MASTER_KEY_PATH)
+            LOGGER.error("Master key unreadable at %s", MASTER_KEY_PATH)
             return None
         except ValueError:
             LOGGER.error("Invalid master key format in %s", MASTER_KEY_PATH)
             return None
 
     def _load_credentials(self, path: Path) -> tuple[str, str, str, str]:
-        cipher = self._get_cipher()
+        cipher = self._get_cipher(create_if_missing=False)
         if not cipher or not path.exists():
             return "", "", "", ""
 
@@ -319,7 +340,7 @@ class DhanTrader:
             decrypted_data = cipher.decrypt(encrypted_data)
             data = json.loads(decrypted_data.decode("utf-8"))
         except (OSError, InvalidToken, json.JSONDecodeError):
-            LOGGER.exception("Unable to decrypt or read Dhan credentials from %s", path)
+            LOGGER.exception("Unable to decrypt Dhan credentials from %s", path)
             return "", "", "", ""
 
         client_id = str(data.get("CLIENT_ID", "")).strip()
@@ -340,9 +361,10 @@ class DhanTrader:
         new_client_name: str,
         new_expiry_time: str,
     ) -> bool:
-        cipher = self._get_cipher()
+        # Pass True! If the master key doesn't exist, it will build it right now.
+        cipher = self._get_cipher(create_if_missing=True)
         if not cipher:
-            LOGGER.error("Cannot save credentials: Master key is missing.")
+            LOGGER.error("Cannot save credentials: Master key generation failed.")
             return False
 
         payload = {
@@ -353,7 +375,7 @@ class DhanTrader:
         }
 
         try:
-            # Encrypt the payload and write as binary
+            # Encrypt the payload and write as a secure binary file
             encrypted_data = cipher.encrypt(json.dumps(payload).encode("utf-8"))
             with ACCESS_FILE_PATH.open("wb") as f:
                 f.write(encrypted_data)
