@@ -15,6 +15,9 @@ dependencies = [
     "numpy",
     "requests",
     "pillow",
+    "cryptography",  # For secure token encryption (dhan_trade.py)
+    "psutil",        # For orchestrator performance stats (start_orchest.py)
+    "pytz",          # For India timezone handling (utility.py / scrip_master.py)
 ]
 
 [tool.setuptools.packages.find]
