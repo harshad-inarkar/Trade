@@ -4,7 +4,6 @@
 !.gitignore
 !.gitkeep
 
-
 # Python bytecode / cache (recursive)
 __pycache__/
 *.py[cod]
