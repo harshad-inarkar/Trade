@@ -377,39 +377,62 @@ class LiveDashboard {
     }
 
     startLiveDataUpdater() {
+        // Clear any existing polling loop
         if (this.liveIntervalId) clearInterval(this.liveIntervalId);
-        const selectEl = document.getElementById("live-interval-select");
-        if (!selectEl) return;
 
-        const ms = parseInt(selectEl.value, 10);
-        if (ms > 0) {
-            this.liveIntervalId = setInterval(() => this.fetchLiveData(), ms);
+        const inputEl = document.getElementById("live-interval-input");
+        if (!inputEl) return;
+
+        // Parse to integer and prevent negative numbers or NaN
+        let secs = parseInt(inputEl.value, 10);
+        if (isNaN(secs) || secs < 0) {
+            secs = 0;
+        }
+
+        // Save the valid state to browser local storage so it survives page reloads
+        localStorage.setItem("dhan_polling_interval", secs);
+
+        // If greater than 0, multiply by 1000 for milliseconds and start the interval
+        if (secs > 0) {
+            this.liveIntervalId = setInterval(() => this.fetchLiveData(), secs * 1000);
         }
     }
 
     setupListeners() {
-        const selectEl = document.getElementById("live-interval-select");
-        if (selectEl) {
-            selectEl.addEventListener("change", () => this.startLiveDataUpdater());
+        const inputEl = document.getElementById("live-interval-input");
+        if (inputEl) {
+            // 1. On page load, try to retrieve the saved interval
+            const savedInterval = localStorage.getItem("dhan_polling_interval");
+
+            // 2. If a saved interval exists, apply it. Otherwise, default to "0" (Off).
+            if (savedInterval !== null) {
+                inputEl.value = savedInterval;
+            } else {
+                inputEl.value = "0";
+            }
+
+            // 3. Listen for changes. 'input' triggers instantly as the user types or clicks arrows.
+            inputEl.addEventListener("input", () => this.startLiveDataUpdater());
+
+            // 4. Boot up the poller using the loaded state
             this.startLiveDataUpdater();
         }
-        // Completely disabled the rigid auto-refresh interval
     }
 }
 
 // Bootstrap the App
 document.addEventListener('DOMContentLoaded', () => {
     window.UI = new UITableManager();
-    
+
     // Initialize logic for the main Left Panel AND all inline dropdown forms
     document.querySelectorAll('.order-form').forEach(f => new OrderFormLogic(f));
-    
+
     if (window.DhanConfig) {
         window.UI.totals.active = window.DhanConfig.initActivePnl || 0;
         window.UI.totals.closed = window.DhanConfig.initClosedPnl || 0;
         window.UI.updateTotalDisplay();
     }
-    
+
     window.Search = new SymbolSearch();
     if (window.DhanConfig && window.DhanConfig.isDashboard) {
         window.LivePoller = new LiveDashboard(window.UI);

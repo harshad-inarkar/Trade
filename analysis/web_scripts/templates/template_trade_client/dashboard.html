@@ -69,26 +69,33 @@
     <div class="form-group flex-row-gap-10">
       <div class="flex-1 flex-col">
         <label>Product Type</label>
-        <select name="{{ pfx }}product_type" {% if is_close or is_reentry %}class="pointer-events-none opacity-70" tabindex="-1"{% endif %}>
+        <select name="{{ pfx }}product_type" {% if is_close or is_reentry %}class="pointer-events-none opacity-70"
+          tabindex="-1" {% endif %}>
           {% if is_close or is_reentry %}
           <option value="{{ pos.product_type }}">{{ pos.product_type }}</option>
           {% else %}
-          <option value="CNC" {% if pos and pos.product_type=='CNC' %}selected="selected"{% endif %}>CNC</option>
-          <option value="INTRADAY" {% if pos and pos.product_type=='INTRADAY' %}selected="selected"{% endif %}>INTRADAY</option>
-          <option value="MARGIN" {% if pos and pos.product_type=='MARGIN' %}selected="selected"{% endif %}>MARGIN</option>
+          <option value="CNC" {% if pos and pos.product_type=='CNC' %}selected="selected" {% endif %}>CNC</option>
+          <option value="INTRADAY" {% if pos and pos.product_type=='INTRADAY' %}selected="selected" {% endif %}>INTRADAY
+          </option>
+          <option value="MARGIN" {% if pos and pos.product_type=='MARGIN' %}selected="selected" {% endif %}>MARGIN
+          </option>
           {% endif %}
         </select>
       </div>
       <div class="flex-1 flex-col">
         <label>Inst Type</label>
-        <select name="inst_type" {% if is_close or is_reentry %}class="pointer-events-none opacity-70" tabindex="-1"{% endif %}>
+        <select name="inst_type" {% if is_close or is_reentry %}class="pointer-events-none opacity-70" tabindex="-1" {%
+          endif %}>
           {% if is_close or is_reentry %}
           <option value="{{ pos.ui_inst_type or 'EQ' }}">{{ pos.ui_inst_type or 'EQ' }}</option>
           {% else %}
-          <option value="" {% if not pos or not pos.ui_inst_type %}selected="selected"{% endif %}>Config Default</option>
-          <option value="EQ" {% if pos and pos.ui_inst_type=='EQ' %}selected="selected"{% endif %}>Equity (EQ)</option>
-          <option value="OPT" {% if pos and pos.ui_inst_type=='OPT' %}selected="selected"{% endif %}>Options (OPT)</option>
-          <option value="FUT" {% if pos and pos.ui_inst_type=='FUT' %}selected="selected"{% endif %}>Futures (FUT)</option>
+          <option value="" {% if not pos or not pos.ui_inst_type %}selected="selected" {% endif %}>Config Default
+          </option>
+          <option value="EQ" {% if pos and pos.ui_inst_type=='EQ' %}selected="selected" {% endif %}>Equity (EQ)</option>
+          <option value="OPT" {% if pos and pos.ui_inst_type=='OPT' %}selected="selected" {% endif %}>Options (OPT)
+          </option>
+          <option value="FUT" {% if pos and pos.ui_inst_type=='FUT' %}selected="selected" {% endif %}>Futures (FUT)
+          </option>
           {% endif %}
         </select>
       </div>
@@ -117,7 +124,9 @@
       </div>
       <div class="flex-1 flex-col">
         <label>Alert Target</label>
-        <select name="{{ pfx }}alert_{% if pfx %}base{% else %}trigger_base{% endif %}" {% if is_close %}disabled="disabled"{% endif %} {% if mode=='place' %}title="Only applies if Alert Trigger is selected"{% endif %}>
+        <select name="{{ pfx }}alert_{% if pfx %}base{% else %}trigger_base{% endif %}" {% if is_close
+          %}disabled="disabled" {% endif %} {% if mode=='place' %}title="Only applies if Alert Trigger is selected" {%
+          endif %}>
           <option value="PARENT">Underlying</option>
           <option value="SELF">Same</option>
         </select>
@@ -127,17 +136,20 @@
     <div class="form-group flex-row-gap-10">
       <div class="flex-1 flex-col">
         <label>Strike (OPT)</label>
-        <input type="number" name="strike" value="{{ pos.strike if pos else '0.0' }}" step="0.05" class="w-full {% if is_close or is_reentry %}opacity-70 pointer-events-none{% endif %}" {% if is_close or is_reentry %}readonly="readonly"{% endif %} />
+        <input type="number" name="strike" value="{{ pos.strike if pos else '0.0' }}" step="0.05"
+          class="w-full {% if is_close or is_reentry %}opacity-70 pointer-events-none{% endif %}" {% if is_close or
+          is_reentry %}readonly="readonly" {% endif %} />
       </div>
       <div class="flex-1 flex-col">
         <label>Opt Type (OPT)</label>
-        <select name="opt_type" {% if is_close or is_reentry %}class="pointer-events-none opacity-70" tabindex="-1"{% endif %}>
+        <select name="opt_type" {% if is_close or is_reentry %}class="pointer-events-none opacity-70" tabindex="-1" {%
+          endif %}>
           {% if is_close or is_reentry %}
           <option value="{{ pos.opt_type }}">{{ pos.opt_type or 'Auto' }}</option>
           {% else %}
-          <option value="" {% if not pos or not pos.opt_type %}selected="selected"{% endif %}>Auto (By Side)</option>
-          <option value="CE" {% if pos and pos.opt_type=='CE' %}selected="selected"{% endif %}>Call (CE)</option>
-          <option value="PE" {% if pos and pos.opt_type=='PE' %}selected="selected"{% endif %}>Put (PE)</option>
+          <option value="" {% if not pos or not pos.opt_type %}selected="selected" {% endif %}>Auto (By Side)</option>
+          <option value="CE" {% if pos and pos.opt_type=='CE' %}selected="selected" {% endif %}>Call (CE)</option>
+          <option value="PE" {% if pos and pos.opt_type=='PE' %}selected="selected" {% endif %}>Put (PE)</option>
           {% endif %}
         </select>
       </div>
@@ -146,18 +158,26 @@
     <div class="form-group flex-row-gap-10">
       <div class="flex-1 flex-col">
         <label>Expiry Date</label>
-        <input type="text" name="expiry" value="{{ pos.expiry if pos else '' }}" placeholder="{% if mode == 'place' %}Default{% else %}YYYY-MM-DD{% endif %}" class="w-full {% if is_close or is_reentry %}opacity-70 pointer-events-none{% endif %}" {% if is_close or is_reentry %}readonly="readonly"{% endif %} />
+        <input type="text" name="expiry" value="{{ pos.expiry if pos else '' }}"
+          placeholder="{% if mode == 'place' %}Default{% else %}YYYY-MM-DD{% endif %}"
+          class="w-full {% if is_close or is_reentry %}opacity-70 pointer-events-none{% endif %}" {% if is_close or
+          is_reentry %}readonly="readonly" {% endif %} />
       </div>
       <div class="flex-1 flex-col">
-        <label>{% if is_close %}Qty (To Close){% elif is_reentry %}New Qty{% else %}Qty (Lots / Shares){% endif %}</label>
-        <input type="number" name="qty" value="{{ pos.qty | abs if pos else 1 }}" class="w-full {% if is_close %}opacity-70 pointer-events-none{% endif %}" {% if is_close %}readonly="readonly"{% else %}min="1"{% endif %} />
+        <label>{% if is_close %}Qty (To Close){% elif is_reentry %}New Qty{% else %}Qty (Lots / Shares){% endif
+          %}</label>
+        <input type="number" name="qty" value="{{ pos.qty | abs if pos else 1 }}"
+          class="w-full {% if is_close %}opacity-70 pointer-events-none{% endif %}" {% if is_close %}readonly="readonly"
+          {% else %}min="1" {% endif %} />
       </div>
     </div>
 
     <div class="form-group flex-row-gap-10">
       <div class="flex-1 flex-col">
         <label>Trigger / Entry Price</label>
-        <input type="number" name="{{ pfx }}price" value="0.0" step="0.05" min="0" class="w-full {% if is_close %}opacity-70 pointer-events-none{% endif %}" {% if is_close %}readonly="readonly"{% endif %} />
+        <input type="number" name="{{ pfx }}price" value="0.0" step="0.05" min="0"
+          class="w-full {% if is_close %}opacity-70 pointer-events-none{% endif %}" {% if is_close %}readonly="readonly"
+          {% endif %} />
       </div>
       <div class="flex-1 flex-col">
         <label>Limit Price</label>
@@ -183,11 +203,13 @@
       {% endif %}
 
       {% if is_close %}
-      <button type="submit" class="btn btn-buy" {% if pos.qty > 0 %}disabled="disabled"{% endif %}>BUY</button>
-      <button type="submit" class="btn btn-sell" {% if pos.qty < 0 %}disabled="disabled"{% endif %}>SELL</button>
+      <button type="submit" class="btn btn-buy" {% if pos.qty> 0 %}disabled="disabled"{% endif %}>BUY</button>
+      <button type="submit" class="btn btn-sell" {% if pos.qty < 0 %}disabled="disabled" {% endif %}>SELL</button>
       {% elif is_reentry %}
-      <button type="submit" name="reentry_side" value="BUY" class="btn btn-buy" {% if pos.qty < 0 %}disabled="disabled" title="Re-entry must match original trade side (SELL)"{% endif %}>BUY</button>
-      <button type="submit" name="reentry_side" value="SELL" class="btn btn-sell" {% if pos.qty > 0 %}disabled="disabled" title="Re-entry must match original trade side (BUY)"{% endif %}>SELL</button>
+      <button type="submit" name="reentry_side" value="BUY" class="btn btn-buy" {% if pos.qty < 0 %}disabled="disabled"
+        title="Re-entry must match original trade side (SELL)" {% endif %}>BUY</button>
+      <button type="submit" name="reentry_side" value="SELL" class="btn btn-sell" {% if pos.qty> 0 %}disabled="disabled"
+        title="Re-entry must match original trade side (BUY)"{% endif %}>SELL</button>
       {% else %}
       <button type="submit" name="signal" value="BUY" class="btn btn-buy">BUY</button>
       <button type="submit" name="signal" value="SELL" class="btn btn-sell">SELL</button>
@@ -219,14 +241,8 @@
     <div>Funds: <strong id="live-funds">₹ {{ "{:,.2f}".format(funds) }}</strong></div>
     {% if view != 'order' %}
     <div class="polling-rate-container">
-      <span class="polling-label">Polling Rate:</span>
-      <select id="live-interval-select" class="polling-select">
-        <option value="1000">1 Sec</option>
-        <option value="3000" selected>3 Sec</option>
-        <option value="5000">5 Sec</option>
-        <option value="10000">10 Sec</option>
-        <option value="0">Off</option>
-      </select>
+      <span class="polling-label">Polling (secs):</span>
+      <input type="number" id="live-interval-input" class="polling-input mono-text" value="0" min="0" step="1"
     </div>
     {% endif %}
     <div class="ml-auto">

@@ -1,6 +1,5 @@
 """FastAPI dashboard for the Dhan trading portal."""
 
-import asyncio
 import hmac
 from dataclasses import dataclass
 from pathlib import Path
@@ -230,6 +229,10 @@ class DashboardService:
         return DashboardSnapshot(active_pos, closed_pos, funds, active_orders)
 
     def _get_active_orders(self) -> list[dict]:
+
+        if self.config.clean_orphaned_super_orders:
+            self.trader.clean_orphaned_orders()
+
         active_orders: list[dict] = []
         active_orders.extend(self._get_pending_orders())
         active_orders.extend(self._get_super_orders())
@@ -601,10 +604,6 @@ class TradePortalApp:
     ) -> RedirectResponse:
         self.trader.close_position_by_secid(sec_id, exchange_seg, net_qty, product_type)
 
-        if self.cfg.clean_orphaned_super_orders:
-            await asyncio.sleep(1)
-            self.trader.clean_orphaned_orders()
-
         if reentry_price > 0 or reentry_limit_price > 0:
             overrides = UIOverride(
                 inst_type=inst_type,
@@ -675,9 +674,7 @@ class TradePortalApp:
         self.trader.close_position_by_secid(
             sec_id, exchange_seg, net_qty, product_type, limit_price=limit_price
         )
-        if self.cfg.clean_orphaned_super_orders:
-            await asyncio.sleep(1)
-            self.trader.clean_orphaned_orders()
+
         return RedirectResponse(url="/", status_code=303)
 
     async def _cancel_order(

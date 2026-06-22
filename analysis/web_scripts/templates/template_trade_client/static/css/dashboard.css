@@ -191,6 +191,22 @@ header {
     outline: none;
 }
 
+.polling-input {
+    width: 60px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    outline: none;
+}
+
+.polling-input:focus {
+    border-color: var(--accent);
+}
 .dot {
     width: 6px;
     height: 6px;
