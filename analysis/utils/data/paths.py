@@ -102,3 +102,4 @@ REMOTE_INTRADAY_DIR_PATH: str | None = (
 )
 
 TEMPLATES_ROOT_DIR: str = str(ROOT_SRC_DIR_PATH_OBJ / _web_scr / _templates_dir)
+MASTER_KEY_PATH = Path("~/.config/.dhan_master.key").expanduser()

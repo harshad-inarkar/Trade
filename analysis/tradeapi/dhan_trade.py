@@ -1,5 +1,6 @@
 """Dhan HQ automated order placement client."""
 
+import json
 import math
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,10 +12,12 @@ from typing import Any
 
 import requests
 import tomllib
+from cryptography.fernet import Fernet, InvalidToken
 from requests.exceptions import RequestException
 
 from tradeapi.price_strike_calc import get_price_strike, get_strike_interval
 from tradeapi.scrip_master import ScripMaster, _get_today_str
+from utils.data.paths import MASTER_KEY_PATH
 from utils.network.start_proxy import SSHProxyManager
 from utils.utility import INDIA_TZ, LOGGER, set_logger_config
 
@@ -22,7 +25,7 @@ __all__ = ["DhanTrader", "Instrument", "PriceLevels", "UIOverride"]
 
 BASE_DIR = Path(__file__).parent
 SYMBOLS_CONFIG = BASE_DIR / "symbols_config.toml"
-ACCESS_FILE_PATH = BASE_DIR / "access_token.toml"
+ACCESS_FILE_PATH = BASE_DIR / "access_token.enc"
 API_CONFIG_PATH = BASE_DIR / "dhan_trade.toml"
 REQUEST_TIMEOUT_SECONDS = 3
 OPT_BUMP_MULT = 10
@@ -291,12 +294,32 @@ class DhanTrader:
         except (AttributeError, TypeError) as exc:
             LOGGER.warning("Unable to apply proxy configuration: %s", exc)
 
-    def _load_credentials(self, path: Path) -> tuple[str, str, str, str]:
+    def _get_cipher(self) -> Fernet | None:
+        """Loads the master key from the secure home
+        directory to initialize the cipher."""
         try:
-            with path.open("rb") as config_file:
-                data = tomllib.load(config_file)
-        except (OSError, tomllib.TOMLDecodeError):
-            LOGGER.exception("Unable to load Dhan credentials from %s", path)
+            with MASTER_KEY_PATH.open("rb") as f:
+                key = f.read().strip()
+            return Fernet(key)
+        except OSError:
+            LOGGER.error("Master key not found at %s", MASTER_KEY_PATH)
+            return None
+        except ValueError:
+            LOGGER.error("Invalid master key format in %s", MASTER_KEY_PATH)
+            return None
+
+    def _load_credentials(self, path: Path) -> tuple[str, str, str, str]:
+        cipher = self._get_cipher()
+        if not cipher or not path.exists():
+            return "", "", "", ""
+
+        try:
+            with path.open("rb") as f:
+                encrypted_data = f.read()
+            decrypted_data = cipher.decrypt(encrypted_data)
+            data = json.loads(decrypted_data.decode("utf-8"))
+        except (OSError, InvalidToken, json.JSONDecodeError):
+            LOGGER.exception("Unable to decrypt or read Dhan credentials from %s", path)
             return "", "", "", ""
 
         client_id = str(data.get("CLIENT_ID", "")).strip()
@@ -317,12 +340,23 @@ class DhanTrader:
         new_client_name: str,
         new_expiry_time: str,
     ) -> bool:
+        cipher = self._get_cipher()
+        if not cipher:
+            LOGGER.error("Cannot save credentials: Master key is missing.")
+            return False
+
+        payload = {
+            "CLIENT_ID": new_client_id,
+            "ACCESS_TOKEN": new_access_token,
+            "CLIENT_NAME": new_client_name,
+            "TIME_TO_EXPIRY": new_expiry_time,
+        }
+
         try:
-            with ACCESS_FILE_PATH.open("w", encoding="utf-8") as f:
-                f.write(f'CLIENT_ID = "{new_client_id}"\n')
-                f.write(f'ACCESS_TOKEN = "{new_access_token}"\n')
-                f.write(f'CLIENT_NAME = "{new_client_name}"\n')
-                f.write(f'TIME_TO_EXPIRY = "{new_expiry_time}"\n')
+            # Encrypt the payload and write as binary
+            encrypted_data = cipher.encrypt(json.dumps(payload).encode("utf-8"))
+            with ACCESS_FILE_PATH.open("wb") as f:
+                f.write(encrypted_data)
 
             self.client_id = new_client_id
             self.access_token = new_access_token
@@ -332,9 +366,7 @@ class DhanTrader:
             self.api_headers["access-token"] = new_access_token
             self.api_headers["dhanClientId"] = self.client_id
 
-            LOGGER.info(
-                "API Credentials successfully updated in memory and saved to disk."
-            )
+            LOGGER.info("API Credentials successfully encrypted and saved to disk.")
         except OSError:
             LOGGER.exception("Failed to write to %s", ACCESS_FILE_PATH)
             return False
