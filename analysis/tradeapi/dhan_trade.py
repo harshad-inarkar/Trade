@@ -18,7 +18,7 @@ from requests.exceptions import RequestException
 
 from tradeapi.price_strike_calc import get_price_strike, get_strike_interval
 from tradeapi.scrip_master import ScripMaster, _get_today_str
-from utils.data.paths import MASTER_KEY_PATH
+from utils.data.paths import MASTER_CONFIG_PATH
 from utils.network.start_proxy import SSHProxyManager
 from utils.utility import INDIA_TZ, LOGGER, set_logger_config
 
@@ -26,7 +26,8 @@ __all__ = ["DhanTrader", "Instrument", "PriceLevels", "UIOverride"]
 
 BASE_DIR = Path(__file__).parent
 SYMBOLS_CONFIG = BASE_DIR / "symbols_config.toml"
-ACCESS_FILE_PATH = BASE_DIR / "access_token.enc"
+MASTER_KEY_PATH = MASTER_CONFIG_PATH / ".dhan_master.key"
+ACCESS_FILE_PATH = MASTER_CONFIG_PATH / "access_token.enc"
 API_CONFIG_PATH = BASE_DIR / "dhan_trade.toml"
 REQUEST_TIMEOUT_SECONDS = 3
 OPT_BUMP_MULT = 10
