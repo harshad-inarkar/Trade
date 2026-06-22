@@ -1,6 +1,7 @@
 """FastAPI dashboard for the Dhan trading portal."""
 
 import hmac
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +21,13 @@ BASE_DIR = Path(__file__).parent
 APP_CONFIG_PATH = BASE_DIR / "trade_app.toml"
 
 _MIN_QUERY_LEN = 2
+
+
+def _bool_env_or_cfg(key: str, cfg: dict, default_val: bool = False) -> bool:
+    val = os.environ.get(key)
+    if val is not None:
+        return val.lower() in ("1", "true", "yes", "on")
+    return bool(cfg.get(key, default_val))
 
 
 # ==========================================
@@ -116,9 +124,15 @@ class AppConfig:
             "template_trade_client",
         )
 
-        self.refresh_master_script: bool = app_cfg.get("refresh_master_script", False)
-        self.reset_proxy_at_start: bool = app_cfg.get("reset_proxy_at_start", False)
-        self.apply_proxy_flag: bool = app_cfg.get("apply_proxy_flag", True)
+        self.refresh_master_script: bool = _bool_env_or_cfg(
+            "refresh_master_script", app_cfg, default_val=False
+        )
+        self.reset_proxy_at_start: bool = _bool_env_or_cfg(
+            "reset_proxy_at_start", app_cfg, default_val=False
+        )
+        self.apply_proxy_flag: bool = _bool_env_or_cfg(
+            "apply_proxy_flag", app_cfg, default_val=False
+        )
 
         cls_cfg = self.raw_cfg.get("close", {})
         self.reentry_order_mode: str = cls_cfg.get("reentry_order_mode", "FOREVER")
@@ -437,9 +451,9 @@ class TradePortalApp:
     ) -> HTMLResponse:
         snapshot = self.dashboard.get_snapshot()
         return self.templates.TemplateResponse(
-            "dashboard.html",
-            {
-                "request": request,
+            request=request,
+            name="dashboard.html",
+            context={
                 "positions": snapshot.positions,
                 "closed_positions": snapshot.closed_positions,
                 "total_positions": snapshot.total_positions,

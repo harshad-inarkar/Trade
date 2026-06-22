@@ -13,17 +13,23 @@ requires-python = ">=3.10"
 dependencies = [
     "pandas",
     "numpy",
+    #"pillow",
     "requests",
-    "pillow",
     "cryptography",  # For secure token encryption (dhan_trade.py)
     "psutil",        # For orchestrator performance stats (start_orchest.py)
     "pytz",          # For India timezone handling (utility.py / scrip_master.py)
+    "uvicorn",    # <-- Added for your web server
+    "fastapi",    # <-- (Add this too if your app uses FastAPI)
+    "jinja2",
+    "python-multipart",
 ]
 
 [tool.setuptools.packages.find]
 # Tells setuptools to look in the current root directory for your packages (like 'utils', 'tradeapi')
 where = ["."]
 
+[tool.setuptools.package-data]
+"*" = ["*.toml", "*.html", "*.css", "*.js", "*.csv"]
 
 [tool.ruff]
 # Standard PEP 8 line length
@@ -48,6 +54,8 @@ ignore = [
     "C901",
     "PLR0912",
     "PLR0915",
+    "FBT001",
+    "FBT002",
 ]
 
 

@@ -17,8 +17,8 @@ webhook_secret = "mytradingwebhooksecret"
 title            = "Dhan Trading Portal"
 template_subdir  = "template_trade_client"  # relative to TEMPLATES_ROOT_DIR
 refresh_master_script = false
-reset_proxy_at_start = true
-apply_proxy_flag = true
+reset_proxy_at_start = false
+apply_proxy_flag = false
 
 # ── Position close defaults ────────────────────────────────────────────────────
 [close]
