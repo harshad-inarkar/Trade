@@ -1,7 +1,5 @@
 """Search engine module for financial instruments."""
 
-from __future__ import annotations
-
 import contextlib
 import heapq
 import math
@@ -10,10 +8,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from tradeapi.scrip_master import ScripConfig, ScripEntry
+    from tradeapi.scrip_master import ScripConfig
 
 _MIN_QUERY_LEN = 2
-EXCLUDED_KEYS = {"expiry_sort", "month_tag", "name_tokens", "sort_key", "strike_int"}
 
 
 @dataclass
@@ -29,9 +26,9 @@ class SearchQueryContext:
 class SearchEngine:
     """Decoupled Search Engine for indexing and scoring financial instruments."""
 
-    def __init__(self, cfg: ScripConfig):
+    def __init__(self, cfg: "ScripConfig"):
         self.cfg = cfg
-        self.entries: list[ScripEntry] = []
+        self.entries: list[dict] = []
         self._name_inv_index: dict[str, frozenset[int]] = {}
         self._all_indices: frozenset[int] = frozenset()
         self._idf: dict[str, float] = {}
@@ -39,34 +36,30 @@ class SearchEngine:
 
     @staticmethod
     def is_subsequence(query: str, target: str) -> bool:
+        """Robustly matches abbreviations (e.g., 'NATGAS' in 'NATURALGASM')."""
         it = iter(target)
         return all(c in it for c in query)
 
-    def build_index(
-        self, entries: list[ScripEntry], base_to_name: dict[str, str]
-    ) -> None:
+    def build_index(self, entries: list[dict], base_to_name: dict[str, str]) -> None:
         self.entries = entries
         total_entries = len(entries)
         posting: dict[str, set[int]] = defaultdict(set)
         doc_freq: dict[str, int] = defaultdict(int)
 
         for i, entry in enumerate(entries):
-            underlying = entry.symbol
+            underlying = entry["symbol"]
             comp_name = base_to_name.get(underlying, "")
-            display_name = entry.display
+            display_name = entry["display"]
 
+            # Tokenize strictly by full words to save RAM
             text = f"{underlying} {comp_name} {display_name}".upper()
-
-            # CRITICAL OPTIMIZATION: Ignore pure numeric digit strings from word
-            # indices. Numeric filters are natively parsed and filtered via
-            # structured query bounds (ctx.strike_int)
             words = {
                 w
                 for w in text.replace("-", " ").split()
-                if w and w not in self.cfg.stop_words and not w.isdigit()
+                if w and w not in self.cfg.stop_words
             }
 
-            entry.name_tokens = frozenset(words)
+            entry["_name_tokens"] = frozenset(words)
 
             for tok in words:
                 posting[tok].add(i)
@@ -99,12 +92,14 @@ class SearchEngine:
         if not candidates:
             return []
 
+        # 1. Calculate scores for all candidates
         scored = [(self._score_candidate(c, ctx), c) for c in candidates]
 
+        # 2. Use a heap to efficiently extract ONLY the top `limit` results
         best_scored = heapq.nsmallest(
             limit,
             scored,
-            key=lambda x: (-x[0], x[1].expiry_sort, x[1].strike),
+            key=lambda x: (-x[0], x[1]["_expiry_sort"], x[1]["strike"]),
         )
 
         return self._format_results(best_scored, limit)
@@ -137,16 +132,18 @@ class SearchEngine:
             if tok in self.cfg.fut_words:
                 ctx.want_fut = True
                 continue
-            with contextlib.suppress(ValueError):
+            try:
                 v = float(tok)
                 if math.isfinite(v) and v > 0:
                     ctx.strike_int = int(v) if v.is_integer() else round(v)
                 continue
+            except ValueError:
+                pass
             ctx.name_tokens.append(tok)
 
         return ctx
 
-    def _get_candidates(self, ctx: SearchQueryContext) -> list[ScripEntry]:
+    def _get_candidates(self, ctx: SearchQueryContext) -> list[dict]:
         if not ctx.name_tokens:
             candidate_idx = self._all_indices
             ctx.used_and = False
@@ -156,11 +153,13 @@ class SearchEngine:
             for q_tok in ctx.name_tokens:
                 tok_idx = set()
 
+                # 1. Exact & Prefix Match (using dynamic vocabulary scan)
                 matched_words = [w for w in self.vocab if w.startswith(q_tok)]
                 if matched_words:
                     for w in matched_words:
                         tok_idx.update(self._name_inv_index[w])
                 else:
+                    # 2. Subsequence Fallback
                     matched_words = [
                         w for w in self.vocab if self.is_subsequence(q_tok, w)
                     ]
@@ -170,6 +169,7 @@ class SearchEngine:
                 token_matches.append(tok_idx)
 
             if token_matches:
+                # AND logic: Intersect indices starting with smallest set
                 sorted_matches = sorted(token_matches, key=len)
                 result = sorted_matches[0].copy()
                 for idx_set in sorted_matches[1:]:
@@ -181,6 +181,7 @@ class SearchEngine:
                     candidate_idx = frozenset(result)
                     ctx.used_and = True
                 else:
+                    # Fallback to OR logic if intersection yields nothing
                     union = set()
                     for idx_set in token_matches:
                         union.update(idx_set)
@@ -190,30 +191,32 @@ class SearchEngine:
                 candidate_idx = frozenset()
                 ctx.used_and = False
 
+        # Apply structural filters
         candidates = [self.entries[i] for i in candidate_idx]
 
         if ctx.opt_type:
-            candidates = [c for c in candidates if c.opt_type == ctx.opt_type]
+            candidates = [c for c in candidates if c["opt_type"] == ctx.opt_type]
         elif ctx.want_fut:
-            candidates = [c for c in candidates if c.inst_type == "FUT"]
+            candidates = [c for c in candidates if c["inst_type"] == "FUT"]
 
         if ctx.month_token:
-            candidates = [c for c in candidates if c.month_tag == ctx.month_token]
+            candidates = [c for c in candidates if c["_month_tag"] == ctx.month_token]
 
         if ctx.strike_int is not None:
-            candidates = [c for c in candidates if c.strike_int == ctx.strike_int]
+            candidates = [c for c in candidates if c["_strike_int"] == ctx.strike_int]
 
         return candidates
 
-    def _score_candidate(self, entry: ScripEntry, ctx: SearchQueryContext) -> float:
-        sym = entry.symbol
-        ntok = entry.name_tokens
+    def _score_candidate(self, entry: dict, ctx: SearchQueryContext) -> float:
+        sym = entry["symbol"]
+        ntok = entry["_name_tokens"]
         s = 0.0
         matched = 0
 
         for tok in ctx.name_tokens:
             idf = self._idf.get(tok, 1.0)
 
+            # Primary target: The underlying symbol
             if sym == tok:
                 matched += 1
                 s += self.cfg.exact_symbol_bonus + (idf * self.cfg.company_idf_factor)
@@ -229,6 +232,7 @@ class SearchEngine:
                 )
                 continue
 
+            # Secondary target: Company/Display names
             if tok in ntok:
                 matched += 1
                 s += idf * self.cfg.company_idf_factor
@@ -242,9 +246,9 @@ class SearchEngine:
         if ctx.used_and and matched >= len(ctx.name_tokens) and ctx.name_tokens:
             s += self.cfg.all_tokens_coherence
 
-        exp = entry.expiry_sort
+        exp = entry["_expiry_sort"]
         has_context = bool(
-            ctx.month_token or ctx.strike_int or ctx.opt_type or ctx.want_fut
+            ctx.month_token or ctx.strike_int or ctx.opt_type or ctx.want_fut,
         )
 
         if exp:
@@ -258,11 +262,13 @@ class SearchEngine:
         return s
 
     def _format_results(
-        self, scored: list[tuple[float, ScripEntry]], limit: int
+        self,
+        scored: list[tuple[float, dict]],
+        limit: int,
     ) -> list[dict]:
         final = []
         for _, item in scored[:limit]:
-            obj = {k: v for k, v in item.items() if k not in EXCLUDED_KEYS}
+            obj = {k: v for k, v in item.items() if not k.startswith("_")}
             try:
                 obj["strike"] = float(obj.get("strike", 0.0))
             except (TypeError, ValueError):

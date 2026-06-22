@@ -24,6 +24,22 @@ from utils.utility import INDIA_TZ, LOGGER, set_logger_config
 
 __all__ = ["DhanTrader", "Instrument", "PriceLevels", "UIOverride"]
 
+
+import os
+
+import psutil
+
+
+def log_ram(checkpoint: str) -> None:
+    process = psutil.Process(os.getpid())
+    ram_mb = process.memory_info().rss / (1024 * 1024)
+    LOGGER.info(f"📊 [RAM Profile] {checkpoint:<30} -> {ram_mb:.2f} MB")
+
+
+# Call it immediately at the entry point
+log_ram("Baseline startup")
+
+
 BASE_DIR = Path(__file__).parent
 SYMBOLS_CONFIG = BASE_DIR / "symbols_config.toml"
 MASTER_KEY_PATH = MASTER_CONFIG_PATH / ".dhan_master.key"
@@ -260,10 +276,12 @@ class DhanTrader:
             "Accept": "application/json",
         }
 
+        log_ram("Before loading ScripMaster")
         self.scrip = ScripMaster(
             session_obj=self.session,
             refresh_master_scrip=refresh_master_scrip,
         )
+        log_ram("After loading ScripMaster")
 
         self.entry_perc = self.cfg.get("entry_price_perc", 0)
         self.limit_perc = self.cfg.get("limit_price_perc", 0)

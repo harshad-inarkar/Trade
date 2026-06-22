@@ -6,12 +6,23 @@ instrument_url      = "https://api.dhan.co/v2/instrument/{segment}"
 filter_exch         = ["NSE", "MCX"]
 filter_seg          = ["EQUITY", "INDEX", "OPTSTK", "OPTIDX", "OPTFUT", "FUTIDX", "FUTCOM", "FUTSTK"]
 filter_inst_type    = ["ES", "EQ", "OP", "FUT", "OPTFUT", "FUTCOM", "INDEX"]
-scrip_cols          = [
-    "EXCH_ID", "INSTRUMENT", "INSTRUMENT_TYPE", "UNDERLYING_SYMBOL", 
-    "DISPLAY_NAME", "SECURITY_ID", "UNDERLYING_SECURITY_ID", "LOT_SIZE", 
-    "SM_EXPIRY_DATE", "STRIKE_PRICE", "OPTION_TYPE"
-]
 eq_index_instr      = ["EQUITY", "INDEX"]
+
+
+# Centralized schema configuration
+[master.scrip_dtypes]
+EXCH_ID                = "category"
+INSTRUMENT             = "category"
+INSTRUMENT_TYPE        = "category"
+UNDERLYING_SYMBOL      = "category"
+DISPLAY_NAME           = "str"
+SECURITY_ID            = "str"
+UNDERLYING_SECURITY_ID = "str"
+LOT_SIZE               = "int32"
+SM_EXPIRY_DATE         = "str"
+STRIKE_PRICE           = "float32"
+OPTION_TYPE            = "category"
+
 
 [search.stop_words]
 words = ["OF", "THE", "&", "LTD", "LIMITED", "CORP", "CORPORATION", "CO"]

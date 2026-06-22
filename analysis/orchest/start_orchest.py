@@ -3,9 +3,12 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 import tomllib
+
+from utils.utility import INDIA_TZ
 
 # Attempt to load psutil for performance stats
 try:
@@ -188,7 +191,8 @@ class ScriptManager:
             log_path = Path(log_root_dir) / f"{name}.log"
             self.log_handles[name] = log_path.open("a")
 
-            start_time = time.strftime("%Y-%m-%d %H:%M:%S")
+            start_time = datetime.now(INDIA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
             self.log_handles[name].write(
                 f"{'#' * 60}\nStart: {start_time}\n{'#' * 60}\n",
             )

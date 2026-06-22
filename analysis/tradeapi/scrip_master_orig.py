@@ -1,18 +1,11 @@
 """Instrument master-data loading and lookup."""
 
-from __future__ import annotations
-
-import gc
 import io
-import sys
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
 
 import pandas as pd
+import requests
 import tomllib
 from requests.exceptions import RequestException
 
@@ -20,47 +13,11 @@ from tradeapi.scrip_search import SearchEngine
 from utils.data.paths import OUT_DIR
 from utils.utility import INDIA_TZ, LOGGER
 
-if TYPE_CHECKING:
-    import requests
-
 BASE_DIR = Path(__file__).parent
 LOCAL_CSV = Path(OUT_DIR) / "scrip_master.csv"
 CONFIG_PATH = BASE_DIR / "scrip_master.toml"
 
 REQUEST_TIMEOUT_SECONDS = 3
-EXCLUDED_KEYS = {"expiry_sort", "month_tag", "name_tokens", "sort_key", "strike_int"}
-
-
-class ScripEntry:
-    """A highly compressed, __slots__ based replacement for row dictionaries."""
-
-    __slots__ = (
-        "display",
-        "exch",
-        "expiry",
-        "expiry_sort",
-        "inst_type",
-        "month_tag",
-        "name_tokens",
-        "opt_type",
-        "sort_key",
-        "strike",
-        "strike_int",
-        "symbol",
-    )
-
-    def __init__(self, **kwargs: Any) -> None:
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-
-    def __getitem__(self, key: str) -> Any:
-        return getattr(self, key)
-
-    def get(self, key: str, default: Any = None) -> Any:
-        return getattr(self, key, default)
-
-    def items(self) -> Iterator[tuple[str, Any]]:
-        return ((k, getattr(self, k)) for k in self.__slots__ if hasattr(self, k))
 
 
 def _get_today_str() -> str:
@@ -91,10 +48,8 @@ class ScripConfig:
         self.filter_exch: frozenset[str] = frozenset()
         self.filter_seg: frozenset[str] = frozenset()
         self.filter_inst_type: frozenset[str] = frozenset()
-        self.eq_index_instr: frozenset[str] = frozenset()
-
-        self.scrip_dtypes: dict[str, str] = {}
         self.scrip_cols: list[str] = []
+        self.eq_index_instr: frozenset[str] = frozenset()
 
         self._load(path)
 
@@ -116,10 +71,7 @@ class ScripConfig:
         self.filter_exch = frozenset(master_cfg.get("filter_exch", []))
         self.filter_seg = frozenset(master_cfg.get("filter_seg", []))
         self.filter_inst_type = frozenset(master_cfg.get("filter_inst_type", []))
-
-        self.scrip_dtypes = master_cfg.get("scrip_dtypes", {})
-        self.scrip_cols = list(self.scrip_dtypes.keys())
-
+        self.scrip_cols = master_cfg.get("scrip_cols", [])
         self.eq_index_instr = frozenset(master_cfg.get("eq_index_instr", []))
 
         search_cfg = data.get("search", {})
@@ -156,9 +108,8 @@ class ScripConfig:
         )
         self.eq_base_bonus = float(scoring_cfg.get("eq_base_bonus", self.eq_base_bonus))
 
-    def _load_month_aliases(
-        self, raw_aliases: dict
-    ) -> tuple[dict[str, str], dict[int, str]]:
+    @staticmethod
+    def _load_month_aliases(raw_aliases: dict) -> tuple[dict[str, str], dict[int, str]]:
         month_order = [
             "JAN",
             "FEB",
@@ -180,9 +131,9 @@ class ScripConfig:
             section = raw_aliases.get(tag.lower(), {})
             words = section.get("words", [])
             if words:
-                tags_by_month[month_num] = sys.intern(tag)
+                tags_by_month[month_num] = tag
                 for word in words:
-                    aliases[str(word).upper()] = sys.intern(tag)
+                    aliases[str(word).upper()] = tag
 
         return aliases, tags_by_month
 
@@ -191,7 +142,10 @@ class ScripMaster:
     """Manages instrument data ingestion and delegates lookup to SearchEngine."""
 
     def __init__(
-        self, session_obj: requests.Session, *, refresh_master_scrip: bool = False
+        self,
+        session_obj: requests.Session,
+        *,
+        refresh_master_scrip: bool = False,
     ):
         self._eq_index: dict | None = None
         self._opt_index: dict | None = None
@@ -211,8 +165,8 @@ class ScripMaster:
     def get_data_by_display_name(self, display_name: str) -> dict | None:
         key = " ".join(display_name.strip().upper().split())
         for entry in self.search_engine.entries:
-            if " ".join(entry.display.upper().split()) == key:
-                return {k: v for k, v in entry.items() if k not in EXCLUDED_KEYS}
+            if " ".join(entry["display"].upper().split()) == key:
+                return {k: v for k, v in entry.items() if not k.startswith("_")}
         return None
 
     def get_symbol_name(self, sec_id: str, fallback: str = "") -> str:
@@ -228,11 +182,13 @@ class ScripMaster:
         return key[2] if key else fallback
 
     def get_instrument_details(self, sec_id: str) -> dict:
+        """Returns the full instrument details for a given security ID."""
         if not self._secid_info:
             return {}
         info = self._secid_info.get(str(sec_id))
         if not info:
             return {}
+        # Info tuple: (exch_id, inst, underlying, exp, strike, opt_type, disp_name)
         return {
             "exch": info[0],
             "inst_type": info[1],
@@ -268,7 +224,8 @@ class ScripMaster:
             date_key = min(valid_expiries)
 
         key = (exch, seg, symb, date_key, strike, opt_type)
-        return self._opt_index.get(key) or (None, 0)
+        result = self._opt_index.get(key)
+        return result or (None, 0)
 
     def _ensure_loaded(self, *, refresh_master_scrip: bool = False) -> None:
         if self._eq_index is not None:
@@ -294,9 +251,9 @@ class ScripMaster:
             df = pd.read_csv(
                 io.StringIO(resp.text),
                 usecols=lambda c: c in self.cfg.scrip_cols,
-                dtype=self.cfg.scrip_dtypes,
                 low_memory=False,
             )
+
             mask = pd.Series(data=True, index=df.index)
             if "EXCH_ID" in df.columns:
                 mask &= df["EXCH_ID"].isin(self.cfg.filter_exch)
@@ -342,28 +299,34 @@ class ScripMaster:
             with pd.read_csv(
                 LOCAL_CSV,
                 usecols=lambda c: c in self.cfg.scrip_cols,
-                dtype=self.cfg.scrip_dtypes,
                 chunksize=50_000,
                 low_memory=False,
             ) as reader:
                 for raw_chunk in reader:
                     chunk = raw_chunk
                     if "INSTRUMENT_TYPE" in chunk.columns:
-                        chunk = chunk[
-                            chunk["INSTRUMENT_TYPE"].isin(self.cfg.filter_inst_type)
-                        ]
+                        mask = chunk["INSTRUMENT_TYPE"].isin(self.cfg.filter_inst_type)
+                        chunk = chunk[mask]
                     self._fold_chunk(
-                        chunk, eq_idx, opt_idx, expiry_idx, sec_info, today_str
+                        chunk,
+                        eq_idx,
+                        opt_idx,
+                        expiry_idx,
+                        sec_info,
+                        today_str,
                     )
         except (OSError, ValueError, pd.errors.ParserError):
             LOGGER.exception("Error loading scrip master cache")
             return
 
-        gc.collect()
         self._commit_indexes(eq_idx, opt_idx, expiry_idx, sec_info)
 
     def _commit_indexes(
-        self, eq_index: dict, opt_index: dict, expiry_index: dict, secid_info: dict
+        self,
+        eq_index: dict,
+        opt_index: dict,
+        expiry_index: dict,
+        secid_info: dict,
     ) -> None:
         self._eq_index = eq_index
         self._opt_index = opt_index
@@ -376,14 +339,15 @@ class ScripMaster:
                 base_to_name[info[2]] = str(info[6]).strip().upper()
 
         search_entries = self._build_search_entries(secid_info)
-        search_entries.sort(key=lambda x: x.sort_key)
+        search_entries.sort(key=lambda x: x["_sort_key"])
 
         self.search_engine.build_index(search_entries, base_to_name)
 
-        gc.collect()
-
     def _make_display_str(
-        self, inst: str, underlying: str, display_name: str
+        self,
+        inst: str,
+        underlying: str,
+        display_name: str,
     ) -> tuple[str, str, int]:
         display_str = str(display_name).strip()
         if inst.startswith("OPT"):
@@ -417,15 +381,17 @@ class ScripMaster:
             return "PE"
         return ""
 
-    def _build_search_entries(self, secid_info: dict) -> list[ScripEntry]:
-        entries: list[ScripEntry] = []
+    def _build_search_entries(self, secid_info: dict) -> list[dict]:
+        entries: list[dict] = []
         for info in secid_info.values():
             exch_id, inst, underlying, exp, strike, opt_type, display_name = info
             if not display_name:
                 continue
 
             display_str, inst_type, inst_priority = self._make_display_str(
-                inst, underlying, display_name
+                inst,
+                underlying,
+                display_name,
             )
 
             exp_str = str(exp) if exp else ""
@@ -436,6 +402,7 @@ class ScripMaster:
                     break
 
             opt_safe = self._normalise_opt_type(opt_type)
+
             strike_val = float(strike or 0.0)
             strike_int = (
                 int(strike_val)
@@ -444,24 +411,19 @@ class ScripMaster:
             )
 
             entries.append(
-                ScripEntry(
-                    display=display_str,
-                    symbol=sys.intern(underlying),
-                    inst_type=sys.intern(inst_type),
-                    strike=strike_val,
-                    opt_type=sys.intern(opt_safe),
-                    expiry=sys.intern(exp_str) if exp_str else "",
-                    exch=sys.intern(exch_id),
-                    month_tag=sys.intern(month_tag) if month_tag else "",
-                    strike_int=strike_int,
-                    expiry_sort=sys.intern(exp_str) if exp_str else "",
-                    sort_key=(
-                        inst_priority,
-                        sys.intern(exp_str) if exp_str else "",
-                        strike_val,
-                        sys.intern(underlying),
-                    ),
-                )
+                {
+                    "display": display_str,
+                    "symbol": underlying,
+                    "inst_type": inst_type,
+                    "strike": strike_val,
+                    "opt_type": opt_safe,
+                    "expiry": exp_str,
+                    "exch": exch_id,
+                    "_month_tag": month_tag,
+                    "_strike_int": strike_int,
+                    "_expiry_sort": exp_str,
+                    "_sort_key": (inst_priority, exp_str, strike_val, underlying),
+                },
             )
         return entries
 
@@ -483,27 +445,31 @@ class ScripMaster:
         for row in chunk[eq_mask].itertuples(index=False):
             str_sec_id = str(row.SECURITY_ID)
 
+            # --- SEC_ID COLLISION FIX ---
+            # Dhan's CSV reuses security IDs between INDEX and EQUITY segments.
+            # Prioritize tradable instruments over INDEX to ensure active
+            # positions on the dashboard display the correct symbol.
             if str_sec_id in secid_info:
                 existing_inst = secid_info[str_sec_id][1]
+                # If an EQUITY is already saved, skip overwriting it with an INDEX
                 if str(row.INSTRUMENT).upper() == "INDEX" and existing_inst != "INDEX":
                     continue
+            # ----------------------------
 
-            exch_interned = sys.intern(str(row.EXCH_ID))
-            inst_interned = sys.intern(str(row.INSTRUMENT))
-            sym_interned = sys.intern(str(row.UNDERLYING_SYMBOL))
-
-            eq_index[(exch_interned, sym_interned)] = (str_sec_id, int(row.LOT_SIZE))
+            eq_index[(row.EXCH_ID, row.UNDERLYING_SYMBOL)] = (
+                str_sec_id,
+                int(row.LOT_SIZE),
+            )
             display_raw = getattr(row, "DISPLAY_NAME", None)
             disp_name = (
                 row.UNDERLYING_SYMBOL
                 if pd.isna(display_raw) or not display_raw
                 else " ".join(str(display_raw).split())
             )
-
             secid_info[str_sec_id] = (
-                exch_interned,
-                inst_interned,
-                sym_interned,
+                row.EXCH_ID,
+                row.INSTRUMENT,
+                row.UNDERLYING_SYMBOL,
                 None,
                 None,
                 None,
@@ -511,23 +477,19 @@ class ScripMaster:
             )
 
         for row, exp in zip(
-            chunk[~eq_mask].itertuples(index=False), expiry_strs[~eq_mask], strict=True
+            chunk[~eq_mask].itertuples(index=False),
+            expiry_strs[~eq_mask],
+            strict=True,
         ):
             if exp < today_str:
                 continue
-
-            exch_interned = sys.intern(str(row.EXCH_ID))
-            inst_interned = sys.intern(str(row.INSTRUMENT))
-            sym_interned = sys.intern(str(row.UNDERLYING_SYMBOL))
-            exp_interned = sys.intern(str(exp))
-
-            base_key = (exch_interned, inst_interned, sym_interned)
-            expiry_index.setdefault(base_key, set()).add(exp_interned)
+            base_key = (row.EXCH_ID, row.INSTRUMENT, row.UNDERLYING_SYMBOL)
+            expiry_index.setdefault(base_key, set()).add(exp)
 
             strike, opt_type = None, None
-            if inst_interned.startswith("OPT"):
+            if str(row.INSTRUMENT).startswith("OPT"):
                 strike = float(row.STRIKE_PRICE)
-                opt_type = sys.intern(str(row.OPTION_TYPE).strip().upper())
+                opt_type = str(row.OPTION_TYPE).strip().upper()
 
             display_raw = getattr(row, "DISPLAY_NAME", None)
             disp_name = (
@@ -537,10 +499,10 @@ class ScripMaster:
             )
 
             key = (
-                exch_interned,
-                inst_interned,
-                sym_interned,
-                exp_interned,
+                row.EXCH_ID,
+                row.INSTRUMENT,
+                row.UNDERLYING_SYMBOL,
+                exp,
                 strike,
                 opt_type,
             )
@@ -548,10 +510,10 @@ class ScripMaster:
                 str_sec_id = str(row.SECURITY_ID)
                 opt_index[key] = (str_sec_id, int(row.LOT_SIZE))
                 secid_info[str_sec_id] = (
-                    exch_interned,
-                    inst_interned,
-                    sym_interned,
-                    exp_interned,
+                    row.EXCH_ID,
+                    row.INSTRUMENT,
+                    row.UNDERLYING_SYMBOL,
+                    exp,
                     strike,
                     opt_type,
                     disp_name,
