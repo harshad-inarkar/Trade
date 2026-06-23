@@ -14,14 +14,18 @@ targets=(
 )
 
 
+echo "Running ruff------"
 ruff check --fix "${targets[@]}"
 ruff format "${targets[@]}"
 
-# mypy web_scripts/trade_client
+
+echo "Running mypy------"
+mypy web_scripts/trade_client
 
 frontend_targets=(
     web_scripts/templates/template_trade_client/dashboard.html
 )
 
+echo "Running djlint------"
 djlint --lint "${frontend_targets[@]}"
 # djlint --reformat "${frontend_targets[@]}"

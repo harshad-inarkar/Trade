@@ -147,7 +147,7 @@ def _adjust_price(
 class SymbolsConfig:
     def __init__(self, path: Path):
         self._path = path
-        self._mtime = None
+        self._mtime: float | None = None
         self._config = {}
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -430,7 +430,7 @@ class DhanTrader:
                     new_client_name=data.get("dhanClientName", ""),
                     new_expiry_time=data.get("expiryTime", ""),
                 )
-            LOGGER.error("Generate Token Failed: %s", resp.text)
+            LOGGER.error("Generate Token Failed: %s", resp.text if resp else "")
         except RequestException:
             LOGGER.exception("Generate Token Exception")
             return False
@@ -454,7 +454,7 @@ class DhanTrader:
                     new_client_name=self.client_name,
                     new_expiry_time=data.get("expiryTime", ""),
                 )
-            LOGGER.error("Renew Token Failed: %s", resp.text)
+            LOGGER.error("Renew Token Failed: %s", resp.text if resp else "")
 
         except (RequestException, ValueError, KeyError, OSError):
             LOGGER.exception("Renew Token Exception")
@@ -720,8 +720,8 @@ class DhanTrader:
     def _get_fallback_strike(
         self,
         base: str,
-        strike: float,
-        opt_type: str,
+        strike: float | None,
+        opt_type: str | None,
     ) -> float | None:
         fb_step = None
         for step in self._api_cfg.fallback_steps:
@@ -732,12 +732,14 @@ class DhanTrader:
         if fb_step is None:
             return None
 
-        if opt_type == "CE":
-            new_strike = math.floor(strike / fb_step) * fb_step
-        else:
-            new_strike = math.ceil(strike / fb_step) * fb_step
+        new_strike = None
+        if strike and fb_step:
+            if opt_type == "CE":
+                new_strike = math.floor(strike / fb_step) * fb_step
+            else:
+                new_strike = math.ceil(strike / fb_step) * fb_step
 
-        return float(new_strike) if new_strike != strike else None
+        return float(new_strike) if (new_strike and new_strike != strike) else None
 
     def lookup_with_fallback(self, inst: Instrument) -> tuple[str | None, int]:
         sec_id, lot_size = self._scrip.lookup(
@@ -1026,6 +1028,8 @@ class DhanTrader:
             if alert_signal == "BUY"
             else PriceCondition.LESS_THAN.value
         )
+
+        alert_sec_id: str | None
 
         alert_sec_id, alert_exch_seg = sec_id, exchange_seg
         if fno_signal:

@@ -35,7 +35,7 @@ NSE_FALLBACK_INTERVAL = CONFIG.get("nse_equity_defaults", {}).get(
 # ---------------------------------------------------------------------------
 # Strike interval registry logic
 # ---------------------------------------------------------------------------
-def _nse_stock_interval(price: float) -> int:
+def _nse_stock_interval(price: float | None) -> int:
     """
     NSE equity option strike intervals by price band.
     Iterates dynamically through bounds defined in TOML.
@@ -48,7 +48,7 @@ def _nse_stock_interval(price: float) -> int:
     return NSE_FALLBACK_INTERVAL
 
 
-def get_strike_interval(symbol: str, price: float) -> int:
+def get_strike_interval(symbol: str, price: float | None) -> int:
     """
     Return the standard exchange strike interval for *symbol* at *price*.
 

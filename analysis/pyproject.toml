@@ -73,3 +73,5 @@ explicit_package_bases = true
 
 # 3. Allow directory scanning to work seamlessly even if some subfolders lack an __init__.py
 namespace_packages = true
+
+disable_error_code = ["import-untyped", "var-annotated"]

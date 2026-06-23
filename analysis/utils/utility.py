@@ -2,6 +2,7 @@ import logging
 import sys
 import time
 from datetime import datetime, timedelta
+from typing import TextIO
 
 import tomllib
 from pytz import timezone as _pytz_timezone
@@ -19,7 +20,7 @@ BUFFER_SECONDS = 5
 LOGGER = logging.getLogger(PROJECT_NAME)
 
 
-def set_logger_config(log_level: str = "", log_handle: object = sys.stdout) -> None:
+def set_logger_config(log_level: str = "", log_handle: TextIO = sys.stdout) -> None:
     numeric_level = logging.getLevelNamesMapping().get(
         log_level.upper(), logging.CRITICAL
     )

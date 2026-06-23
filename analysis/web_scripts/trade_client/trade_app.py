@@ -4,6 +4,7 @@ import hmac
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import tomllib
 import uvicorn
@@ -79,7 +80,7 @@ class LiveDataResponse(BaseModel):
     order_count: int
     active_pnl_total: float
     closed_pnl_total: float
-    positions: dict[str, PositionData]
+    positions: dict[str, PositionData] | dict[str, dict[str, Any]]
 
 
 def _format_order_detail(
@@ -184,7 +185,7 @@ class DashboardSnapshot:
     def closed_pnl_total(self) -> float:
         return sum(p.get("pnl", 0.0) for p in self.closed_positions)
 
-    def live_payload(self) -> dict:
+    def live_payload(self) -> LiveDataResponse:
         positions = {}
         for position in self.positions:
             security_id = str(position.get("security_id", ""))
@@ -222,15 +223,15 @@ class DashboardSnapshot:
                 "sec_id": security_id,  # <-- ADDED
             }
 
-        return {
-            "funds": self.funds,
-            "position_count": self.total_positions,
-            "closed_count": self.total_closed,
-            "order_count": self.total_orders,
-            "active_pnl_total": self.active_pnl_total,
-            "closed_pnl_total": self.closed_pnl_total,
-            "positions": positions,
-        }
+        return LiveDataResponse(
+            funds=self.funds,
+            position_count=self.total_positions,
+            closed_count=self.total_closed,
+            order_count=self.total_orders,
+            active_pnl_total=self.active_pnl_total,
+            closed_pnl_total=self.closed_pnl_total,
+            positions=positions,
+        )
 
 
 class DashboardService:
@@ -504,7 +505,7 @@ class TradePortalApp:
             return []
         try:
             matches = self.trader.search_symbols(q, limit=30)
-            clean = []
+            clean: list[SymbolSearchItem] = []
 
             for match in matches:
                 strike_val = match.get("strike", 0)
@@ -513,17 +514,16 @@ class TradePortalApp:
                 except (ValueError, TypeError):
                     strike_val = 0.0
 
-                clean.append(
-                    {
-                        "display": str(match.get("display", "")),
-                        "symbol": str(match.get("symbol", "")),
-                        "inst_type": str(match.get("inst_type", "")),
-                        "strike": strike_val,
-                        "opt_type": str(match.get("opt_type", "")),
-                        "expiry": str(match.get("expiry", "")),
-                        "exch": str(match.get("exch", "")),
-                    },
+                item = SymbolSearchItem(
+                    display=str(match.get("display", "")),
+                    symbol=str(match.get("symbol", "")),
+                    inst_type=str(match.get("inst_type", "")),
+                    strike=strike_val,
+                    opt_type=str(match.get("opt_type", "")),
+                    expiry=str(match.get("expiry", "")),
+                    exch=str(match.get("exch", "")),
                 )
+                clean.append(item)
 
         except (ValueError, TypeError, KeyError):
             LOGGER.exception("[search_symbols API ERROR] q=%s", q)

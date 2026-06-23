@@ -53,6 +53,18 @@ class ScripEntry:
       tokens is indistinguishable from O(1) frozenset lookup in practice.)
     """
 
+    # These use zero instance memory but make Mypy happy!
+    display: str
+    exch: str
+    expiry: str
+    inst_type: str
+    month_tag: str
+    name_tokens: tuple[str, ...]
+    opt_type: str
+    strike: float
+    strike_int: int | None
+    symbol: str
+
     __slots__ = (
         "display",
         "exch",
@@ -233,21 +245,24 @@ class ScripMaster:
         return None
 
     def get_symbol_name(self, sec_id: str, fallback: str = "") -> str:
-        if not self._secid_info:
+        sec_info = self._secid_info
+        if not sec_info:
             return fallback
-        info = self._secid_info.get(str(sec_id))
+        info = sec_info.get(str(sec_id))
         return info[6] if info else fallback
 
     def get_base_symbol(self, sec_id: str, fallback: str = "") -> str:
-        if not self._secid_info:
+        sec_info = self._secid_info
+        if not sec_info:
             return fallback
-        info = self._secid_info.get(str(sec_id))
+        info = sec_info.get(str(sec_id))
         return info[2] if info else fallback
 
     def get_instrument_details(self, sec_id: str) -> dict:
-        if not self._secid_info:
+        sec_info = self._secid_info
+        if not sec_info:
             return {}
-        info = self._secid_info.get(str(sec_id))
+        info = sec_info.get(str(sec_id))
         if not info:
             return {}
         return {
@@ -274,6 +289,9 @@ class ScripMaster:
         if seg in self.cfg.eq_index_instr:
             if self._eq_index:
                 return self._eq_index.get((exch, symb), (None, 0))
+            return None, 0
+
+        if not self._expiry_index or not self._opt_index:
             return None, 0
 
         valid_expiries = self._expiry_index.get((exch, seg, symb))
@@ -348,7 +366,11 @@ class ScripMaster:
         LOCAL_CSV.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(LOCAL_CSV, index=False)
 
-        eq_idx, opt_idx, expiry_idx, sec_info = {}, {}, {}, {}
+        eq_idx: dict[Any, Any] = {}
+        opt_idx: dict[Any, Any] = {}
+        expiry_idx: dict[Any, Any] = {}
+        sec_info: dict[Any, Any] = {}
+
         self._fold_chunk(df, eq_idx, opt_idx, expiry_idx, sec_info, today_str)
 
         # Free the DataFrame before building search index — reduces peak RAM.
@@ -358,7 +380,11 @@ class ScripMaster:
         self._commit_indexes(eq_idx, opt_idx, expiry_idx, sec_info)
 
     def _index_from_csv(self) -> None:
-        eq_idx, opt_idx, expiry_idx, sec_info = {}, {}, {}, {}
+        eq_idx: dict[Any, Any] = {}
+        opt_idx: dict[Any, Any] = {}
+        expiry_idx: dict[Any, Any] = {}
+        sec_info: dict[Any, Any] = {}
+
         today_str = _get_today_str()
         try:
             with pd.read_csv(
