@@ -28,39 +28,22 @@ LOCAL_CSV = Path(OUT_DIR) / "scrip_master.csv"
 CONFIG_PATH = BASE_DIR / "scrip_master.toml"
 
 REQUEST_TIMEOUT_SECONDS = 3
-
-# Keys excluded from public search-result dicts.
-# expiry_sort and sort_key no longer exist as slots, so they're removed here too.
-EXCLUDED_KEYS = {"month_tag", "name_tokens", "strike_int"}
-
-# Sort priority for instrument type: lower = closer to top of results.
-_INST_PRIORITY: dict[str, int] = {"EQ": 0, "FUT": 1, "OPT": 2}
+EXCLUDED_KEYS = {"expiry_sort", "month_tag", "name_tokens", "sort_key", "strike_int"}
 
 
 class ScripEntry:
-    """Highly compressed, __slots__-based replacement for row dictionaries.
-
-    Memory changes vs previous version
-    ───────────────────────────────────
-    • Removed ``expiry_sort`` slot — was a duplicate of ``expiry`` (same
-      sys.intern'd string).  Saves 8 B/entry slot pointer * 300k ≈ 2.4 MB.
-    • Removed ``sort_key`` slot — was a 72-B 4-tuple built just for sorting.
-      Saves 72 B * 300k ≈ 21.6 MB.  Sorting is now done with an inline key
-      function in ``_commit_indexes`` that reads existing slots directly.
-    • ``name_tokens`` is now a ``tuple[str, ...]`` (set by SearchEngine).
-      Previously a ``frozenset`` (728 B each).  Tuple costs ≈ 88 B per entry.
-      Saves ~640 B * 300k ≈ 192 MB.  (O(n) tuple membership for n ≤ 10
-      tokens is indistinguishable from O(1) frozenset lookup in practice.)
-    """
+    """A highly compressed, __slots__ based replacement for row dictionaries."""
 
     __slots__ = (
         "display",
         "exch",
         "expiry",
+        "expiry_sort",
         "inst_type",
         "month_tag",
         "name_tokens",
         "opt_type",
+        "sort_key",
         "strike",
         "strike_int",
         "symbol",
@@ -235,14 +218,14 @@ class ScripMaster:
     def get_symbol_name(self, sec_id: str, fallback: str = "") -> str:
         if not self._secid_info:
             return fallback
-        info = self._secid_info.get(str(sec_id))
-        return info[6] if info else fallback
+        key = self._secid_info.get(str(sec_id))
+        return key[6] if key else fallback
 
     def get_base_symbol(self, sec_id: str, fallback: str = "") -> str:
         if not self._secid_info:
             return fallback
-        info = self._secid_info.get(str(sec_id))
-        return info[2] if info else fallback
+        key = self._secid_info.get(str(sec_id))
+        return key[2] if key else fallback
 
     def get_instrument_details(self, sec_id: str) -> dict:
         if not self._secid_info:
@@ -350,11 +333,6 @@ class ScripMaster:
 
         eq_idx, opt_idx, expiry_idx, sec_info = {}, {}, {}, {}
         self._fold_chunk(df, eq_idx, opt_idx, expiry_idx, sec_info, today_str)
-
-        # Free the DataFrame before building search index — reduces peak RAM.
-        del df
-        gc.collect()
-
         self._commit_indexes(eq_idx, opt_idx, expiry_idx, sec_info)
 
     def _index_from_csv(self) -> None:
@@ -377,13 +355,11 @@ class ScripMaster:
                     self._fold_chunk(
                         chunk, eq_idx, opt_idx, expiry_idx, sec_info, today_str
                     )
-                    # Release each chunk promptly so peak RAM stays bounded.
-                    del raw_chunk, chunk
-                    gc.collect()
         except (OSError, ValueError, pd.errors.ParserError):
             LOGGER.exception("Error loading scrip master cache")
             return
 
+        gc.collect()
         self._commit_indexes(eq_idx, opt_idx, expiry_idx, sec_info)
 
     def _commit_indexes(
@@ -400,21 +376,7 @@ class ScripMaster:
                 base_to_name[info[2]] = str(info[6]).strip().upper()
 
         search_entries = self._build_search_entries(secid_info)
-
-        # ── MEMORY CHANGE: sort_key slot removed from ScripEntry.
-        #    We compute an equivalent key inline from existing slots:
-        #      inst_priority  — 0 EQ / 1 FUT / 2 OPT  (same ordering as before)
-        #      expiry         — ISO date string, lexicographically sortable
-        #      strike         — float
-        #      symbol         — underlying ticker
-        search_entries.sort(
-            key=lambda e: (
-                _INST_PRIORITY.get(e.inst_type, 2),
-                e.expiry or "",
-                e.strike or 0.0,
-                e.symbol,
-            )
-        )
+        search_entries.sort(key=lambda x: x.sort_key)
 
         self.search_engine.build_index(search_entries, base_to_name)
 
@@ -462,7 +424,7 @@ class ScripMaster:
             if not display_name:
                 continue
 
-            display_str, inst_type, _inst_priority = self._make_display_str(
+            display_str, inst_type, inst_priority = self._make_display_str(
                 inst, underlying, display_name
             )
 
@@ -481,10 +443,6 @@ class ScripMaster:
                 else None
             )
 
-            # ── MEMORY CHANGE: expiry_sort and sort_key slots removed.
-            #    • expiry_sort was identical to expiry — use entry.expiry instead.
-            #    • sort_key 4-tuple (72 B each) replaced by inline lambda in
-            #      _commit_indexes that reads existing slots directly.
             entries.append(
                 ScripEntry(
                     display=display_str,
@@ -496,6 +454,13 @@ class ScripMaster:
                     exch=sys.intern(exch_id),
                     month_tag=sys.intern(month_tag) if month_tag else "",
                     strike_int=strike_int,
+                    expiry_sort=sys.intern(exp_str) if exp_str else "",
+                    sort_key=(
+                        inst_priority,
+                        sys.intern(exp_str) if exp_str else "",
+                        strike_val,
+                        sys.intern(underlying),
+                    ),
                 )
             )
         return entries

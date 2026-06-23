@@ -61,3 +61,15 @@ ignore = [
 
 [tool.djlint]
 ignore = "H025"
+
+
+
+[tool.mypy]
+# 1. Set the current directory as the primary search path for your modules
+mypy_path = "."
+
+# 2. Tell Mypy to find the package root structures dynamically 
+explicit_package_bases = true
+
+# 3. Allow directory scanning to work seamlessly even if some subfolders lack an __init__.py
+namespace_packages = true

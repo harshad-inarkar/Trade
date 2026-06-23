@@ -30,6 +30,10 @@ def _bool_env_or_cfg(key: str, cfg: dict, default_val: bool = False) -> bool:
     return bool(cfg.get(key, default_val))
 
 
+def _str_env_or_cfg(key: str, cfg: dict, default_val: str = "") -> str:
+    return os.environ.get(key, cfg.get(key, default_val))
+
+
 # ==========================================
 # Pydantic Response Schemas
 # ==========================================
@@ -108,10 +112,10 @@ class AppConfig:
         self.raw_cfg = self._load()
 
         srv = self.raw_cfg.get("server", {})
-        self.host: str = srv.get("host", "127.0.0.1")
+        self.host: str = srv.get("host", "localhost")
         self.port: int = srv.get("port", 8000)
         self.reload: bool = srv.get("reload", False)
-        self.log_level: str = srv.get("log_level", "")
+        self.log_level: str = _str_env_or_cfg("log_level", srv)
 
         if not bool(self.log_level):
             self.log_level = "critical"
@@ -499,7 +503,7 @@ class TradePortalApp:
         if len(q) < _MIN_QUERY_LEN:
             return []
         try:
-            matches = self.trader.scrip.search_symbols(q, limit=30)
+            matches = self.trader.search_symbols(q, limit=30)
             clean = []
 
             for match in matches:
