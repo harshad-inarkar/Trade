@@ -1,65 +1,95 @@
 {% extends "base.html" %}
-{% block title %}Index - NSE Portal{% endblock %}
+
+{% block title %}Index — NSE Portal{% endblock %}
+
 {% block nav_idx %}active{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', path='css/table.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/table.css') }}" />
 {% endblock %}
 
 {% block content %}
-<div class="meta-bar">
-  <div class="meta-chips">
-    <div class="chip"><strong>{{ refresh_time }}</strong></div>
-    <div class="chip"><span>symbols</span><strong>{{ count - 1 }}</strong></div>
-    {% if sector_name %}
-    <div class="chip"><span>sector</span><strong class="accent-text">{{ sector_name }}</strong></div>
-    {% endif %}
+  {# ── Meta bar ── #}
+  <div class="meta-bar">
+    <div class="meta-chips">
+      <div class="chip">
+        <div class="live-dot"></div>
+        <strong>{{ refresh_time }}</strong>
+      </div>
+      <div class="chip">
+        <span class="chip-label">TF</span>
+        <strong>{{ timeframe }}m</strong>
+      </div>
+      <div class="chip">
+        <span class="chip-label">SYMBOLS</span>
+        <strong>{{ count - 1 }}</strong>
+      </div>
+      {% if sector_name %}
+        <div class="chip">
+          <span class="chip-label">SECTOR</span>
+          <strong class="accent-text">{{ sector_name }}</strong>
+        </div>
+      {% endif %}
+    </div>
   </div>
-</div>
 
-<div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        {% set cols = [
-        ('symbol', 'SYMBOL'),
-        ('volume_fast', 'VOL FAST'),
-        ('volume_slow', 'VOL SLOW'),
-        ('ltp', 'PRICE'),
-        ('price_ma_action', 'MA ACTION')
-        ] %}
+  {# ── Data table ── #}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          {% set cols = [
+            ('symbol',         'SYMBOL'),
+            ('volume_fast',    'VOL FAST'),
+            ('volume_slow',    'VOL SLOW'),
+            ('ltp',            'PRICE'),
+            ('price_ma_action','MA ACTION'),
+          ] %}
 
-        {% for key, label in cols %}
-        <th>
-          <div class="th-sort">
-            <a href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort={{ key }}&order={{ 'desc' if sort == key and order == 'asc' else 'asc' }}{% if filter %}&filter={{ filter }}{% endif %}"
-              class="th-label">{{ label }}</a>
+          {% for key, label in cols %}
+            <th>
+              <div class="th-sort">
+                <a
+                  href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort={{ key }}&order={{ 'desc' if sort == key and order == 'asc' else 'asc' }}{% if filter %}&filter={{ filter }}{% endif %}"
+                  class="th-label"
+                >{{ label }}</a>
 
-            <span class="sort-arrows">
-              <a class="{{ 'active' if sort == key and order == 'asc' else '' }}"
-                href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort={{ key }}&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
-              <a class="{{ 'active' if sort == key and order == 'desc' else '' }}"
-                href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort={{ key }}&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
-            </span>
-          </div>
-        </th>
+                <span class="sort-arrows">
+                  <a
+                    class="{{ 'active' if sort == key and order == 'asc' else '' }}"
+                    href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort={{ key }}&order=asc{% if filter %}&filter={{ filter }}{% endif %}"
+                  >▲</a>
+                  <a
+                    class="{{ 'active' if sort == key and order == 'desc' else '' }}"
+                    href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort={{ key }}&order=desc{% if filter %}&filter={{ filter }}{% endif %}"
+                  >▼</a>
+                </span>
+              </div>
+            </th>
+          {% endfor %}
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for row in symbols[1:] %}
+          <tr>
+            <td>
+              <a
+                href="/symbol/{{ row[0] }}?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+                class="symbol-link"
+              >{{ row[0] }}</a>
+            </td>
+            <td>{{ "{:,.2f}".format(row[1]) }}</td>
+            <td>{{ "{:,.2f}".format(row[2]) }}</td>
+            <td>{{ "{:,.2f}".format(row[4]) }}</td>
+            <td
+              class="{% if row[6] == 1 %}ma-up{% elif row[6] == -1 %}ma-down{% else %}ma-neutral{% endif %}"
+            >
+              {{ '↑' if row[6] == 1 else '↓' if row[6] == -1 else '−' }}&nbsp;{{ row[6] }}
+            </td>
+          </tr>
         {% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in symbols[1:] %}
-      <tr>
-        <td><a href="/symbol/{{ row[0] }}?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
-            class="symbol-link">{{ row[0] }}</a></td>
-        <td>{{ "{:,.2f}".format(row[1]) }}</td>
-        <td>{{ "{:,.2f}".format(row[2]) }}</td>
-        <td>{{ "{:,.2f}".format(row[4]) }}</td>
-        <td class="{% if row[6] == 1 %}ma-up{% elif row[6] == -1 %}ma-down{% else %}ma-neutral{% endif %}">
-          {{ '↑' if row[6] == 1 else '↓' if row[6] == -1 else '−' }} {{ row[6] }}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+      </tbody>
+    </table>
+  </div>
 {% endblock %}

@@ -1,140 +1,280 @@
-/* ── META BAR & ALIGNMENT ── */
-.meta-bar {
-    display: flex;
-    align-items: center;
-    flex-wrap: nowrap;
-    padding: 0 28px;               /* Matches index.html horizontal alignment */
-    gap: 24px;                     /* Breathing room between sections */
-    overflow-x: auto;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);    /* Inherits the dark background from index.html */
-    min-height: 42px;              /* Ensures consistent vertical flow */
-  }
-  
-  /* Matches table.css exactly */
-  .meta-chips {
-    display: flex;
-    align-items: center;
-    gap: 18px;                     
-    padding: 9px 0;                
-    font-family: var(--mono);
-    color: var(--muted);
-    font-size: .72rem;             
-    flex-shrink: 0;
-  }
-  .meta-chips strong { color: var(--text); padding-left: 5px; }
-  
-  /* Sort Controls - Stripped of borders to look like clean text */
-  .sort-chips {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-right: auto;
-    flex-shrink: 0;
-  }
-  
-  .sort-chips .sort-label { 
-    font-family: var(--mono); 
-    font-size: .72rem; 
-    color: var(--muted); 
-    margin-right: 4px; 
-  }
-  
-  .sort-chip { 
-    font-family: var(--mono); 
-    font-size: .72rem; 
-    display: flex; 
-    align-items: center; 
-    gap: 6px; 
-    color: var(--muted); 
-    white-space: nowrap; 
-  }
-  
-  /* Text color brightens slightly when its child arrow is active */
-  .sort-chip:has(.sort-arrows a.active) { 
-    color: var(--text); 
-  }
-  
-  /* ── Replace this section in sector.css ── */
-.sort-arrows { 
-  display: flex; 
-  flex-direction: column; 
-  line-height: 1; 
-  gap: 2px; 
+/* ═══════════════════════════════════════════════
+   NSE Portal — Sector / Heatmap Page Styles
+════════════════════════════════════════════════ */
+
+/* ── Meta-bar additions for sector page ── */
+.meta-chips {
+  display:     flex;
+  align-items: center;
+  gap:         18px;
+  padding:     9px 0;
+  font-family: var(--mono);
+  font-size:   .70rem;
+  color:       var(--muted);
+  flex-shrink: 0;
 }
 
-.sort-arrows a { 
-  font-size: .55rem; 
-  color: #3a4a58; 
-  text-decoration: none; 
-  transition: color .15s; 
-  /* Strip base.css formatting */
-  background: transparent;
-  border: none;
-  padding: 0;
+.meta-chips strong { color: var(--text); padding-left: 3px; }
+.meta-chips .label { opacity: .55; font-size: .65rem; }
+
+/* Dot in refresh chip */
+.dot {
+  width:         6px;
+  height:        6px;
+  border-radius: 50%;
+  background:    var(--accent);
+  flex-shrink:   0;
+  animation:     nsePulse 2.4s ease-in-out infinite;
 }
 
-.sort-arrows a:hover { 
-  color: var(--text); 
-  background: transparent; 
+@keyframes nsePulse {
+  0%,  100% { opacity: 1;   transform: scale(1);    }
+  50%        { opacity: 0.3; transform: scale(0.75); }
 }
 
-/* Active arrow is strictly yellow without green background */
-.sort-arrows a.active { 
-  color: var(--accent3); 
-  font-size: .55rem; 
-  background: transparent; 
+/* ── Sort control row ── */
+.sort-chips {
+  display:     flex;
+  align-items: center;
+  gap:         14px;
+  margin-right: auto;
+  flex-shrink: 0;
 }
-  
-  /* Filter Form */
-  .filter-form { 
-    display: flex; 
-    align-items: center; 
-    gap: 8px; 
-    padding: 0; 
-    margin: 0; 
-    flex-shrink: 0; 
-  }
-  .filter-form input[type="text"] { font-family: var(--mono); font-size: .72rem; padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); outline: none; width: 180px; transition: border-color .2s; }
-  .filter-form input[type="text"]::placeholder { color: var(--muted); }
-  .filter-form input[type="text"]:focus { border-color: var(--accent); }
-  .filter-form button { font-family: var(--mono); font-size: .68rem; letter-spacing: .06em; padding: 5px 12px; border: 1px solid var(--accent); border-radius: var(--radius); background: transparent; color: var(--accent); cursor: pointer; transition: background .2s, color .2s; }
-  .filter-form button:hover { background: var(--accent); color: #000; }
-  .filter-form a.clear-btn { font-family: var(--mono); font-size: .68rem; color: var(--muted); text-decoration: none; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius); transition: color .2s, border-color .2s; }
-  .filter-form a.clear-btn:hover { color: var(--accent2); border-color: var(--accent2); }
 
-/* ── SECTOR GRID ── */
-.sector-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; padding: 16px 28px; }
-.sector-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; transition: border-color .25s, transform .25s; cursor: default; animation: fadeUp .4s ease both; }
-.sector-card:hover { border-color: color-mix(in srgb, var(--heat-color, var(--accent)) 70%, transparent); transform: translateY(-2px); }
+.sort-chips .sort-label {
+  font-family: var(--mono);
+  font-size:   .65rem;
+  color:       var(--muted);
+  letter-spacing: .08em;
+}
 
-@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.sort-chip {
+  font-family: var(--mono);
+  font-size:   .65rem;
+  display:     flex;
+  align-items: center;
+  gap:         5px;
+  color:       var(--muted);
+  white-space: nowrap;
+}
 
-.card-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 14px 8px; border-bottom: 1px solid var(--border); }
-.sector-name { font-family: var(--sans); font-size: .8rem; font-weight: 700; letter-spacing: .04em; line-height: 1.3; text-transform: uppercase; max-width: 72%; }
-.sector-link { color: var(--accent); text-decoration: none; transition: color 0.15s; }
+.sort-chip:has(.sort-arrows a.active) { color: var(--text); }
+
+/* ── Filter form ── */
+.filter-form {
+  display:     flex;
+  align-items: center;
+  gap:         7px;
+  flex-shrink: 0;
+}
+
+.filter-form input[type="text"] {
+  font-family: var(--mono);
+  font-size:   .68rem;
+  padding:     4px 10px;
+  border:      1px solid var(--border);
+  border-radius: var(--radius);
+  background:  var(--bg);
+  color:       var(--text);
+  outline:     none;
+  width:       172px;
+  transition:  border-color .2s;
+}
+
+.filter-form input[type="text"]::placeholder { color: var(--muted); }
+.filter-form input[type="text"]:focus        { border-color: var(--accent); }
+
+.filter-form button {
+  font-family:  var(--mono);
+  font-size:    .65rem;
+  letter-spacing: .06em;
+  padding:      4px 11px;
+  border:       1px solid var(--accent);
+  border-radius: var(--radius);
+  background:   transparent;
+  color:        var(--accent);
+  cursor:       pointer;
+  transition:   background .2s, color .2s;
+}
+
+.filter-form button:hover { background: var(--accent); color: #000; }
+
+.filter-form a.clear-btn {
+  font-family:  var(--mono);
+  font-size:    .65rem;
+  color:        var(--muted);
+  text-decoration: none;
+  padding:      3px 8px;
+  border:       1px solid var(--border);
+  border-radius: var(--radius);
+  transition:   color .2s, border-color .2s;
+}
+
+.filter-form a.clear-btn:hover { color: var(--accent2); border-color: var(--accent2); }
+
+/* ═══════════════════════════════════════════════
+   SECTOR GRID
+════════════════════════════════════════════════ */
+.sector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+  gap:     13px;
+  padding: 16px 28px;
+}
+
+/* Card */
+.sector-card {
+  background:    var(--surface);
+  border:        1px solid var(--border);
+  border-radius: 6px;
+  overflow:      hidden;
+  cursor:        default;
+  transition:    border-color .2s, transform .2s, box-shadow .2s;
+  animation:     fadeUp .35s ease both;
+}
+
+.sector-card:hover {
+  border-color: color-mix(in srgb, var(--heat-color, var(--accent)) 65%, transparent);
+  transform:    translateY(-2px);
+  box-shadow:   0 6px 20px rgba(0, 0, 0, .35);
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0);     }
+}
+
+/* Card header */
+.card-header {
+  display:         flex;
+  align-items:     flex-start;
+  justify-content: space-between;
+  padding:         11px 13px 7px;
+  border-bottom:   1px solid var(--border);
+}
+
+.sector-name {
+  font-family:    var(--sans);
+  font-size:      .76rem;
+  font-weight:    700;
+  letter-spacing: .04em;
+  line-height:    1.3;
+  text-transform: uppercase;
+  max-width:      72%;
+}
+
+.sector-link {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color .15s;
+}
+
 .sector-link:hover { color: var(--accent2); text-decoration: underline; }
-.sector-rank { font-family: var(--mono); font-size: .65rem; color: var(--text); padding: 2px 7px; border: 1px solid var(--border); border-radius: 20px; white-space: nowrap; }
 
-/* ── HEAT & VOLUME BAR ── */
-.vol-row { padding: 10px 14px 4px; display: flex; align-items: center; gap: 10px; }
-.vol-bar-wrap { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
-.vol-bar-fill { height: 100%; border-radius: 3px; background: var(--heat-color, var(--accent)); transition: width .6s cubic-bezier(.4,0,.2,1); }
-.vol-value { font-family: var(--mono); font-size: .8rem; font-weight: 100; color: var(--text); white-space: nowrap; min-width: 56px; text-align: right; }
+.sector-rank {
+  font-family:  var(--mono);
+  font-size:    .60rem;
+  color:        var(--muted);
+  padding:      2px 7px;
+  border:       1px solid var(--border);
+  border-radius: 20px;
+  white-space:  nowrap;
+  margin-top:   1px;
+}
 
-/* ── SYMBOL CHIPS ── */
-.sym-area { padding: 6px 14px 12px; }
-.sym-chips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 72px; overflow: hidden; position: relative; transition: max-height .3s ease; }
-.sym-chips.expanded { max-height: 300px; }
-.sym-chip { font-family: var(--mono); font-size: .62rem; padding: 2px 7px; border: 1px solid var(--border); border-radius: 3px; color: var(--accent); background: var(--bg); transition: border-color .15s, color .15s; }
+/* ── Volume heat bar ── */
+.vol-row {
+  padding:     9px 13px 4px;
+  display:     flex;
+  align-items: center;
+  gap:         9px;
+}
+
+.vol-bar-wrap {
+  flex:          1;
+  height:        5px;
+  background:    var(--border);
+  border-radius: 3px;
+  overflow:      hidden;
+}
+
+.vol-bar-fill {
+  height:        100%;
+  border-radius: 3px;
+  background:    var(--heat-color, var(--accent));
+  transition:    width .55s cubic-bezier(.4, 0, .2, 1);
+}
+
+.vol-value {
+  font-family: var(--mono);
+  font-size:   .75rem;
+  font-weight: 500;
+  color:       var(--text);
+  white-space: nowrap;
+  min-width:   52px;
+  text-align:  right;
+}
+
+/* ── Symbol chips area ── */
+.sym-area { padding: 6px 13px 10px; }
+
+.sym-chips {
+  display:    flex;
+  flex-wrap:  wrap;
+  gap:        4px;
+  max-height: 66px;
+  overflow:   hidden;
+  transition: max-height .3s ease;
+}
+
+.sym-chips.expanded { max-height: 280px; }
+
+.sym-chip {
+  font-family: var(--mono);
+  font-size:   .60rem;
+  padding:     2px 7px;
+  border:      1px solid var(--border);
+  border-radius: 3px;
+  color:       var(--muted);
+  background:  var(--bg);
+  transition:  border-color .15s, color .15s;
+}
+
 .sym-chip:hover { border-color: var(--accent); color: var(--accent); }
-.expand-btn { font-family: var(--mono); font-size: .62rem; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 4px; transition: color .15s; }
+
+.expand-btn {
+  font-family:  var(--mono);
+  font-size:    .60rem;
+  color:        var(--muted);
+  background:   none;
+  border:       none;
+  cursor:       pointer;
+  padding:      3px 2px 0;
+  transition:   color .15s;
+}
+
 .expand-btn:hover { color: var(--accent); }
 
-/* ── FOOTER ── */
-.card-footer { padding: 4px 14px 8px; display: flex; gap: 14px; font-family: var(--mono); font-size: .63rem; color: var(--muted); border-top: 1px solid var(--border); }
-.card-footer span { display: flex; align-items: center; gap: 4px; }
-.card-footer .label { opacity: .55; }
+/* ── Card footer ── */
+.card-footer {
+  padding:     4px 13px 7px;
+  display:     flex;
+  gap:         12px;
+  font-family: var(--mono);
+  font-size:   .60rem;
+  color:       var(--muted);
+  border-top:  1px solid var(--border);
+}
 
-/* ── EMPTY STATE ── */
-.no-data { grid-column: 1 / -1; text-align: center; padding: 60px 20px; font-family: var(--mono); font-size: .85rem; color: var(--muted); }
+.card-footer span  { display: flex; align-items: center; gap: 4px; }
+.card-footer .label { opacity: .50; }
+
+/* ── Empty state ── */
+.no-data {
+  grid-column: 1 / -1;
+  text-align:  center;
+  padding:     60px 20px;
+  font-family: var(--mono);
+  font-size:   .80rem;
+  color:       var(--muted);
+}
