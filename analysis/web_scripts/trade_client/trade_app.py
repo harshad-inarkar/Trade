@@ -1,7 +1,6 @@
 """FastAPI dashboard for the Dhan trading portal."""
 
 import hmac
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,23 +15,12 @@ from pydantic import BaseModel
 
 from tradeapi.dhan_trade import DhanTrader, UIOverride
 from utils.data.paths import TEMPLATES_ROOT_DIR
-from utils.utility import LOGGER, set_logger_config
+from utils.utility import LOGGER, _bool_env_or_cfg, _str_env_or_cfg, set_logger_config
 
 BASE_DIR = Path(__file__).parent
 APP_CONFIG_PATH = BASE_DIR / "trade_app.toml"
 
 _MIN_QUERY_LEN = 2
-
-
-def _bool_env_or_cfg(key: str, cfg: dict, default_val: bool = False) -> bool:
-    val = os.environ.get(key)
-    if val is not None:
-        return val.lower() in ("1", "true", "yes", "on")
-    return bool(cfg.get(key, default_val))
-
-
-def _str_env_or_cfg(key: str, cfg: dict, default_val: str = "") -> str:
-    return os.environ.get(key, cfg.get(key, default_val))
 
 
 # ==========================================

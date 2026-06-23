@@ -15,12 +15,12 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
-from create_sectoral_index_files import (
+
+from utils.data.create_sectoral_index_files import (
     SECTORAL_INDICES,
     download_sectoral_indices,
     get_file_name_from_index,
 )
-
 from utils.data.paths import NSE_INDX_DATA
 from utils.utility import out
 

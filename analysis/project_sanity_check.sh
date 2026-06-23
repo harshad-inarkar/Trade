@@ -20,12 +20,15 @@ ruff format "${targets[@]}"
 
 
 echo "Running mypy------"
-mypy web_scripts/trade_client
+mypy "${targets[@]}"
 
-frontend_targets=(
-    web_scripts/templates/template_trade_client/dashboard.html
-)
+
+
 
 echo "Running djlint------"
+frontend_targets=(
+    web_scripts/templates
+)
+
 djlint --lint "${frontend_targets[@]}"
 # djlint --reformat "${frontend_targets[@]}"

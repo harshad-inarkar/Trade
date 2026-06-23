@@ -1,0 +1,91 @@
+.meta-bar { display: flex; padding: 0; border-bottom: 1px solid var(--border); background: var(--surface); }
+.meta-chips { display: flex; gap: 18px; padding: 9px 28px; font-family: var(--mono); color: var(--muted); font-size: .72rem; }
+.meta-chips strong { color: var(--text); padding-left: 5px;}
+.table-wrap { padding: 20px 28px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .8rem; }
+th { padding: 12px 16px; text-align: left; color: var(--muted); font-size: .68rem; font-weight: 600; }
+td { padding: 10px 16px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tr:hover { background: var(--surface2); }
+.num-cell { display: flex; align-items: center; gap: 8px; }
+.spark { width: 48px; height: 4px; background: var(--border); border-radius: 2px; }
+.spark-fill { height: 100%; border-radius: 2px; }
+.symbol-link { padding: 3px 10px; border-radius: 3px; background: var(--surface2); border: 1px solid var(--border); color: var(--accent); text-decoration: none; }
+
+/* Append to static/css/table.css */
+.ma-up { color: #1bbf49; font-weight: 600; }
+.ma-down { color: #e0556a; font-weight: 600; }
+.ma-neutral { color: #b1b5bc; font-weight: 600; }
+.chart-container { height: 500px; padding: 20px; background: var(--surface); margin: 20px; border-radius: var(--radius); }
+
+
+
+/* ── Table Sorting Headers ── */
+.th-sort { 
+    display: inline-flex; 
+    align-items: center; 
+    gap: 6px; 
+  }
+  
+  .th-label { 
+    color: var(--muted); 
+    text-decoration: none; 
+    transition: color .2s; 
+  }
+  
+  /* Highlight the label if it's hovered OR if one of its arrows is active */
+  /* ── Replace this section in table.css ── */
+.th-sort { 
+  display: inline-flex; 
+  align-items: center; 
+  gap: 6px; 
+}
+
+.th-label { 
+  color: var(--muted); 
+  text-decoration: none; 
+  transition: color .2s; 
+  /* Strip base.css formatting */
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.th-label:hover, .th-label.active {
+  background: transparent;
+  border-color: transparent;
+}
+
+.th-sort:hover .th-label, 
+.th-sort:has(.sort-arrows a.active) .th-label { 
+  color: var(--text); 
+}
+
+.sort-arrows { 
+  display: flex; 
+  flex-direction: column; 
+  line-height: 1; 
+  gap: 2px; 
+}
+
+.sort-arrows a { 
+  font-size: .55rem; 
+  color: #3a4a58; 
+  text-decoration: none; 
+  transition: color .15s;
+  /* Strip base.css formatting */
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.sort-arrows a:hover { 
+  color: var(--text); 
+  background: transparent;
+}
+
+/* Active arrow is strictly yellow */
+.sort-arrows a.active { 
+  color: var(--accent3); 
+  font-size: .55rem; 
+  background: transparent;
+}

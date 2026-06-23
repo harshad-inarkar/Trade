@@ -97,8 +97,13 @@ class CSVTableViewer(QMainWindow):
         self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSortingEnabled(True)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.table.verticalHeader().setVisible(False)
+        horizontal_header = self.table.horizontalHeader()
+        if horizontal_header is not None:
+            horizontal_header.setSectionResizeMode(QHeaderView.Stretch)
+
+        vert_hdr = self.table.verticalHeader()
+        if vert_hdr:
+            vert_hdr.setVisible(False)
         layout.addWidget(self.table)
 
     def _schedule_reload(self) -> None:
@@ -181,7 +186,8 @@ class CSVTableViewer(QMainWindow):
                     if c_idx == self._price_surge_idx:
                         item.setForeground(NEGATIVE_FG)
 
-                item.setTextAlignment(Qt.AlignCenter)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
                 self.table.setItem(r_idx, c_idx, item)
 
         max_percent = 100

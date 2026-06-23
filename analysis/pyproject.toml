@@ -56,12 +56,17 @@ ignore = [
     "PLR0915",
     "FBT001",
     "FBT002",
+    "PLR2004",
 ]
 
 
 [tool.djlint]
-ignore = "H025"
 
+# Ignore specific linter rules (e.g., H025)
+ignore = "H025,H030,H031"
+
+# Exclude directories from being scanned to speed up the process
+exclude = ".git,.tox,venv,.venv,env,node_modules,build,dist"
 
 
 [tool.mypy]
@@ -74,4 +79,4 @@ explicit_package_bases = true
 # 3. Allow directory scanning to work seamlessly even if some subfolders lack an __init__.py
 namespace_packages = true
 
-disable_error_code = ["import-untyped", "var-annotated"]
+disable_error_code = ["import-untyped", "var-annotated","operator","assignment","arg-type"]

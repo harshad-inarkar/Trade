@@ -17,4 +17,4 @@ last_ndays = 14  # 0 means None/Disabled
 [server]
 host = "localhost"
 port = 5000
-log_level = "info"
+log_level = ""

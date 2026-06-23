@@ -264,6 +264,9 @@ class TVUpdaterApp:
             self._focus_tradingview()
 
         # 3. Execution
+        if not self.coords:
+            out("Error: Coordinates are not set. Please run setup first.")
+            return
         indicator_xy, textbox_xy, ok_xy = self.coords
 
         pyautogui.doubleClick(indicator_xy, interval=0.1)

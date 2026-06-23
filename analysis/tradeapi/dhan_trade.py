@@ -25,17 +25,6 @@ from utils.utility import INDIA_TZ, LOGGER, set_logger_config
 __all__ = ["DhanTrader", "Instrument", "PriceLevels", "UIOverride"]
 
 
-import os
-
-import psutil
-
-
-def log_ram(checkpoint: str) -> None:
-    process = psutil.Process(os.getpid())
-    ram_mb = process.memory_info().rss / (1024 * 1024)
-    LOGGER.info(f"📊 [RAM Profile] {checkpoint:<30} -> {ram_mb:.2f} MB")
-
-
 BASE_DIR = Path(__file__).parent
 SYMBOLS_CONFIG = BASE_DIR / "symbols_config.toml"
 MASTER_KEY_PATH = MASTER_CONFIG_PATH / ".dhan_master.key"
@@ -229,7 +218,6 @@ class DhanTrader:
         apply_proxy_flag: bool = True,
     ):
 
-        log_ram("BaseLine DhanTrader Init")
         self._api_cfg = DhanAPIConfig(API_CONFIG_PATH)
         self._symb_cfg = SymbolsConfig(symb_config)
         self._symb_cfg.refresh()
@@ -274,12 +262,10 @@ class DhanTrader:
             "Accept": "application/json",
         }
 
-        log_ram("Before loading ScripMaster")
         self._scrip = ScripMaster(
             session_obj=self._session,
             refresh_master_scrip=refresh_master_scrip,
         )
-        log_ram("After loading ScripMaster")
 
         self._entry_perc = self._symb_cfg.get("entry_price_perc", 0)
         self._limit_perc = self._symb_cfg.get("limit_price_perc", 0)
@@ -585,7 +571,6 @@ class DhanTrader:
         return symb, exch
 
     def search_symbols(self, query: str, limit: int = 30) -> list[dict]:
-        log_ram("In Symb Search")
         return self._scrip.search_symbols(query, limit)
 
     def _resolve_segment(

@@ -2,7 +2,7 @@ max_log_size = 50 #KB
 log_level = "info"         # debug | info | warning | error | critical
 
 [scripts.vol_app]
-module = "web_scripts.nse_vol_tracker.app"
+module = "web_scripts.nse_vol_tracker.vol_app"
 args = []
 
 [scripts.tv_update]

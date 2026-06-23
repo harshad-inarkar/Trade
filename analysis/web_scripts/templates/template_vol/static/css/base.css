@@ -1,0 +1,168 @@
+:root {
+  --bg: #0b0f14;
+  --surface: #131920;
+  --surface2: #1a2330;
+  --border: #1e2a35;
+  --text: #c8d8e8;
+  --muted: #4a6070;
+  --accent: #00d4aa;
+  --accent2: #ff6b35;
+  --accent3: #f0c040;
+  --red: #e05555;
+  --heat-1: #0a4060;
+  --heat-2: #0d6e8a;
+  --heat-3: #10a0a0;
+  --heat-4: #00d4aa;
+  --heat-5: #f0c040;
+  --heat-6: #ff6b35;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Space Grotesk', sans-serif;
+  --radius: 4px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+  padding-bottom: 60px;
+}
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: rgba(11, 15, 20, .94);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 28px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.header-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.logo {
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.sub {
+  font-size: .72rem;
+  color: var(--muted);
+}
+
+.tf-bar,
+.ma-controls {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: .66rem;
+  color: var(--muted);
+}
+
+.tf-bar a,
+.ma-controls a,
+nav.header-nav a {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  text-decoration: none;
+}
+
+a.active,
+a:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
+nav.header-nav {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.accent-text {
+  color: var(--accent);
+}
+
+
+/* ── Fast/Slow MA Length Form ── */
+.length-form { 
+  display: flex; 
+  align-items: center; 
+  gap: 6px; 
+  font-family: var(--mono); 
+  font-size: .66rem; 
+  color: var(--muted); 
+  margin-left: 10px;
+}
+.length-form input[type="number"] { 
+  font-family: var(--mono); 
+  font-size: .66rem; 
+  padding: 3px 6px; 
+  border: 1px solid var(--border); 
+  border-radius: var(--radius); 
+  background: var(--surface); 
+  color: var(--text); 
+  width: 48px; 
+  outline: none; 
+  text-align: center; 
+  transition: border-color .2s;
+}
+.length-form input[type="number"]:focus { border-color: var(--accent); }
+.length-form button { 
+  font-family: var(--mono); 
+  font-size: .66rem; 
+  padding: 3px 10px; 
+  border: 1px solid var(--border); 
+  border-radius: var(--radius); 
+  background: var(--surface2); 
+  color: var(--text); 
+  cursor: pointer; 
+  transition: all .2s; 
+  margin-left: 4px;
+}
+.length-form button:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Hide default number spin-buttons for a cleaner look */
+.length-form input[type="number"]::-webkit-inner-spin-button,
+.length-form input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.length-form input[type="number"] {
+  appearance: textfield;
+  -webkit-appearance: textfield;
+  -moz-appearance: textfield;
+}

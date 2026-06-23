@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timedelta
@@ -18,6 +19,17 @@ with (ROOT_SRC_DIR_PATH_OBJ / "pyproject.toml").open("rb") as f:
 PROJECT_NAME = _pyproject.get("project", {}).get("name", __name__)
 BUFFER_SECONDS = 5
 LOGGER = logging.getLogger(PROJECT_NAME)
+
+
+def _bool_env_or_cfg(key: str, cfg: dict, default_val: bool = False) -> bool:
+    val = os.environ.get(key)
+    if val is not None:
+        return val.lower() in ("1", "true", "yes", "on")
+    return bool(cfg.get(key, default_val))
+
+
+def _str_env_or_cfg(key: str, cfg: dict, default_val: str = "") -> str:
+    return os.environ.get(key, cfg.get(key, default_val))
 
 
 def set_logger_config(log_level: str = "", log_handle: TextIO = sys.stdout) -> None:

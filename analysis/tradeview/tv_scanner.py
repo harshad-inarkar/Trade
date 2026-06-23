@@ -170,7 +170,7 @@ class ScannerConfig:
         out("╚══════════════════════════════════════════════════════╝\n")
 
         def get_coord(label: str) -> tuple[int, int]:
-            out(f"--> Hover over {label} and press ENTER...", end="", flush=True)
+            out(f"--> Hover over {label} and press ENTER...", end="")
             input()
             x, y = pyautogui.position()
             out(f" Captured: ({x}, {y})")
@@ -636,7 +636,8 @@ class TVScannerApp:
         valid_parsed: list[dict] = []
         for row in parsed:
             sym = row["symbol"]
-            best_match = self.matcher.match(sym)
+            best_match = self.matcher.match(sym) if self.matcher is not None else None
+
             icon = "🟢" if row["signal"] == "BUY" else "🔴"
 
             if best_match == sym:
@@ -687,7 +688,8 @@ class TVScannerApp:
             self.dprint("  No new alerts.")
             return
 
-        self.executor.place_orders(new_alerts)
+        if self.executor is not None:
+            self.executor.place_orders(new_alerts)
 
         buys = [r for r in new_alerts if r["signal"] == "BUY"]
         sells = [r for r in new_alerts if r["signal"] == "SELL"]
