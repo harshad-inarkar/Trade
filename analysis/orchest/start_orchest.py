@@ -25,7 +25,7 @@ from utils.utility import out, set_logger_config
 # Default configurations
 MAX_LOG_SIZE_KB = 100  # KB
 LOG_MONITOR_INT = 15  # min
-STATS_MONITOR_INT = 3  # min
+STATS_MONITOR_INT = 1  # min
 log_root_dir = NSE_LOGS_DIR
 
 

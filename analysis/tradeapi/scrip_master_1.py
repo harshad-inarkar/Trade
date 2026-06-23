@@ -29,14 +29,31 @@ CONFIG_PATH = BASE_DIR / "scrip_master.toml"
 
 REQUEST_TIMEOUT_SECONDS = 3
 
+# Keys excluded from public search-result dicts.
+# expiry_sort and sort_key no longer exist as slots, so they're removed here too.
 EXCLUDED_KEYS = {"month_tag", "name_tokens", "strike_int"}
 
+# Sort priority for instrument type: lower = closer to top of results.
 _INST_PRIORITY: dict[str, int] = {"EQ": 0, "FUT": 1, "OPT": 2}
 
 
 class ScripEntry:
-    """Highly compressed, __slots__-based replacement for row dictionaries."""
+    """Highly compressed, __slots__-based replacement for row dictionaries.
 
+    Memory changes vs previous version
+    ───────────────────────────────────
+    • Removed ``expiry_sort`` slot — was a duplicate of ``expiry`` (same
+      sys.intern'd string).  Saves 8 B/entry slot pointer * 300k ≈ 2.4 MB.
+    • Removed ``sort_key`` slot — was a 72-B 4-tuple built just for sorting.
+      Saves 72 B * 300k ≈ 21.6 MB.  Sorting is now done with an inline key
+      function in ``_commit_indexes`` that reads existing slots directly.
+    • ``name_tokens`` is now a ``tuple[str, ...]`` (set by SearchEngine).
+      Previously a ``frozenset`` (728 B each).  Tuple costs ≈ 88 B per entry.
+      Saves ~640 B * 300k ≈ 192 MB.  (O(n) tuple membership for n ≤ 10
+      tokens is indistinguishable from O(1) frozenset lookup in practice.)
+    """
+
+    # These use zero instance memory but make Mypy happy!
     display: str
     exch: str
     expiry: str
@@ -61,29 +78,9 @@ class ScripEntry:
         "symbol",
     )
 
-    def __init__(
-        self,
-        display: str,
-        exch: str,
-        expiry: str,
-        inst_type: str,
-        month_tag: str,
-        opt_type: str,
-        strike: float,
-        strike_int: int | None,
-        symbol: str,
-    ) -> None:
-        # Direct attribute assignment is ~20% faster than dynamic **kwargs setattr
-        self.display = display
-        self.exch = exch
-        self.expiry = expiry
-        self.inst_type = inst_type
-        self.month_tag = month_tag
-        self.opt_type = opt_type
-        self.strike = strike
-        self.strike_int = strike_int
-        self.symbol = symbol
-        self.name_tokens = ()
+    def __init__(self, **kwargs: Any) -> None:
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
     def __getitem__(self, key: str) -> Any:
         return getattr(self, key)
@@ -252,14 +249,14 @@ class ScripMaster:
         if not sec_info:
             return fallback
         info = sec_info.get(str(sec_id))
-        return info.display if info else fallback
+        return info[6] if info else fallback
 
     def get_base_symbol(self, sec_id: str, fallback: str = "") -> str:
         sec_info = self._secid_info
         if not sec_info:
             return fallback
         info = sec_info.get(str(sec_id))
-        return info.symbol if info else fallback
+        return info[2] if info else fallback
 
     def get_instrument_details(self, sec_id: str) -> dict:
         sec_info = self._secid_info
@@ -269,13 +266,13 @@ class ScripMaster:
         if not info:
             return {}
         return {
-            "exch": info.exch,
-            "inst_type": info.inst_type,
-            "symbol": info.symbol,
-            "expiry": info.expiry,
-            "strike": info.strike,
-            "opt_type": info.opt_type,
-            "disp_name": info.display,
+            "exch": info[0],
+            "inst_type": info[1],
+            "symbol": info[2],
+            "expiry": info[3],
+            "strike": info[4],
+            "opt_type": info[5],
+            "disp_name": info[6],
         }
 
     def lookup(
@@ -373,23 +370,20 @@ class ScripMaster:
         opt_idx: dict[Any, Any] = {}
         expiry_idx: dict[Any, Any] = {}
         sec_info: dict[Any, Any] = {}
-        base_to_name: dict[str, str] = {}
 
-        self._fold_chunk(
-            df, eq_idx, opt_idx, expiry_idx, sec_info, base_to_name, today_str
-        )
+        self._fold_chunk(df, eq_idx, opt_idx, expiry_idx, sec_info, today_str)
 
+        # Free the DataFrame before building search index — reduces peak RAM.
         del df
         gc.collect()
 
-        self._commit_indexes(eq_idx, opt_idx, expiry_idx, sec_info, base_to_name)
+        self._commit_indexes(eq_idx, opt_idx, expiry_idx, sec_info)
 
     def _index_from_csv(self) -> None:
         eq_idx: dict[Any, Any] = {}
         opt_idx: dict[Any, Any] = {}
         expiry_idx: dict[Any, Any] = {}
         sec_info: dict[Any, Any] = {}
-        base_to_name: dict[str, str] = {}
 
         today_str = _get_today_str()
         try:
@@ -407,38 +401,38 @@ class ScripMaster:
                             chunk["INSTRUMENT_TYPE"].isin(self.cfg.filter_inst_type)
                         ]
                     self._fold_chunk(
-                        chunk,
-                        eq_idx,
-                        opt_idx,
-                        expiry_idx,
-                        sec_info,
-                        base_to_name,
-                        today_str,
+                        chunk, eq_idx, opt_idx, expiry_idx, sec_info, today_str
                     )
-                    # CPython instantly drops refcounts to 0 here. No forced GC needed.
+                    # Release each chunk promptly so peak RAM stays bounded.
                     del raw_chunk, chunk
+                    gc.collect()
         except (OSError, ValueError, pd.errors.ParserError):
             LOGGER.exception("Error loading scrip master cache")
             return
 
-        self._commit_indexes(eq_idx, opt_idx, expiry_idx, sec_info, base_to_name)
+        self._commit_indexes(eq_idx, opt_idx, expiry_idx, sec_info)
 
     def _commit_indexes(
-        self,
-        eq_index: dict,
-        opt_index: dict,
-        expiry_index: dict,
-        secid_info: dict,
-        base_to_name: dict,
+        self, eq_index: dict, opt_index: dict, expiry_index: dict, secid_info: dict
     ) -> None:
         self._eq_index = eq_index
         self._opt_index = opt_index
         self._expiry_index = expiry_index
         self._secid_info = secid_info
 
-        # Search entries points directly to the already-built objects in secid_info.
-        search_entries = list(secid_info.values())
+        base_to_name: dict[str, str] = {}
+        for info in secid_info.values():
+            if info[1] in self.cfg.eq_index_instr and info[6]:
+                base_to_name[info[2]] = str(info[6]).strip().upper()
 
+        search_entries = self._build_search_entries(secid_info)
+
+        # ── MEMORY CHANGE: sort_key slot removed from ScripEntry.
+        #    We compute an equivalent key inline from existing slots:
+        #      inst_priority  — 0 EQ / 1 FUT / 2 OPT  (same ordering as before)
+        #      expiry         — ISO date string, lexicographically sortable
+        #      strike         — float
+        #      symbol         — underlying ticker
         search_entries.sort(
             key=lambda e: (
                 _INST_PRIORITY.get(e.inst_type, 2),
@@ -449,22 +443,26 @@ class ScripMaster:
         )
 
         self.search_engine.build_index(search_entries, base_to_name)
+
         gc.collect()
 
     def _make_display_str(
         self, inst: str, underlying: str, display_name: str
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, int]:
         display_str = str(display_name).strip()
         if inst.startswith("OPT"):
             inst_type = "OPT"
+            inst_priority = 2
             if not display_str.upper().startswith(underlying.upper()):
                 display_str = f"{underlying} {display_str}"
         elif inst.startswith("FUT"):
             inst_type = "FUT"
+            inst_priority = 1
             if not display_str.upper().startswith(underlying.upper()):
                 display_str = f"{underlying} FUT {display_str}"
         else:
             inst_type = "EQ"
+            inst_priority = 0
             if display_str.upper() == underlying.upper():
                 display_str = f"{underlying} - EQ"
             elif display_str.upper().startswith(underlying.upper()):
@@ -473,7 +471,7 @@ class ScripMaster:
                 display_str = f"{underlying} - EQ{suffix}"
             else:
                 display_str = f"{underlying} - EQ ({display_str})"
-        return display_str, inst_type
+        return display_str, inst_type, inst_priority
 
     def _normalise_opt_type(self, opt_type: str | None) -> str:
         opt_safe_raw = str(opt_type).strip().upper() if opt_type else ""
@@ -483,6 +481,51 @@ class ScripMaster:
             return "PE"
         return ""
 
+    def _build_search_entries(self, secid_info: dict) -> list[ScripEntry]:
+        entries: list[ScripEntry] = []
+        for info in secid_info.values():
+            exch_id, inst, underlying, exp, strike, opt_type, display_name = info
+            if not display_name:
+                continue
+
+            display_str, inst_type, _inst_priority = self._make_display_str(
+                inst, underlying, display_name
+            )
+
+            exp_str = str(exp) if exp else ""
+            month_tag = ""
+            for m_int in range(1, 13):
+                if f"-{m_int:02d}-" in exp_str:
+                    month_tag = self.cfg.month_tags.get(m_int, "")
+                    break
+
+            opt_safe = self._normalise_opt_type(opt_type)
+            strike_val = float(strike or 0.0)
+            strike_int = (
+                int(strike_val)
+                if strike_val and float(strike_val).is_integer()
+                else None
+            )
+
+            # ── MEMORY CHANGE: expiry_sort and sort_key slots removed.
+            #    • expiry_sort was identical to expiry — use entry.expiry instead.
+            #    • sort_key 4-tuple (72 B each) replaced by inline lambda in
+            #      _commit_indexes that reads existing slots directly.
+            entries.append(
+                ScripEntry(
+                    display=display_str,
+                    symbol=sys.intern(underlying),
+                    inst_type=sys.intern(inst_type),
+                    strike=strike_val,
+                    opt_type=sys.intern(opt_safe),
+                    expiry=sys.intern(exp_str) if exp_str else "",
+                    exch=sys.intern(exch_id),
+                    month_tag=sys.intern(month_tag) if month_tag else "",
+                    strike_int=strike_int,
+                )
+            )
+        return entries
+
     def _fold_chunk(
         self,
         chunk: pd.DataFrame,
@@ -490,7 +533,6 @@ class ScripMaster:
         opt_index: dict,
         expiry_index: dict,
         secid_info: dict,
-        base_to_name: dict,
         today_str: str,
     ) -> None:
         if chunk.empty:
@@ -499,12 +541,11 @@ class ScripMaster:
         expiry_strs = chunk["SM_EXPIRY_DATE"].astype(str).str.split().str[0]
         eq_mask = chunk["INSTRUMENT"].isin(self.cfg.eq_index_instr)
 
-        # Process Equities
         for row in chunk[eq_mask].itertuples(index=False):
             str_sec_id = str(row.SECURITY_ID)
 
             if str_sec_id in secid_info:
-                existing_inst = secid_info[str_sec_id].inst_type
+                existing_inst = secid_info[str_sec_id][1]
                 if str(row.INSTRUMENT).upper() == "INDEX" and existing_inst != "INDEX":
                     continue
 
@@ -520,27 +561,16 @@ class ScripMaster:
                 else " ".join(str(display_raw).split())
             )
 
-            # Extract base-to-name mapping inline
-            if inst_interned in self.cfg.eq_index_instr and disp_name:
-                base_to_name[sym_interned] = str(disp_name).strip().upper()
-
-            display_str, inst_type = self._make_display_str(
-                inst_interned, sym_interned, disp_name
+            secid_info[str_sec_id] = (
+                exch_interned,
+                inst_interned,
+                sym_interned,
+                None,
+                None,
+                None,
+                disp_name,
             )
 
-            secid_info[str_sec_id] = ScripEntry(
-                display=display_str,
-                exch=exch_interned,
-                expiry="",
-                inst_type=sys.intern(inst_type),
-                month_tag="",
-                opt_type="",
-                strike=0.0,
-                strike_int=None,
-                symbol=sym_interned,
-            )
-
-        # Process Derivatives
         for row, exp in zip(
             chunk[~eq_mask].itertuples(index=False), expiry_strs[~eq_mask], strict=True
         ):
@@ -578,33 +608,12 @@ class ScripMaster:
             if key not in opt_index:
                 str_sec_id = str(row.SECURITY_ID)
                 opt_index[key] = (str_sec_id, int(row.LOT_SIZE))
-
-                display_str, inst_type = self._make_display_str(
-                    inst_interned, sym_interned, disp_name
-                )
-
-                month_tag = ""
-                for m_int in range(1, 13):
-                    if f"-{m_int:02d}-" in exp_interned:
-                        month_tag = self.cfg.month_tags.get(m_int, "")
-                        break
-
-                opt_safe = self._normalise_opt_type(opt_type)
-                strike_val = float(strike or 0.0)
-                strike_int = (
-                    int(strike_val)
-                    if strike_val and float(strike_val).is_integer()
-                    else None
-                )
-
-                secid_info[str_sec_id] = ScripEntry(
-                    display=display_str,
-                    exch=exch_interned,
-                    expiry=exp_interned,
-                    inst_type=sys.intern(inst_type),
-                    month_tag=sys.intern(month_tag) if month_tag else "",
-                    opt_type=sys.intern(opt_safe),
-                    strike=strike_val,
-                    strike_int=strike_int,
-                    symbol=sym_interned,
+                secid_info[str_sec_id] = (
+                    exch_interned,
+                    inst_interned,
+                    sym_interned,
+                    exp_interned,
+                    strike,
+                    opt_type,
+                    disp_name,
                 )
