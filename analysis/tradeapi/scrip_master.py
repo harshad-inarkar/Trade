@@ -29,7 +29,8 @@ CONFIG_PATH = BASE_DIR / "scrip_master.toml"
 
 REQUEST_TIMEOUT_SECONDS = 3
 
-EXCLUDED_KEYS = {"month_tag", "name_tokens", "strike_int"}
+EXCLUDED_KEYS = {"month_tag", "name_tokens"}
+DATE_STR_LEN = 7
 
 _INST_PRIORITY: dict[str, int] = {"EQ": 0, "FUT": 1, "OPT": 2}
 
@@ -45,7 +46,6 @@ class ScripEntry:
     name_tokens: tuple[str, ...]
     opt_type: str
     strike: float
-    strike_int: int | None
     symbol: str
 
     __slots__ = (
@@ -57,7 +57,6 @@ class ScripEntry:
         "name_tokens",
         "opt_type",
         "strike",
-        "strike_int",
         "symbol",
     )
 
@@ -70,10 +69,9 @@ class ScripEntry:
         month_tag: str,
         opt_type: str,
         strike: float,
-        strike_int: int | None,
         symbol: str,
     ) -> None:
-        # Direct attribute assignment is ~20% faster than dynamic **kwargs setattr
+
         self.display = display
         self.exch = exch
         self.expiry = expiry
@@ -81,7 +79,6 @@ class ScripEntry:
         self.month_tag = month_tag
         self.opt_type = opt_type
         self.strike = strike
-        self.strike_int = strike_int
         self.symbol = symbol
         self.name_tokens = ()
 
@@ -290,7 +287,7 @@ class ScripMaster:
         self._ensure_loaded()
 
         if seg in self.cfg.eq_index_instr:
-            if self._eq_index:
+            if self._eq_index is not None:
                 return self._eq_index.get((exch, symb), (None, 0))
             return None, 0
 
@@ -303,7 +300,8 @@ class ScripMaster:
 
         date_key = expiry_date
         if not date_key or date_key not in valid_expiries:
-            date_key = min(valid_expiries)
+            # Replaced min() with index [0] because the tuple is now pre-sorted
+            date_key = valid_expiries[0]
 
         key = (exch, seg, symb, date_key, strike, opt_type)
         return self._opt_index.get(key) or (None, 0)
@@ -311,17 +309,32 @@ class ScripMaster:
     def _ensure_loaded(self, *, refresh_master_scrip: bool = False) -> None:
         if self._eq_index is not None:
             return
+
         if not LOCAL_CSV.exists() or refresh_master_scrip:
             raw_df = self._download_segments()
             if raw_df is not None and not raw_df.empty:
-                self._save_and_index(raw_df)
+                self._save_csv_only(raw_df)
             elif LOCAL_CSV.exists():
                 LOGGER.warning("Download failed. Falling back to cached CSV.")
-                self._index_from_csv()
             else:
                 LOGGER.error("Scrip master unavailable: no download/cache.")
-        else:
+
+            # [RAM FIX]: Completely destroy the massive DataFrame BEFORE indexing begins
+            del raw_df
+            gc.collect()
+
+        if LOCAL_CSV.exists():
             self._index_from_csv()
+
+    def _save_csv_only(self, df: pd.DataFrame) -> None:
+        today_str = _get_today_str()
+        is_eq = df["INSTRUMENT"].isin(self.cfg.eq_index_instr)
+
+        expiry_dates = df["SM_EXPIRY_DATE"].astype(str).str.split().str[0]
+        df = df[is_eq | (~is_eq & (expiry_dates >= today_str))].copy()
+
+        LOCAL_CSV.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(LOCAL_CSV, index=False)
 
     def _download_one_segment(self, segment: str) -> pd.DataFrame | None:
         try:
@@ -369,20 +382,13 @@ class ScripMaster:
         LOCAL_CSV.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(LOCAL_CSV, index=False)
 
-        eq_idx: dict[Any, Any] = {}
-        opt_idx: dict[Any, Any] = {}
-        expiry_idx: dict[Any, Any] = {}
-        sec_info: dict[Any, Any] = {}
-        base_to_name: dict[str, str] = {}
-
-        self._fold_chunk(
-            df, eq_idx, opt_idx, expiry_idx, sec_info, base_to_name, today_str
-        )
-
+        # [RAM FIX]: Completely destroy the massive DataFrame BEFORE indexing
+        # to prevent PyMalloc from holding empty arenas hostage.
         del df
         gc.collect()
 
-        self._commit_indexes(eq_idx, opt_idx, expiry_idx, sec_info, base_to_name)
+        # Route directly to the chunked CSV loader
+        self._index_from_csv()
 
     def _index_from_csv(self) -> None:
         eq_idx: dict[Any, Any] = {}
@@ -433,10 +439,10 @@ class ScripMaster:
     ) -> None:
         self._eq_index = eq_index
         self._opt_index = opt_index
-        self._expiry_index = expiry_index
+        # [RAM FIX]: Convert heavy sets to lightweight pre-sorted tuples
+        self._expiry_index = {k: tuple(sorted(v)) for k, v in expiry_index.items()}
         self._secid_info = secid_info
 
-        # Search entries points directly to the already-built objects in secid_info.
         search_entries = list(secid_info.values())
 
         search_entries.sort(
@@ -536,7 +542,6 @@ class ScripMaster:
                 month_tag="",
                 opt_type="",
                 strike=0.0,
-                strike_int=None,
                 symbol=sym_interned,
             )
 
@@ -582,20 +587,18 @@ class ScripMaster:
                 display_str, inst_type = self._make_display_str(
                     inst_interned, sym_interned, disp_name
                 )
-
+                # CPU OPTIMIZATION: Parse integer month
+                # directly from interned YYYY-MM-DD
                 month_tag = ""
-                for m_int in range(1, 13):
-                    if f"-{m_int:02d}-" in exp_interned:
+                if len(exp_interned) >= DATE_STR_LEN:
+                    try:
+                        m_int = int(exp_interned[5:DATE_STR_LEN])
                         month_tag = self.cfg.month_tags.get(m_int, "")
-                        break
+                    except (ValueError, IndexError):
+                        pass
 
                 opt_safe = self._normalise_opt_type(opt_type)
                 strike_val = float(strike or 0.0)
-                strike_int = (
-                    int(strike_val)
-                    if strike_val and float(strike_val).is_integer()
-                    else None
-                )
 
                 secid_info[str_sec_id] = ScripEntry(
                     display=display_str,
@@ -605,6 +608,5 @@ class ScripMaster:
                     month_tag=sys.intern(month_tag) if month_tag else "",
                     opt_type=sys.intern(opt_safe),
                     strike=strike_val,
-                    strike_int=strike_int,
                     symbol=sym_interned,
                 )

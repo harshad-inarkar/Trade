@@ -17,7 +17,7 @@ _MIN_QUERY_LEN = 2
 
 # Only internal/helper fields that must never appear in search result dicts.
 # expiry_sort and sort_key have been removed from ScripEntry entirely.
-EXCLUDED_KEYS = {"month_tag", "name_tokens", "strike_int"}
+EXCLUDED_KEYS = {"month_tag", "name_tokens"}
 
 
 @dataclass
@@ -57,42 +57,53 @@ class SearchEngine:
         self.entries = entries
         total_entries = len(entries)
 
-        # Use list[int] during construction — O(1) append, no hash overhead.
-        # We convert to array.array once at the end.
         posting: dict[str, list[int]] = defaultdict(list)
         doc_freq: dict[str, int] = defaultdict(int)
 
+        # Cache underlying tokens to share tuple references across options!
+        token_cache: dict[str, tuple[str, ...]] = {}
+
+        # Pre-calculate ignore words for extremely fast filtering
+        ignore_words = self.cfg.stop_words.copy()
+        ignore_words.update({"CE", "PE", "CALL", "PUT", "FUT", "OPT", "EQ"})
+        ignore_words.update(self.cfg.month_aliases.keys())
+
         for i, entry in enumerate(entries):
             underlying = entry.symbol
+
+            # [RAM FIX]: Options share identical textual tokens with their base equity.
+            # Reusing the exact same tuple reference saves ~25 MB of RAM instantly.
+            if entry.inst_type != "EQ" and underlying in token_cache:
+                tokens = token_cache[underlying]
+                entry.name_tokens = tokens
+                for tok in tokens:
+                    posting[tok].append(i)
+                    doc_freq[tok] += 1
+                continue
+
             comp_name = base_to_name.get(underlying, "")
             display_name = entry.display
 
             text = f"{underlying} {comp_name} {display_name}".upper()
 
-            # CRITICAL OPTIMIZATION: exclude pure numeric tokens; numeric
-            # filters are handled via ctx.strike_int in structured query bounds.
             words = {
                 w
                 for w in text.replace("-", " ").split()
-                if w and w not in self.cfg.stop_words and not w.isdigit()
+                if w and w not in ignore_words and not w.isdigit()
             }
 
-            # ── MEMORY CHANGE: tuple instead of frozenset ──────────────────
-            # frozenset(6 tokens) ≈ 728 B; tuple(6 tokens) ≈ 88 B.
-            # 300k entries * 640 B saving = ~192 MB.
-            # Membership/prefix/subseq tests iterate n≤~10 tokens, so
-            # O(n) tuple scan vs O(1) frozenset lookup is imperceptible.
-            entry.name_tokens = tuple(words)
+            tokens = tuple(words)
+            entry.name_tokens = tokens
+            if entry.inst_type == "EQ":
+                token_cache[underlying] = tokens
 
-            for tok in words:
+            for tok in tokens:
                 posting[tok].append(i)
                 doc_freq[tok] += 1
 
-        # Convert posting lists to compact arrays and build vocab/IDF.
         self._name_inv_index = {
             tok: array.array("i", idx_list) for tok, idx_list in posting.items()
         }
-        # Free the build-time lists immediately — they can be large.
         del posting
 
         self.vocab = sorted(self._name_inv_index.keys())
@@ -227,8 +238,15 @@ class SearchEngine:
         if ctx.month_token:
             candidates = [c for c in candidates if c.month_tag == ctx.month_token]
 
+        # Lazily check strike logic to avoid storing 300,000 integers in memory
         if ctx.strike_int is not None:
-            candidates = [c for c in candidates if c.strike_int == ctx.strike_int]
+            candidates = [
+                c
+                for c in candidates
+                if c.strike > 0
+                and c.strike.is_integer()
+                and int(c.strike) == ctx.strike_int
+            ]
 
         return candidates
 
