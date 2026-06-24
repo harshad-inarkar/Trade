@@ -8,7 +8,7 @@ from utils.data.paths import (
     REMOTE_INTRADAY_DIR_PATH,
     REMOTE_NSE_INDX_DATA,
 )
-from utils.utility import out
+from utils.logging.log_utils import out
 
 
 def sync_data_args(src: str, dst: str) -> None:

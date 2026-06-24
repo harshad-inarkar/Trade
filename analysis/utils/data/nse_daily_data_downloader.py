@@ -20,7 +20,7 @@ import tomllib
 # ─── Custom Imports ───────────────────────────────────────────────────────────
 from utils.data.paths import NSE_INTRADAY_DIR_PATH, REMOTE_INTRADAY_DIR_PATH
 from utils.data.sync_data import sync_data_args
-from utils.utility import INDIA_TZ, out
+from utils.time.time_utils import INDIA_TZ, out
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

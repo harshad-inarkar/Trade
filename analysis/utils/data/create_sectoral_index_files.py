@@ -7,7 +7,7 @@ import pandas as pd
 import requests
 
 from utils.data.paths import NSE_INDX_DATA
-from utils.utility import out
+from utils.logging.log_utils import out
 
 Path(NSE_INDX_DATA).mkdir(parents=True, exist_ok=True)
 

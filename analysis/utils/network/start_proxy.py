@@ -8,7 +8,7 @@ from pathlib import Path
 
 import tomllib
 
-from utils.utility import LOGGER
+from utils.logging.log_utils import LOGGER
 
 script_dir = Path(__file__).parent
 config_file = script_dir / "proxy_config.toml"

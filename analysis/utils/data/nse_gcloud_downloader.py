@@ -16,7 +16,7 @@ import functions_framework
 import requests
 from google.cloud import storage
 
-from utils.utility import INDIA_TZ, out
+from utils.time.time_utils import INDIA_TZ, out
 
 # ── GCS config ────────────────────────────────────────────────────────────────
 GCS_BUCKET = "nse-data-bucket"

@@ -20,8 +20,9 @@ from apps.nse_vol_tracker.data_processor import PRICE, VOL
 from apps.nse_vol_tracker.indicators import IndicatorFactory
 from apps.nse_vol_tracker.sector_loader import load_sector_symbols
 from utils.data.paths import NSE_INTRADAY_DIR_PATH, OUT_DIR
-from utils.fastapi_base import AppPaths, BaseAppConfig, BaseFastAPIApp
-from utils.utility import out, wait_next_wall_clock
+from utils.fastapi.fastapi_base import AppPaths, BaseAppConfig, BaseFastAPIApp
+from utils.logging.log_utils import out
+from utils.time.time_utils import wait_next_wall_clock
 
 paths = AppPaths.resolve(__file__)
 

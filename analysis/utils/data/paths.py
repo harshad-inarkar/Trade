@@ -1,3 +1,4 @@
+from importlib.util import find_spec
 from pathlib import Path
 
 import tomllib
@@ -62,6 +63,15 @@ class PathManager:
             return Path(configured_path)
         return None
 
+    def get_module_path(
+        self, module_name: str, parent_flag: bool = True
+    ) -> Path | None:
+        """Return the Path to the top-level module directory for a given module name."""
+        spec = find_spec(module_name)
+        if spec and spec.origin:
+            return Path(spec.origin).parent if parent_flag else Path(spec.origin)
+        return None
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Module-Level Exports
@@ -70,6 +80,12 @@ class PathManager:
 
 # Instantiate the path manager
 _manager = PathManager()
+
+
+def get_module_path(module_name: str, parent_flag: bool = True) -> Path | None:
+    """Return the Path to the top-level module directory for a given module name."""
+    return _manager.get_module_path(module_name=module_name, parent_flag=parent_flag)
+
 
 # Base Path Objects & Strings
 ROOT_SRC_DIR_PATH_OBJ: Path = _manager.root_src
@@ -102,3 +118,4 @@ REMOTE_INTRADAY_DIR_PATH: str | None = (
 )
 
 MASTER_CONFIG_PATH = Path("~/.config").expanduser()
+CONFIG_DIR = ROOT_SRC_DIR_PATH_OBJ / "utils/config"

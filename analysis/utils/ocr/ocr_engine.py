@@ -5,7 +5,7 @@ from typing import Any
 import tesserocr
 from PIL import Image, ImageOps
 
-from utils.utility import out
+from utils.logging.log_utils import out
 
 # ─── Thread-Local API Storage ────────────────────────────────────────────────
 _thread_local = threading.local()

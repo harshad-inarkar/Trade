@@ -19,7 +19,8 @@ from PyQt5.QtWidgets import (
 
 # ── Environment Setup ────────────────────────────────────────────────────────
 from utils.data.paths import OUT_DIR
-from utils.utility import INDIA_TZ, out
+from utils.logging.log_utils import out
+from utils.time.time_utils import INDIA_TZ
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 # DISPLAY_FIELDS = ['symbol', 'volume_fast','vol_surge','price_surge','ltp']

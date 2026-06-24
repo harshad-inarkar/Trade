@@ -18,7 +18,8 @@ from requests.exceptions import RequestException
 
 from tradeapi.scrip_search import SearchEngine
 from utils.data.paths import OUT_DIR
-from utils.utility import INDIA_TZ, LOGGER
+from utils.logging.log_utils import LOGGER
+from utils.time.time_utils import INDIA_TZ
 
 if TYPE_CHECKING:
     import requests

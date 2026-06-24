@@ -25,7 +25,7 @@ from apps.nse_vol_tracker.data_processor import (
     get_one_day_intervals,
     read_csv_files_to_arrays,
 )
-from utils.utility import INDIA_TZ, out
+from utils.time.time_utils import INDIA_TZ, out
 
 MIN_TF = "3"
 TF_KEYS = (MIN_TF, "15", "D")

@@ -22,7 +22,7 @@ from utils.data.create_sectoral_index_files import (
     get_file_name_from_index,
 )
 from utils.data.paths import NSE_INDX_DATA
-from utils.utility import out
+from utils.logging.log_utils import out
 
 CATEGORIES_CSV = Path(NSE_INDX_DATA) / "categories.csv"
 UNIQ_CATEGORIES_CSV = Path(NSE_INDX_DATA) / "uniq_categories.csv"

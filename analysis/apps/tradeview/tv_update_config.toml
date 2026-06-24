@@ -1,0 +1,9 @@
+[settings]
+reload_interval = 30
+buffer_seconds = -10
+tv_focus_flag = true
+
+[coordinates]
+indicator = [1076, 126]
+textbox = [1185, 299]
+ok = [1410, 764]

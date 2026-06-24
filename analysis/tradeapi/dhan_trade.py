@@ -19,8 +19,9 @@ from requests.exceptions import RequestException
 from tradeapi.price_strike_calc import get_price_strike, get_strike_interval
 from tradeapi.scrip_master import ScripMaster, _get_today_str
 from utils.data.paths import MASTER_CONFIG_PATH
+from utils.logging.log_utils import LOGGER
 from utils.network.start_proxy import SSHProxyManager
-from utils.utility import INDIA_TZ, LOGGER
+from utils.time.time_utils import INDIA_TZ
 
 __all__ = ["DhanTrader", "Instrument", "PriceLevels", "UIOverride"]
 

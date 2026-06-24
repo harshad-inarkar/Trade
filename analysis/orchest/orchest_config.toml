@@ -5,11 +5,11 @@ module = "apps.nse_vol_tracker.vol_app"
 args = []
 
 [scripts.tv_update]
-module = "tradeview.tv_update"
+module = "apps.tradeview.tv_update"
 args = []
 
 [scripts.tv_scanner]
-module = "tradeview.tv_scanner"
+module = "apps.tradeview.tv_scanner"
 args = []
 
 [scripts.trade_app]

@@ -6,7 +6,6 @@ LOCAL_WORKING_ROOT_DIR="$HOME/Documents/projects/trade/analysis"
 
 
 SOURCE_TARGET=(
-    "tradeview"
     "tradeapi"
     "orchest"
     "utils"

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import tomllib
 
-from utils.utility import INDIA_TZ
+from utils.time.time_utils import INDIA_TZ
 
 # Attempt to load psutil for performance stats
 try:
@@ -20,7 +20,7 @@ except ImportError:
 
 # ─── Custom Imports ───────────────────────────────────────────────────────────
 from utils.data.paths import NSE_LOGS_DIR, ROOT_SRC_DIR
-from utils.utility import LOGGER
+from utils.logging.log_utils import LOGGER
 
 # Default configurations
 MAX_LOG_SIZE_KB = 100  # KB

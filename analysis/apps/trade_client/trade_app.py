@@ -10,8 +10,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from tradeapi.dhan_trade import DhanTrader, UIOverride
-from utils.fastapi_base import AppPaths, BaseAppConfig, BaseFastAPIApp
-from utils.utility import LOGGER, bool_env_or_cfg
+from utils.fastapi.fastapi_base import AppPaths, BaseAppConfig, BaseFastAPIApp
+from utils.logging.log_utils import LOGGER, bool_env_or_cfg
 
 paths = AppPaths.resolve(__file__)
 

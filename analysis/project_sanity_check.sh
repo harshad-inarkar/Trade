@@ -8,7 +8,6 @@ targets=(
     apps
     tradeapi
     utils
-    tradeview
     orchest
 )
 

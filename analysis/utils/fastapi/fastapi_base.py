@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from utils.data.paths import templates_dir
-from utils.utility import LOGGER, get_project_log_level
+from utils.logging.log_utils import LOGGER, get_project_log_level
 
 
 @dataclass(frozen=True)
