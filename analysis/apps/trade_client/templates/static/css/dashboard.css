@@ -414,6 +414,7 @@ header {
     font-size: 0.8rem;
     font-weight: 600;
     text-transform: uppercase;
+    gap: 20px;
 }
 
 .total-pnl-label {
