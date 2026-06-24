@@ -45,7 +45,13 @@
   <div class="chart-outer">
     <div class="chart-panel">
       <div class="chart-panel-header">
-        <span class="chart-panel-title">VOLUME · MOVING AVERAGE OVERLAY</span>
+        
+        {# Tab Navigation #}
+        <div class="chart-tabs">
+          <button class="tab-btn active" id="tabVol">Volume</button>
+          <button class="tab-btn" id="tabPrice">Price</button>
+        </div>
+
         <div class="chart-legend-pills">
           <span class="legend-pill legend-pill--fast">
             <span class="legend-swatch legend-swatch--fast"></span>Fast MA ({{ fast }})
@@ -86,58 +92,15 @@
   </div>
 
   {# ── Data payload ── #}
-  <script id="rawData" type="application/json">{{ data | tojson }}</script>
-
-  <script type="module">
-    import { VolumeChartManager } from "{{ url_for('static', path='js/chart_module.js') }}";
-
-    document.addEventListener('DOMContentLoaded', () => {
-      const rawData = JSON.parse(document.getElementById('rawData').textContent);
-      const rows    = rawData.slice(1);  // skip header row
-
-      const labels  = rows.map(r => r[0]);  // timestamp_full
-      const slow    = rows.map(r => r[2]);  // volume_slow MA
-      const fast    = rows.map(r => r[3]);  // volume_fast MA
-      // Attempt to pick up LTP column if backend provides it
-      const prices  = rows.every(r => r[4] != null && r[4] !== '')
-        ? rows.map(r => Number(r[4]))
-        : null;
-
-      /* ── Populate footer stats ── */
-      function fmtVol(v) {
-        if (v == null || isNaN(v)) return '—';
-        const n = Number(v);
-        if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
-        if (n >= 1e3) return (n / 1e3).toFixed(1)  + 'K';
-        return Math.round(n).toLocaleString();
-      }
-
-      const lastFast = fast[fast.length - 1];
-      const lastSlow = slow[slow.length - 1];
-      const ratio    = lastSlow ? (lastFast / lastSlow) : null;
-      const isBull   = lastFast > lastSlow;
-
-      document.getElementById('statFastNow').textContent = fmtVol(lastFast);
-      document.getElementById('statSlowNow').textContent = fmtVol(lastSlow);
-      document.getElementById('statRatio').textContent   = ratio ? ratio.toFixed(3) : '—';
-      document.getElementById('statBars').textContent    = rows.length;
-
-      const sigEl = document.getElementById('statSignal');
-      if (lastFast != null && lastSlow != null) {
-        sigEl.textContent   = isBull ? '↑ BULL' : '↓ BEAR';
-        sigEl.classList.add(isBull ? 'c-green' : 'c-red');
-      }
-
-      /* ── Chart ── */
-      new VolumeChartManager('mainChart', {
-        labels,
-        fast,
-        slow,
-        prices,
-        fastPeriod: {{ fast }},
-        slowPeriod: {{ slow }},
-        timeframe:  '{{ timeframe }}',
-      });
-    });
+  <script id="chartConfig" type="application/json">
+    {
+      "fastPeriod": {{ fast }},
+      "slowPeriod": {{ slow }},
+      "timeframe": "{{ timeframe }}"
+    }
   </script>
+  <script id="rawData" type="application/json">{{ data | tojson }}</script>
+  
+  {# External logic execution #}
+  <script type="module" src="{{ url_for('static', path='js/chart_module.js') }}"></script>
 {% endblock %}
