@@ -250,3 +250,35 @@ tr:hover td { background: var(--surface2); }
   color:       var(--text);
   font-weight: 600;
 }
+
+/* ── Chart Tabs ── */
+.chart-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tab-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 4px 14px;
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.tab-btn.active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}

@@ -108,57 +108,6 @@
 .sort-arrows a:hover  { color: var(--text);    background: transparent; }
 .sort-arrows a.active { color: var(--accent3); background: transparent; }
 
-/* ── Filter form ── */
-.filter-form {
-  display:     flex;
-  align-items: center;
-  gap:         7px;
-  flex-shrink: 0;
-}
-
-.filter-form input[type="text"] {
-  font-family:   var(--mono);
-  font-size:     .68rem;
-  padding:       4px 10px;
-  border:        1px solid var(--border);
-  border-radius: var(--radius);
-  background:    var(--bg);
-  color:         var(--text);
-  outline:       none;
-  width:         172px;
-  transition:    border-color .2s;
-}
-
-.filter-form input[type="text"]::placeholder { color: var(--muted); }
-.filter-form input[type="text"]:focus        { border-color: var(--accent); }
-
-.filter-form button {
-  font-family:    var(--mono);
-  font-size:      .65rem;
-  letter-spacing: .06em;
-  padding:        4px 11px;
-  border:         1px solid var(--accent);
-  border-radius:  var(--radius);
-  background:     transparent;
-  color:          var(--accent);
-  cursor:         pointer;
-  transition:     background .2s, color .2s;
-}
-
-.filter-form button:hover { background: var(--accent); color: #000; }
-
-.filter-form a.clear-btn {
-  font-family:     var(--mono);
-  font-size:       .65rem;
-  color:           var(--muted);
-  text-decoration: none;
-  padding:         3px 8px;
-  border:          1px solid var(--border);
-  border-radius:   var(--radius);
-  transition:      color .2s, border-color .2s;
-}
-
-.filter-form a.clear-btn:hover { color: var(--accent2); border-color: var(--accent2); }
 
 /* ═══════════════════════════════════════════════
    SECTOR GRID
@@ -253,13 +202,21 @@
 }
 
 .vol-value {
-  font-family: var(--mono);
-  font-size:   .75rem;
-  font-weight: 500;
-  color:       var(--text);
-  white-space: nowrap;
-  min-width:   52px;
-  text-align:  right;
+  display:         flex;
+  align-items:     center;
+  justify-content: flex-end;
+  gap:             4px;          /* Replaces the inline margin-left/right */
+  font-family:     var(--mono);
+  font-size:       .75rem;
+  font-weight:     500;
+  color:           var(--text);
+  white-space:     nowrap;
+  min-width:       52px;
+}
+
+.vol-sep {
+  opacity:   0.3;
+  font-size: .65rem;
 }
 
 /* ── Symbol chips — Fix 2: accent colour restored ── */

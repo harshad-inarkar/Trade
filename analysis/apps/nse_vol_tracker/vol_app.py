@@ -406,7 +406,7 @@ class VolTrackerApp(BaseFastAPIApp):
         fast: int = 8,
         slow: int = 21,
         filt: Annotated[str, Query(alias="filter")] = "",
-        sort: str = "vol",
+        sort: str = "volume_fast",  # Default to volume_fast
         order: str = "desc",
     ) -> Any:
         tf_safe = tf if tf in TF_KEYS else MIN_TF
@@ -418,14 +418,17 @@ class VolTrackerApp(BaseFastAPIApp):
 
         for sec_name, symbols in sector_map.items():
             sec_vfast = []
+            sec_vslow = []
             valid_syms = []
             for sym in symbols:
                 if sym in data_map:
                     valid_syms.append(sym)
                     sec_vfast.append(data_map[sym][1])
+                    sec_vslow.append(data_map[sym][2])  # volume_slow
 
             if valid_syms:
                 avg_vfast = sum(sec_vfast) / len(sec_vfast)
+                avg_vslow = sum(sec_vslow) / len(sec_vslow)
                 heat_pct = min(avg_vfast / 200.0, 1.0)
                 sectors_data.append(
                     {
@@ -433,6 +436,7 @@ class VolTrackerApp(BaseFastAPIApp):
                         "symbols": valid_syms,
                         "symbol_count": len(valid_syms),
                         "avg_volume_fast": avg_vfast,
+                        "avg_volume_slow": avg_vslow,
                         "heat_pct": heat_pct,
                         "top_symbol": max(valid_syms, key=lambda s: data_map[s][1])
                         if valid_syms
@@ -441,10 +445,17 @@ class VolTrackerApp(BaseFastAPIApp):
                 )
 
         rev = order == "desc"
-        if sort == "vol":
+        # Safely handle the sorts dynamically
+        if sort == "volume_fast":
             sectors_data.sort(key=lambda x: x["avg_volume_fast"], reverse=rev)
+        elif sort == "volume_slow":
+            sectors_data.sort(key=lambda x: x["avg_volume_slow"], reverse=rev)
         elif sort == "name":
             sectors_data.sort(key=lambda x: x["name"], reverse=rev)
+        else:
+            sectors_data.sort(
+                key=lambda x: x["avg_volume_fast"], reverse=rev
+            )  # Fallback
 
         return self.templates.TemplateResponse(
             request,
