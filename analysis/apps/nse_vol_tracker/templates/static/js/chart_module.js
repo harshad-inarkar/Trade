@@ -1,6 +1,7 @@
 /**
  * VolumeChartManager — NSE Portal
  * Clean, dual-purpose MA chart (Volume / Price)
+ * Features: Infinite X-Zoom/Pan, Dynamic Y-Scaling, Gridless Dark Mode
  */
 
 const C = {
@@ -87,9 +88,8 @@ function makeEndLabelPlugin() {
         const lastVal = ds.data[ds.data.length - 1];
         if (lastVal == null) return;
 
-        // Pulling formatting context directly from Chart Manager config
         const isPrice = chart.options.plugins.customContext.isPrice;
-        const text   = isPrice ? '₹' + Number(lastVal).toFixed(2) : fmtVol(lastVal);
+        const text    = isPrice ? '₹' + Number(lastVal).toFixed(2) : fmtVol(lastVal);
         
         const color  = ds.borderColor;
         const padX   = 6, padY = 3, fSize = 9;
@@ -119,7 +119,37 @@ function makeEndLabelPlugin() {
   };
 }
 
-class VolumeChartManager {
+/** * Calculates the Min and Max Y-axis bounds based solely on the data 
+ * currently visible within the X-axis Zoom frame. 
+ */
+function updateDynamicY({ chart }) {
+  const xScale = chart.scales.x;
+  const minIndex = Math.max(0, Math.floor(xScale.min));
+  const maxIndex = Math.min(chart.data.labels.length - 1, Math.ceil(xScale.max));
+
+  let minVal = Infinity;
+  let maxVal = -Infinity;
+
+  chart.data.datasets.forEach((ds, i) => {
+    if (chart.getDatasetMeta(i).hidden) return;
+    for (let j = minIndex; j <= maxIndex; j++) {
+      const v = ds.data[j];
+      if (v != null) {
+        minVal = Math.min(minVal, v);
+        maxVal = Math.max(maxVal, v);
+      }
+    }
+  });
+
+  if (minVal !== Infinity && maxVal !== -Infinity) {
+    const pad = (maxVal - minVal) * 0.1 || (minVal * 0.05);
+    chart.options.scales.y.min = minVal - pad;
+    chart.options.scales.y.max = maxVal + pad;
+  }
+}
+
+
+export class VolumeChartManager {
   constructor(canvasId, config) {
     this.canvas = document.getElementById(canvasId);
     if (!this.canvas) throw new Error(`Canvas #${canvasId} not found`);
@@ -127,17 +157,6 @@ class VolumeChartManager {
     this.config = { isPrice: false, ...config };
     this.chart  = null;
     this._build();
-  }
-
-  _makeGradient(hex, a0 = 0.22, a1 = 0.0) {
-    return (context) => {
-      const { chartArea } = context.chart;
-      if (!chartArea) return rgba(hex, a0 * 0.5);
-      const g = context.chart.ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-      g.addColorStop(0, rgba(hex, a0));
-      g.addColorStop(1, rgba(hex, a1));
-      return g;
-    };
   }
 
   _build() {
@@ -153,7 +172,7 @@ class VolumeChartManager {
         backgroundColor: 'transparent',
         borderWidth: 1.5,
         tension: 0.4,
-        fill: false,
+        fill: false, // Absolutely no gradient fill under curve
         pointRadius: 0,
         pointHitRadius: 10,
         pointHoverRadius: 4,
@@ -166,10 +185,10 @@ class VolumeChartManager {
         label: fLabel,
         data: fast,
         borderColor: C.TEAL,
-        backgroundColor: this._makeGradient(C.TEAL, 0.18, 0.0),
+        backgroundColor: 'transparent',
         borderWidth: 1.5,
         tension: 0.4,
-        fill: true,
+        fill: false, // Absolutely no gradient fill under curve
         pointRadius: 0,
         pointHitRadius: 10,
         pointHoverRadius: 4,
@@ -182,7 +201,9 @@ class VolumeChartManager {
 
     const isDaily = String(timeframe).toUpperCase() === 'D';
     const tickBase = { color: C.MUTED, font: { family: C.MONO, size: 10 } };
-    const gridBase = { color: rgba(C.BORDER, 1), drawTicks: false };
+    
+    // Disable all background grids
+    const gridBase = { display: false, drawTicks: false };
 
     this.chart = new Chart(this.ctx, {
       type: 'line',
@@ -200,6 +221,7 @@ class VolumeChartManager {
             ticks: { ...tickBase, maxRotation: 0, minRotation: 0, maxTicksLimit: calcMaxTicks(labels.length), autoSkip: true, autoSkipPadding: 28, callback: (_, idx) => fmtLabel(labels[idx], { compact: isDaily }) },
           },
           y: {
+            beginAtZero: false, // Forces dynamic scaling range
             position: 'right', grid: gridBase, border: { display: false },
             ticks: { 
               ...tickBase, 
@@ -210,8 +232,24 @@ class VolumeChartManager {
           },
         },
         plugins: {
-          legend: { display: false }, // Handled via HTML
-          customContext: { isPrice: this.config.isPrice }, // Passed down for end-label plugin
+          legend: { display: false },
+          customContext: { isPrice: this.config.isPrice },
+          
+          // Infinite Pan & Zoom Hooks
+          zoom: {
+            pan: {
+              enabled: true,
+              mode: 'x',
+              onPan: updateDynamicY
+            },
+            zoom: {
+              wheel: { enabled: true },
+              pinch: { enabled: true },
+              mode: 'x',
+              onZoom: updateDynamicY
+            }
+          },
+
           tooltip: {
             backgroundColor: C.SURFACE, borderColor: C.BORDER, borderWidth: 1,
             titleColor: C.TEXT, bodyColor: C.MUTED,
@@ -240,7 +278,11 @@ class VolumeChartManager {
         this.chart.options.plugins.customContext.isPrice = isPrice;
     }
     
-    // Use 'none' to prevent a stuttering animation when switching tabs
+    // Clear custom Y zoom limits when changing tabs to prevent the new series from flat-lining
+    this.chart.resetZoom('none');
+    delete this.chart.options.scales.y.min;
+    delete this.chart.options.scales.y.max;
+    
     this.chart.update('none');
   }
 }
@@ -248,14 +290,13 @@ class VolumeChartManager {
 /* ─────────────────────────────────────────────
    Page Initialization & Event Binding
 ───────────────────────────────────────────── */
-// Executes automatically because <script type="module"> runs deferred
 const rawDataEl = document.getElementById('rawData');
 const configEl = document.getElementById('chartConfig');
 
 if (rawDataEl && configEl) {
     const rawData = JSON.parse(rawDataEl.textContent);
     const config = JSON.parse(configEl.textContent);
-    const rows = rawData.slice(1);  // skip header row
+    const rows = rawData.slice(1);
 
     const labels    = rows.map(r => r[0]);
     const volSlow   = rows.map(r => r[2]);
@@ -263,15 +304,12 @@ if (rawDataEl && configEl) {
     const priceFast = rows.map(r => r[5]);
     const priceSlow = rows.map(r => r[6]);
 
-    // 1. Restore the saved tab from the user's session
     const TAB_KEY = 'nse_active_tab';
     let isPriceTab = sessionStorage.getItem(TAB_KEY) === 'price';
 
-    // 2. Fetch DOM Tab elements
     const tabVol = document.getElementById('tabVol');
     const tabPrice = document.getElementById('tabPrice');
 
-    // 3. Immediately apply the saved visual state to the tabs
     if (isPriceTab) {
         tabPrice.classList.add('active');
         tabVol.classList.remove('active');
@@ -307,7 +345,6 @@ if (rawDataEl && configEl) {
       }
     }
 
-    // 4. Initialize the chart using the saved state data
     const chart = new VolumeChartManager('mainChart', {
       labels,
       fast: isPriceTab ? priceFast : volFast,
@@ -320,11 +357,10 @@ if (rawDataEl && configEl) {
 
     updateFooterStats();
 
-    // 5. Update listeners to save the user's choice
     tabVol.addEventListener('click', () => {
       if (!isPriceTab) return;
       isPriceTab = false;
-      sessionStorage.setItem(TAB_KEY, 'volume'); // Save State
+      sessionStorage.setItem(TAB_KEY, 'volume');
       tabVol.classList.add('active');
       tabPrice.classList.remove('active');
       chart.update({ fast: volFast, slow: volSlow, isPrice: false });
@@ -334,7 +370,7 @@ if (rawDataEl && configEl) {
     tabPrice.addEventListener('click', () => {
       if (isPriceTab) return;
       isPriceTab = true;
-      sessionStorage.setItem(TAB_KEY, 'price'); // Save State
+      sessionStorage.setItem(TAB_KEY, 'price');
       tabPrice.classList.add('active');
       tabVol.classList.remove('active');
       chart.update({ fast: priceFast, slow: priceSlow, isPrice: true });
