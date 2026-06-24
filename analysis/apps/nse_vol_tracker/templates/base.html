@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}NSE Portal{% endblock %}</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/base.css') }}" />
+    {% block extra_head %}{% endblock %}
+  </head>
+
+  <body>
+    <header>
+      <div class="header-brand">
+        <span class="logo">NSE&nbsp;PORTAL</span>
+        <span class="sub">Intraday Analytics</span>
+      </div>
+
+      {# ── Timeframe selector ── #}
+      <div class="tf-bar">
+        <span>TF:</span>
+        <a
+          href="?tf=3&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+          class="{{ 'active' if timeframe == '3' else '' }}"
+        >3</a>
+        <a
+          href="?tf=15&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+          class="{{ 'active' if timeframe == '15' else '' }}"
+        >15</a>
+        <a
+          href="?tf=D&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+          class="{{ 'active' if timeframe == 'D' else '' }}"
+        >D</a>
+      </div>
+
+      {# ── MA type selector ── #}
+      <div class="ma-controls">
+        <span>MA:</span>
+        <a
+          href="?tf={{ timeframe }}&ma=rma&fast={{ fast }}&slow={{ slow }}"
+          class="{{ 'active' if ma_type == 'rma' else '' }}"
+        >RMA</a>
+        <a
+          href="?tf={{ timeframe }}&ma=ema&fast={{ fast }}&slow={{ slow }}"
+          class="{{ 'active' if ma_type == 'ema' else '' }}"
+        >EMA</a>
+        <a
+          href="?tf={{ timeframe }}&ma=sma&fast={{ fast }}&slow={{ slow }}"
+          class="{{ 'active' if ma_type == 'sma' else '' }}"
+        >SMA</a>
+      </div>
+
+      {# ── Fast / Slow period inputs ── #}
+      <form class="length-form" method="get" action="">
+        <input type="hidden" name="tf" value="{{ timeframe }}" />
+        <input type="hidden" name="ma" value="{{ ma_type }}" />
+        {% if sort %}<input type="hidden" name="sort" value="{{ sort }}" />{% endif %}
+        {% if order %}<input type="hidden" name="order" value="{{ order }}" />{% endif %}
+        {% if filter %}<input type="hidden" name="filter" value="{{ filter }}" />{% endif %}
+        <span>FAST:</span>
+        <input type="number" name="fast" value="{{ fast }}" min="1" max="200" />
+        <span>SLOW:</span>
+        <input type="number" name="slow" value="{{ slow }}" min="1" max="200" />
+        <button type="submit">APPLY</button>
+      </form>
+
+      {# ── Primary navigation ── #}
+      <nav class="header-nav">
+        <a
+          href="/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+          class="{% block nav_idx %}{% endblock %}"
+        >Index</a>
+        <a
+          href="/sectors/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+          class="{% block nav_sec %}{% endblock %}"
+        >Sectors</a>
+      </nav>
+    </header>
+
+    {% block content %}{% endblock %}
+  </body>
+</html>

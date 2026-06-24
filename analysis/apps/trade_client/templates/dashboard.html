@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Dhan Portal — Automated Execution Engine & Trading Dashboard" />
+  <meta name="keywords" content="trading, dashboard, dhan, stocks, options, execution" />
+  <title>Dhan Portal — Trading Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/dashboard.css" />
+  <script>
+    window.DhanConfig = {
+      isDashboard: ("{{ view }}" !== "order"),
+      initActivePnl: parseFloat("{{ active_pnl_total | default(0) }}"),
+      initClosedPnl: parseFloat("{{ closed_pnl_total | default(0) }}")
+    };
+  </script>
+</head>
+
+<body>
+  {% macro trade_form(mode='place', pos=None, view_ctx='') %}
+  {% set pfx = 'reentry_' if mode == 'reentry' else '' %}
+  {% set is_close = (mode == 'close') %}
+  {% set is_reentry = (mode == 'reentry') %}
+
+  <form
+    action="{% if mode == 'place' %}/place_order{% if view_ctx == 'order' %}?view=order{% endif %}{% elif is_reentry %}/close_reentry{% else %}/close_position{% endif %}"
+    method="post" class="order-form">
+
+    {% if is_close or is_reentry %}
+    <input type="hidden" name="sec_id" value="{{ pos.security_id }}">
+    <input type="hidden" name="exchange_seg" value="{{ pos.exchange_seg }}">
+    <input type="hidden" name="net_qty" value="{{ pos.qty }}">
+    {% if is_reentry %}
+    <input type="hidden" name="symbol" value="{{ pos.base_symbol }}">
+    <input type="hidden" name="exchange" value="{{ pos.exchange }}">
+    <input type="hidden" name="product_type" value="{{ pos.product_type }}">
+    {% endif %}
+    {% endif %}
+
+    <div class="form-group flex-row-gap-10">
+      <div class="flex-1 flex-col">
+        <label>Symbol</label>
+        {% if is_close or is_reentry %}
+        <input type="text" value="{{ pos.display_name }}" readonly="readonly" class="w-full opacity-70" />
+        {% else %}
+        <div class="symbol-search-wrap">
+          <input type="text" name="symbol" placeholder="e.g. TCS" autocomplete="off" required />
+          <div id="symbol-search-dropdown" class="symbol-search-dropdown"></div>
+        </div>
+        {% endif %}
+      </div>
+      {% if mode == 'place' %}
+      <div class="flex-1 flex-col">
+        <label>Exchange</label>
+        <select name="exchange">
+          <option value="NSE">NSE</option>
+          <option value="MCX">MCX</option>
+        </select>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="form-group flex-row-gap-10">
+      <div class="flex-1 flex-col">
+        <label>Product Type</label>
+        <select name="{{ pfx }}product_type" {% if is_close or is_reentry %}class="pointer-events-none opacity-70"
+          tabindex="-1" {% endif %}>
+          {% if is_close or is_reentry %}
+          <option value="{{ pos.product_type }}">{{ pos.product_type }}</option>
+          {% else %}
+          <option value="CNC" {% if pos and pos.product_type=='CNC' %}selected="selected" {% endif %}>CNC</option>
+          <option value="INTRADAY" {% if pos and pos.product_type=='INTRADAY' %}selected="selected" {% endif %}>INTRADAY
+          </option>
+          <option value="MARGIN" {% if pos and pos.product_type=='MARGIN' %}selected="selected" {% endif %}>MARGIN
+          </option>
+          {% endif %}
+        </select>
+      </div>
+      <div class="flex-1 flex-col">
+        <label>Inst Type</label>
+        <select name="inst_type" {% if is_close or is_reentry %}class="pointer-events-none opacity-70" tabindex="-1" {%
+          endif %}>
+          {% if is_close or is_reentry %}
+          <option value="{{ pos.ui_inst_type or 'EQ' }}">{{ pos.ui_inst_type or 'EQ' }}</option>
+          {% else %}
+          <option value="" {% if not pos or not pos.ui_inst_type %}selected="selected" {% endif %}>Config Default
+          </option>
+          <option value="EQ" {% if pos and pos.ui_inst_type=='EQ' %}selected="selected" {% endif %}>Equity (EQ)</option>
+          <option value="OPT" {% if pos and pos.ui_inst_type=='OPT' %}selected="selected" {% endif %}>Options (OPT)
+          </option>
+          <option value="FUT" {% if pos and pos.ui_inst_type=='FUT' %}selected="selected" {% endif %}>Futures (FUT)
+          </option>
+          {% endif %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group flex-row-gap-10">
+      <div class="flex-1 flex-col">
+        <label>Order Mode</label>
+        <select name="{% if pfx %}{{ pfx }}type{% else %}order_mode{% endif %}">
+          {% if is_close %}
+          <option value="MARKET" selected="selected">Market</option>
+          <option value="LIMIT">Limit</option>
+          {% elif is_reentry %}
+          <option value="">Config Default</option>
+          <option value="FOREVER">Forever (GTT)</option>
+          <option value="ALERT">Alert Trigger</option>
+          <option value="SUPER">Super Order</option>
+          <option value="MARKET" selected="selected">Mark/Lim</option>
+          {% else %}
+          <option value="MARKET">Mark/Lim</option>
+          <option value="SUPER">Super Order</option>
+          <option value="FOREVER" selected="selected">Forever (GTT)</option>
+          <option value="ALERT">Alert Trigger</option>
+          {% endif %}
+        </select>
+      </div>
+      <div class="flex-1 flex-col">
+        <label>Alert Target</label>
+        <select name="{{ pfx }}alert_{% if pfx %}base{% else %}trigger_base{% endif %}" {% if is_close
+          %}disabled="disabled" {% endif %} {% if mode=='place' %}title="Only applies if Alert Trigger is selected" {%
+          endif %}>
+          <option value="PARENT">Underlying</option>
+          <option value="SELF">Same</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group flex-row-gap-10">
+      <div class="flex-1 flex-col">
+        <label>Strike (OPT)</label>
+        <input type="number" name="strike" value="{{ pos.strike if pos else '0.0' }}" step="0.05"
+          class="w-full {% if is_close or is_reentry %}opacity-70 pointer-events-none{% endif %}" {% if is_close or
+          is_reentry %}readonly="readonly" {% endif %} />
+      </div>
+      <div class="flex-1 flex-col">
+        <label>Opt Type (OPT)</label>
+        <select name="opt_type" {% if is_close or is_reentry %}class="pointer-events-none opacity-70" tabindex="-1" {%
+          endif %}>
+          {% if is_close or is_reentry %}
+          <option value="{{ pos.opt_type }}">{{ pos.opt_type or 'Auto' }}</option>
+          {% else %}
+          <option value="" {% if not pos or not pos.opt_type %}selected="selected" {% endif %}>Auto (By Side)</option>
+          <option value="CE" {% if pos and pos.opt_type=='CE' %}selected="selected" {% endif %}>Call (CE)</option>
+          <option value="PE" {% if pos and pos.opt_type=='PE' %}selected="selected" {% endif %}>Put (PE)</option>
+          {% endif %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group flex-row-gap-10">
+      <div class="flex-1 flex-col">
+        <label>Expiry Date</label>
+        <input type="text" name="expiry" value="{{ pos.expiry if pos else '' }}"
+          placeholder="{% if mode == 'place' %}Default{% else %}YYYY-MM-DD{% endif %}"
+          class="w-full {% if is_close or is_reentry %}opacity-70 pointer-events-none{% endif %}" {% if is_close or
+          is_reentry %}readonly="readonly" {% endif %} />
+      </div>
+      <div class="flex-1 flex-col">
+        <label>{% if is_close %}Qty (To Close){% elif is_reentry %}New Qty{% else %}Qty (Lots / Shares){% endif
+          %}</label>
+        <input type="number" name="qty" value="{{ pos.qty | abs if pos else 1 }}"
+          class="w-full {% if is_close %}opacity-70 pointer-events-none{% endif %}" {% if is_close %}readonly="readonly"
+          {% else %}min="1" {% endif %} />
+      </div>
+    </div>
+
+    <div class="form-group flex-row-gap-10">
+      <div class="flex-1 flex-col">
+        <label>Trigger / Entry Price</label>
+        <input type="number" name="{{ pfx }}price" value="0.0" step="0.05" min="0"
+          class="w-full {% if is_close %}opacity-70 pointer-events-none{% endif %}" {% if is_close %}readonly="readonly"
+          {% endif %} />
+      </div>
+      <div class="flex-1 flex-col">
+        <label>Limit Price</label>
+        <input type="number" name="{{ pfx }}limit_price" value="0.0" step="0.05" min="0" class="w-full" />
+      </div>
+    </div>
+
+    {% if not is_close %}
+    <div class="form-group flex-row-gap-10">
+      <div class="flex-1 flex-col">
+        <label>Target Price (Super)</label>
+        <input type="number" name="{{ pfx }}target_price" value="0.0" step="0.05" class="w-full" />
+      </div>
+      <div class="flex-1 flex-col">
+        <label>Stop Loss (Super)</label>
+        <input type="number" name="{{ pfx }}stop_loss" value="0.0" step="0.05" class="w-full" />
+      </div>
+    </div>
+    {% endif %}
+    <div class="btn-group">
+      {% if is_close or is_reentry %}
+      <button type="button" class="btn btn-cancel-mkt" onclick="window.UI.closeAllDropdowns()">Cancel</button>
+      {% endif %}
+
+      {% if is_close %}
+      <button type="submit" class="btn btn-buy" {% if pos.qty> 0 %}disabled="disabled"{% endif %}>BUY</button>
+      <button type="submit" class="btn btn-sell" {% if pos.qty < 0 %}disabled="disabled" {% endif %}>SELL</button>
+      {% elif is_reentry %}
+      <button type="submit" name="reentry_side" value="BUY" class="btn btn-buy" {% if pos.qty < 0 %}disabled="disabled"
+        title="Re-entry must match original trade side (SELL)" {% endif %}>BUY</button>
+      <button type="submit" name="reentry_side" value="SELL" class="btn btn-sell" {% if pos.qty> 0 %}disabled="disabled"
+        title="Re-entry must match original trade side (BUY)"{% endif %}>SELL</button>
+      {% else %}
+      <button type="submit" name="signal" value="BUY" class="btn btn-buy">BUY</button>
+      <button type="submit" name="signal" value="SELL" class="btn btn-sell">SELL</button>
+      {% endif %}
+    </div>
+  </form>
+  {% endmacro %}
+
+  <header>
+    <div class="header-brand">
+      <span class="logo">DHAN PORTAL</span>
+      <span class="sub">Execution Engine</span>
+      <div class="auth-container">
+        <div class="auth-info">
+          <span class="auth-client-label">
+            Client: <strong class="text-accent3">{{ client_name }}</strong>
+          </span>
+          <span class="auth-expiry">Expires: {{ expiry_time }}</span>
+        </div>
+        <button onclick="document.getElementById('access-modal').classList.add('modal-active')" class="btn-action"
+          title="Manage Authentication">Update Access</button>
+      </div>
+    </div>
+  </header>
+  <div class="meta-bar">
+    <div><span class="dot"></span>API Live</div>
+    <div>Positions: <strong id="hdr-live-position-count">{{ total_positions }}</strong></div>
+    <div>Open Orders: <strong id="live-order-count">{{ total_orders }}</strong></div>
+    <div>Funds: <strong id="live-funds">₹ {{ "{:,.2f}".format(funds) }}</strong></div>
+    {% if view != 'order' %}
+    <div class="polling-rate-container">
+      <span class="polling-label">Polling (secs):</span>
+      <input type="number" id="live-interval-input" class="polling-input mono-text" value="0" min="0" step="1">
+    </div>
+    {% endif %}
+    <div class="ml-auto">
+      {% if view == 'order' %}
+      <a href="/" class="header-link">Show Full Dashboard</a>
+      {% else %}
+      <a href="/?view=order" class="header-link">Place Order Only</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="dashboard-grid {% if view == 'order' %}order-only{% endif %}">
+    <div class="panel">
+      <div class="panel-header">Place Order</div>
+      {{ trade_form('place', None, view) }}
+    </div>
+
+    {% if view != 'order' %}
+    <div class="data-stack">
+      <div class="panel p-0">
+        <div class="tabs">
+          <button id="tab-active" class="btn-tab active" onclick="window.UI.togglePositions('active')">
+            Active (<span id="live-position-count">{{ total_positions }}</span>)
+          </button>
+          <button id="tab-closed" class="btn-tab" onclick="window.UI.togglePositions('closed')">
+            Closed (<span id="live-closed-count">{{ total_closed }}</span>)
+          </button>
+
+          <div class="ml-auto total-pnl-wrap">
+            <span class="total-pnl-label">Total PnL:</span>
+
+            <span id="total-pnl-active"
+              class="pnl-display {% if active_pnl_total > 0 %}pnl-positive{% elif active_pnl_total < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+              ₹ {{ "{:,.2f}".format(active_pnl_total | default(0)) }}
+            </span>
+
+            <span id="total-pnl-closed"
+              class="pnl-display hidden {% if closed_pnl_total > 0 %}pnl-positive{% elif closed_pnl_total < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+              ₹ {{ "{:,.2f}".format(closed_pnl_total | default(0)) }}
+            </span>
+          </div>
+
+        </div>
+        <div class="table-wrap" id="view-active">
+          <table class="symbols-table" id="table-active">
+            <thead>
+              <tr>
+                <th class="w-36">#</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-active', 1, false)">Symbol</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-active', 2, false)">Side</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-active', 3, true)">Qty</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-active', 4, true)">Entry Price</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-active', 5, true)">LTP</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-active', 6, true)">PnL</th>
+                <th class="text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pos in positions %}
+              <tr data-position-row="{{ pos.security_id }}" data-position-qty="{{ pos.qty }}">
+                <td>{{ loop.index }}</td>
+                <td>
+                  <span class="symbol-badge">{{ pos.display_name }}</span>
+                </td>
+                <td>
+                  {% set qty_num = pos.qty | int %}
+                  {% set side = 'B' if qty_num > 0 else ('S' if qty_num < 0 else '-' ) %} <span
+                    id="side-{{ pos.security_id }}" class="box-side box-{{ side }}">{{ side }}</span>
+                </td>
+                <td id="qty-{{ pos.security_id }}" class="mono-text">{{ qty_num | abs }}</td>
+                <td id="entry-{{ pos.security_id }}" class="mono-text">
+                  {{ "{:,.2f}".format(pos.entry_price | default(0)
+                  ) }}
+                </td>
+                <td id="ltp-{{ pos.security_id }}" class="mono-text">{{ "{:,.2f}".format(pos.ltp | default(0) ) }}</td>
+                <td>
+                  <span id="pnl-active-{{ pos.security_id }}"
+                    class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+                    {{ "{:,.2f}".format(pos.pnl) }}
+                  </span>
+                </td>
+                <td>
+                  <div class="action-cell">
+
+                    <details class="action-dropdown-panel">
+                      <summary class="btn-action btn-close-mkt" title="Close Position">Close ▸</summary>
+                      <div class="action-dropdown-wrap">
+                        {{ trade_form('close', pos) }}
+                      </div>
+                    </details>
+
+                    <details class="action-dropdown-panel">
+                      <summary class="btn-action btn-reentry" title="Close now and set a re-entry order">Re-entry ▸
+                      </summary>
+                      <div class="action-dropdown-wrap">
+                        {{ trade_form('reentry', pos) }}
+                      </div>
+                    </details>
+
+                  </div>
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="6" class="empty-state">No Active Positions.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="table-wrap hidden" id="view-closed">
+          <table class="symbols-table" id="table-closed">
+            <thead>
+              <tr>
+                <th class="w-36">#</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-closed', 1, false)">Symbol</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-closed', 2, true)">Qty</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-closed', 3, true)">Buy Avg</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-closed', 4, true)">Sell Avg</th>
+                <th class="sortable" onclick="window.UI.sortTable('table-closed', 5, true)">Realized PnL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pos in closed_positions %}
+              <tr data-position-row="{{ pos.security_id }}" data-position-qty="{{ pos.qty }}">
+                <td>{{ loop.index }}</td>
+                <td>
+                  <span class="symbol-badge">{{ pos.display_name }}</span>
+                </td>
+                <td>
+                  <span id="buyqty-{{ pos.security_id }}">{{ pos.buyqty }}</span>
+                </td>
+                <td id="buyavg-{{ pos.security_id }}" class="mono-text">
+                  {{ "{:,.2f}".format(pos.buy_avg | default(0) )
+                  }}
+                </td>
+                <td id="sellavg-{{ pos.security_id }}" class="mono-text">
+                  {{ "{:,.2f}".format(pos.sell_avg | default(0) )
+                  }}
+                </td>
+                <td>
+                  <span id="pnl-closed-{{ pos.security_id }}"
+                    class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+                    {{ "{:,.2f}".format(pos.pnl) }}
+                  </span>
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="3" class="empty-state">No Closed Positions.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel p-0">
+        <div class="panel-header-custom">
+          <span>Pending Orders</span>
+          <div class="flex-gap-8">
+            <form action="/clean_orphaned" method="post" class="m-0">
+              <button type="submit" class="btn-action btn-accent3" title="Clear Orphaned Super Orders">
+                Clear
+                Super
+              </button>
+            </form>
+            <form action="/cancel_all" method="post" class="m-0">
+              <button type="submit" class="btn-action btn-red" title="Cancel ALL Pending Orders">Clear All</button>
+            </form>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="symbols-table">
+            <thead>
+              <tr>
+                <th class="w-36">#</th>
+                <th>Symbol</th>
+                <th>Type</th>
+                <th>Side</th>
+                <th>Detail</th>
+                <th class="text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ord in active_orders %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>
+                  <span class="symbol-badge">{{ ord.symbol }}</span>
+                </td>
+                <td>
+                  <span class="badge-type badge-{{ ord.type }}">{{ ord.type }}</span>
+                </td>
+                <td>
+                  {% set oside = 'B' if ord.side == 'BUY' else ('S' if ord.side == 'SELL' else '-') %}
+                  <span class="box-side box-{{ oside }}">{{ oside }}</span>
+                </td>
+                <td class="order-detail">{{ ord.detail }}</td>
+                <td class="text-right">
+                  <form action="/cancel_order" method="post" class="inline-block">
+                    <input type="hidden" name="order_id" value="{{ ord.order_id }}">
+                    <input type="hidden" name="order_type" value="{{ ord.type }}">
+                    <input type="hidden" name="leg" value="{{ ord.leg }}">
+                    <button type="submit" class="btn-action btn-cancel-{{ ord.type | lower }}"
+                      title="Cancel this order">Cancel</button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="6" class="empty-state">No Pending Orders.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div id="access-modal" class="modal-overlay">
+    <div class="panel modal-panel">
+      <div class="panel-header flex-between">
+        <span>API Authentication</span>
+        <span class="cursor-pointer-muted"
+          onclick="document.getElementById('access-modal').classList.remove('modal-active')">✕</span>
+      </div>
+      <div class="modal-tabs">
+        <button type="button" class="btn tab-btn-active" id="btn-tab-generate"
+          onclick="switchAuthTab('generate')">Generate</button>
+        <button type="button" class="btn tab-btn-inactive" id="btn-tab-renew"
+          onclick="switchAuthTab('renew')">Renew</button>
+        <button type="button" class="btn tab-btn-inactive" id="btn-tab-update"
+          onclick="switchAuthTab('update')">Manual</button>
+      </div>
+      <form id="form-generate" action="/generate_token" method="post" class="order-form">
+        <div class="form-group">
+          <label>Client ID</label>
+          <input type="text" name="client_id" value="{{ client_id }}" required />
+        </div>
+        <div class="form-group mt-8">
+          <label>Account PIN</label>
+          <input type="password" name="pin" placeholder="Enter your numeric PIN" required />
+        </div>
+        <div class="form-group mt-8">
+          <label>Authenticator TOTP</label>
+          <input type="text" name="totp" placeholder="Enter 6-digit TOTP code" required />
+        </div>
+        <div class="btn-group mt-20">
+          <button type="submit" class="btn btn-buy">Generate New Token</button>
+        </div>
+      </form>
+      <form id="form-renew" action="/renew_token" method="post" class="order-form hidden">
+        <p class="modal-desc">
+          Click below to renew your currently active session. This securely extends your token validity without
+          requiring a PIN or TOTP code.
+        </p>
+        <div class="btn-group">
+          <button type="submit" class="btn btn-accent4">Renew Existing Token</button>
+        </div>
+      </form>
+      <form id="form-update" action="/update_token" method="post" class="order-form hidden">
+        <div class="form-group">
+          <label>Client ID</label>
+          <input type="text" name="client_id" value="{{ client_id }}" required />
+        </div>
+        <div class="form-group mt-8">
+          <label>Token (Access Token)</label>
+          <input type="password" name="access_token" placeholder="Paste manual JWT token here..." required />
+        </div>
+        <div class="btn-group mt-20">
+          <button type="submit" class="btn btn-buy btn-manual-save">Save Manual Token</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script src="/static/js/dashboard.js"></script>
+</body>
+
+</html>

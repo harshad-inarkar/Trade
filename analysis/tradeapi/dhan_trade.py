@@ -20,7 +20,7 @@ from tradeapi.price_strike_calc import get_price_strike, get_strike_interval
 from tradeapi.scrip_master import ScripMaster, _get_today_str
 from utils.data.paths import MASTER_CONFIG_PATH
 from utils.network.start_proxy import SSHProxyManager
-from utils.utility import INDIA_TZ, LOGGER, set_logger_config
+from utils.utility import INDIA_TZ, LOGGER
 
 __all__ = ["DhanTrader", "Instrument", "PriceLevels", "UIOverride"]
 
@@ -214,14 +214,12 @@ class DhanTrader:
         *,
         refresh_master_scrip: bool = False,
         restart_proxy: bool = False,
-        log_level: str = "",
         apply_proxy_flag: bool = True,
     ):
 
         self._api_cfg = DhanAPIConfig(API_CONFIG_PATH)
         self._symb_cfg = SymbolsConfig(symb_config)
         self._symb_cfg.refresh()
-        self._set_logging(log_level)
 
         self._pending_statuses = frozenset(
             self._api_cfg.settings.get("pending_statuses", [])
@@ -272,12 +270,6 @@ class DhanTrader:
         self._target_perc = self._symb_cfg.get("target_perc", 0)
         self._stop_loss_perc = self._symb_cfg.get("stop_loss_perc", 0)
         self._stop_trail_perc = self._symb_cfg.get("stop_trail_perc", 0)
-
-    def _set_logging(self, log_level: str = "") -> None:
-        cfg_log_level = self._api_cfg.settings.get("log_level", "")
-        log_level = log_level or cfg_log_level
-        if bool(log_level):
-            set_logger_config(log_level=log_level)
 
     def _proxy_restart(self) -> None:
         if self._apply_proxy_flag:
@@ -1526,5 +1518,5 @@ class DhanTrader:
 
 # INSERT_YOUR_CODE
 if __name__ == "__main__":
-    trader = DhanTrader(log_level="debug")
+    trader = DhanTrader()
     trader.get_positions()

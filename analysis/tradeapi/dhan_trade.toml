@@ -1,7 +1,6 @@
 # dhan_trade.toml — Execution Engine Configuration
 
 [settings]
-log_level = ""
 ignore_traded_scan = true
 pending_statuses = ["TRANSIT", "PENDING", "PART_TRADED", "ACTIVE", "CONFIRM"]
 

@@ -5,8 +5,7 @@
 
 
 targets=(
-    web_scripts/trade_client
-    web_scripts/nse_vol_tracker
+    apps
     tradeapi
     utils
     tradeview
@@ -27,7 +26,7 @@ mypy "${targets[@]}"
 
 echo "Running djlint------"
 frontend_targets=(
-    web_scripts/templates
+    apps
 )
 
 djlint --lint "${frontend_targets[@]}"

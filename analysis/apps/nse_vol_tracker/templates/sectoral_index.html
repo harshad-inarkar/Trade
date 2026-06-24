@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}NSE Sectors — Volume Heatmap{% endblock %}
+
+{% block nav_sec %}active{% endblock %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', path='css/sector.css') }}" />
+{% endblock %}
+
+{% block content %}
+  {# ── Meta / sort / filter bar ── #}
+  <div class="meta-bar">
+    {# Status chips #}
+    <div class="meta-chips">
+      <div class="chip">
+        <div class="dot"></div>
+        <strong>{{ refresh_time }}</strong>
+      </div>
+      <div class="chip">
+        <span class="label">TF</span>
+        <strong>{{ timeframe }}m</strong>
+      </div>
+      <div class="chip">
+        <span class="label">SECTORS</span>
+        <strong>{{ sectors | length }}</strong>
+      </div>
+    </div>
+
+    {# Sort controls #}
+    <div class="sort-chips">
+      <span class="sort-label">SORT:</span>
+
+      <span class="sort-chip">
+        VOLUME
+        <span class="sort-arrows">
+          <a
+            class="{{ 'active' if sort == 'vol' and order == 'asc' else '' }}"
+            href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=vol&order=asc{% if filter %}&filter={{ filter }}{% endif %}"
+          >▲</a>
+          <a
+            class="{{ 'active' if sort == 'vol' and order == 'desc' else '' }}"
+            href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=vol&order=desc{% if filter %}&filter={{ filter }}{% endif %}"
+          >▼</a>
+        </span>
+      </span>
+
+      <span class="sort-chip">
+        NAME A–Z
+        <span class="sort-arrows">
+          <a
+            class="{{ 'active' if sort == 'name' and order == 'asc' else '' }}"
+            href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=name&order=asc{% if filter %}&filter={{ filter }}{% endif %}"
+          >▲</a>
+          <a
+            class="{{ 'active' if sort == 'name' and order == 'desc' else '' }}"
+            href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=name&order=desc{% if filter %}&filter={{ filter }}{% endif %}"
+          >▼</a>
+        </span>
+      </span>
+    </div>
+
+    {# LTP range filter #}
+    <form method="get" action="" class="filter-form">
+      <input type="hidden" name="tf" value="{{ timeframe }}" />
+      <input type="hidden" name="ma" value="{{ ma_type }}" />
+      <input type="hidden" name="fast" value="{{ fast }}" />
+      <input type="hidden" name="slow" value="{{ slow }}" />
+      {% if sort %}<input type="hidden" name="sort" value="{{ sort }}" />{% endif %}
+      {% if order %}<input type="hidden" name="order" value="{{ order }}" />{% endif %}
+
+      <input
+        type="text"
+        name="filter"
+        value="{{ filter }}"
+        placeholder="LTP range e.g. 100-500"
+      />
+      <button type="submit">FILTER</button>
+
+      {% if filter %}
+        <a
+          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}"
+          class="clear-btn"
+        >✕ clear</a>
+      {% endif %}
+    </form>
+  </div>
+
+  {# ── Sector grid ── #}
+  {% set maxsymlen = 12 %}
+
+  <div class="sector-grid" id="sector-grid">
+    {% if sectors %}
+      {% for s in sectors %}
+        {# Resolve heat colour from percentile bucket #}
+        {% set vol = s.avg_volume_fast %}
+        {% set pct = s.heat_pct %}
+
+        {% if pct < 0.15 %}
+          {% set hcol = 'var(--heat-0)' %}
+        {% elif pct < 0.30 %}
+          {% set hcol = 'var(--heat-1)' %}
+        {% elif pct < 0.45 %}
+          {% set hcol = 'var(--heat-2)' %}
+        {% elif pct < 0.60 %}
+          {% set hcol = 'var(--heat-3)' %}
+        {% elif pct < 0.75 %}
+          {% set hcol = 'var(--heat-4)' %}
+        {% elif pct < 0.88 %}
+          {% set hcol = 'var(--heat-5)' %}
+        {% else %}
+          {% set hcol = 'var(--heat-6)' %}
+        {% endif %}
+
+        <div
+          class="sector-card"
+          data-heat-color="{{ hcol }}"
+          data-vol="{{ vol if vol else 0 }}"
+          data-name="{{ s.name }}"
+          data-count="{{ s.symbol_count }}"
+        >
+          {# Card header #}
+          <div class="card-header">
+            <div class="sector-name">
+              <a
+                href="/sectors/{{ s.name }}/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}"
+                class="sector-link"
+              >{{ s.name }}</a>
+            </div>
+            <div class="sector-rank">#{{ loop.index }}</div>
+          </div>
+
+          {# Volume heat bar #}
+          <div class="vol-row">
+            <div class="vol-bar-wrap">
+              <div class="vol-bar-fill" data-width="{{ (pct * 100) | round(1) }}%"></div>
+            </div>
+            <div class="vol-value">
+              {% if vol %}
+                {% if vol >= 1000000 %}
+                  {{ (vol / 1000000) | round(2) }}M
+                {% elif vol >= 1000 %}
+                  {{ (vol / 1000) | round(1) }}K
+                {% else %}
+                  {{ vol | round(0) | int }}
+                {% endif %}
+              {% else %}
+                —
+              {% endif %}
+            </div>
+          </div>
+
+          {# Symbol chips #}
+          <div class="sym-area">
+            <div class="sym-chips" id="chips-{{ loop.index }}">
+              {% for sym in s.symbols %}
+                <span class="sym-chip">{{ sym }}</span>
+              {% endfor %}
+            </div>
+
+            {% if s.symbols | length > maxsymlen %}
+              <button class="expand-btn" data-idx="{{ loop.index }}">
+                +{{ s.symbols | length - maxsymlen }} more ▾
+              </button>
+            {% endif %}
+          </div>
+
+          {# Card footer #}
+          <div class="card-footer">
+            <span><span class="label">SYMs</span> {{ s.symbol_count }}</span>
+            {% if s.top_symbol %}
+              <span><span class="label">TOP</span> {{ s.top_symbol }}</span>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+
+    {% else %}
+      <div class="no-data">No sector data available for timeframe {{ timeframe }}</div>
+    {% endif %}
+  </div>
+
+  {# ── JS: animate cards, apply heat colours, expand chips ── #}
+  <script>
+    const maxsymlen = 12;
+
+    function toggleChips(idx, btn) {
+      const el       = document.getElementById('chips-' + idx);
+      const expanded = el.classList.toggle('expanded');
+      if (expanded) {
+        btn.textContent = '▴ collapse';
+      } else {
+        const hidden = el.querySelectorAll('.sym-chip').length - maxsymlen;
+        btn.textContent = `+${hidden} more ▾`;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      /* Staggered card fade-in */
+      document.querySelectorAll('.sector-card').forEach((c, i) => {
+        c.style.animationDelay = `${(i * 0.022).toFixed(3)}s`;
+      });
+
+      /* Apply --heat-color CSS custom property */
+      document.querySelectorAll('[data-heat-color]').forEach((el) => {
+        const hc = el.getAttribute('data-heat-color');
+        if (hc) el.style.setProperty('--heat-color', hc);
+      });
+
+      /* Set vol-bar widths (avoids FOUC from inline style in Jinja) */
+      document.querySelectorAll('[data-width]').forEach((el) => {
+        const w = el.getAttribute('data-width');
+        if (w) el.style.width = w;
+      });
+
+      /* Expand-button listeners */
+      document.querySelectorAll('.expand-btn[data-idx]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = btn.getAttribute('data-idx');
+          if (idx) toggleChips(idx, btn);
+        });
+      });
+    });
+  </script>
+{% endblock %}

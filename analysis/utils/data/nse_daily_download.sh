@@ -55,6 +55,7 @@ echo "Start: $(date)"
 
 if [ "$DOWNLOAD" = true ]; then
     # Run the object-oriented downloader
+    export log_level="info"
     python3 nse_daily_data_downloader.py
 fi
 

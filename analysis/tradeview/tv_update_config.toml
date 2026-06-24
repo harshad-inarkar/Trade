@@ -1,5 +1,5 @@
 [settings]
-reload_interval = 9
+reload_interval = 30
 buffer_seconds = -10
 tv_focus_flag = true
 

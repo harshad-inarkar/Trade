@@ -1,0 +1,826 @@
+/* =========================================
+   1. ROOT & RESET
+========================================= */
+:root {
+    --bg: #0b0f14;
+    --surface: #131920;
+    --surface2: #1a2330;
+    --border: #1e2a35;
+    --text: #c8d8e8;
+    --muted: #4a6070;
+    --accent: #00d4aa;
+    --accent2: #ff6b35;
+    --accent3: #f0c040;
+    --accent4: #a78bfa;
+    --red: #e05555;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'Space Grotesk', sans-serif;
+    --radius: 4px;
+    --green: #1bbf49;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-size: 14px;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+}
+
+/* =========================================
+   2. LAYOUT & PANELS
+========================================= */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 20px;
+    padding: 20px 28px;
+    align-items: start;
+}
+
+.dashboard-grid.order-only {
+    grid-template-columns: 380px;
+    justify-content: center;
+    margin-top: 40px;
+}
+
+.data-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+}
+
+.panel-header {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+}
+
+.panel-header-custom {
+    margin: 18px 18px 10px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* =========================================
+   3. HEADER & META BAR
+========================================= */
+header {
+    position: sticky;
+    top: 0;
+    z-index: 200;
+    background: rgba(11, 15, 20, 0.94);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.logo {
+    font-family: var(--mono);
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+}
+
+.sub {
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.auth-container {
+    display: flex;
+    align-items: center;
+    margin-left: 24px;
+    gap: 12px;
+    border-left: 1px solid var(--border);
+    padding-left: 20px;
+}
+
+.auth-info {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+}
+
+.auth-client-label {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text);
+}
+
+.auth-expiry {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+}
+
+.meta-bar {
+    display: flex;
+    padding: 9px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    gap: 18px;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    align-items: center;
+}
+
+.meta-bar strong {
+    color: var(--text);
+    margin-left: 6px;
+}
+
+.polling-rate-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 15px;
+}
+
+.polling-label {
+    text-transform: uppercase;
+    font-size: 0.65rem;
+}
+
+.polling-select {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    outline: none;
+}
+
+.polling-input {
+    width: 60px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    outline: none;
+}
+
+.polling-input:focus {
+    border-color: var(--accent);
+}
+.dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s infinite;
+    display: inline-block;
+    margin-right: 6px;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+}
+
+/* =========================================
+   4. FORMS & INPUTS
+========================================= */
+.order-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.order-form label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+}
+
+.order-form input,
+.order-form select {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    outline: none;
+}
+
+.order-form input:focus,
+.order-form select:focus {
+    border-color: var(--accent);
+}
+
+.order-form input:disabled,
+.order-form select:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: var(--surface2);
+}
+
+/* =========================================
+   5. BUTTONS
+========================================= */
+.btn-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.btn {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 10px;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    color: #000;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.btn:hover {
+    opacity: 0.82;
+}
+
+.btn:active {
+    transform: scale(0.97);
+}
+
+.btn-buy {
+    background: var(--accent);
+}
+
+.btn-sell {
+    background: var(--red);
+    color: #fff;
+}
+
+.btn-accent4 {
+    background: var(--accent4);
+    color: #000;
+}
+
+.btn-manual-save {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.btn-action {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    text-transform: uppercase;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+
+.btn-action:hover {
+    background: var(--surface2);
+    border-color: var(--red);
+    color: var(--red);
+}
+
+.btn-accent3 {
+    border-color: var(--accent3);
+    color: var(--accent3);
+}
+
+.btn-red {
+    border-color: var(--red);
+    color: var(--red);
+}
+
+.btn:hover {
+    opacity: 0.82;
+}
+
+.btn:active {
+    transform: scale(0.97);
+}
+
+/* Add this native disabled state */
+.btn:disabled {
+    opacity: 0.2;
+    cursor: not-allowed;
+}
+
+/* =========================================
+   6. TABLES & TABS
+========================================= */
+.tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.btn-tab {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 14px 20px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    outline: none;
+}
+
+.btn-tab:hover {
+    color: var(--text);
+}
+
+.btn-tab.active {
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+}
+
+.total-pnl-wrap {
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.total-pnl-label {
+    color: var(--muted);
+    margin-right: 8px;
+}
+
+.table-wrap {
+    overflow: visible;
+}
+
+.symbols-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+}
+
+.symbols-table thead tr {
+    border-bottom: 2px solid var(--border);
+}
+
+.symbols-table tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+}
+
+.symbols-table tbody tr:hover {
+    background: var(--surface2);
+}
+
+.symbols-table th {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+}
+
+.symbols-table td {
+    padding: 9px 14px;
+    color: var(--text);
+    vertical-align: middle;
+}
+
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+th.sortable:hover {
+    color: var(--text);
+}
+
+th.sort-asc::after {
+    content: ' ↑';
+    font-size: 0.8em;
+    color: var(--accent);
+}
+
+th.sort-desc::after {
+    content: ' ↓';
+    font-size: 0.8em;
+    color: var(--red);
+}
+
+/* =========================================
+   7. BADGES, STATUS & TYPOGRAPHY
+========================================= */
+.symbol-badge {
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 3px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    display: inline-block;
+}
+
+.badge-type {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.badge-MARKET,
+.badge-LIMIT,
+.badge-STOP_LOSS,
+.badge-STOP_LOSS_MARKET {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.badge-SUPER {
+    background: rgba(240, 192, 64, 0.15);
+    color: var(--accent3);
+    border: 1px solid rgba(240, 192, 64, 0.3);
+}
+
+.badge-FOREVER {
+    background: rgba(167, 139, 250, 0.15);
+    color: var(--accent4);
+    border: 1px solid rgba(167, 139, 250, 0.3);
+}
+
+.badge-ALERT {
+    background: rgba(255, 107, 53, 0.15);
+    color: var(--accent2);
+    border: 1px solid rgba(255, 107, 53, 0.3);
+}
+
+.box-side {
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    display: inline-block;
+    text-align: center;
+    min-width: 28px;
+}
+
+.box-B {
+    background: rgba(27, 191, 73, 0.15);
+    color: var(--green);
+    border: 1px solid rgba(27, 191, 73, 0.3);
+}
+
+.box-S {
+    background: rgba(224, 85, 85, 0.15);
+    color: var(--red);
+    border: 1px solid rgba(224, 85, 85, 0.3);
+}
+
+.box-- {
+    background: var(--surface2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+}
+
+.pnl-positive {
+    color: var(--accent);
+    font-weight: 700;
+}
+
+.pnl-negative {
+    color: var(--red);
+    font-weight: 700;
+}
+
+.pnl-neutral {
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.order-detail {
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    white-space: nowrap;
+}
+
+/* =========================================
+   8. DROPDOWNS (SEARCH & ACTION)
+========================================= */
+.symbol-search-wrap {
+    position: relative;
+    width: 100%;
+}
+
+.symbol-search-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    max-height: 320px;
+    overflow-y: auto;
+    z-index: 9999;
+    display: none;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.symbol-search-item {
+    padding: 10px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--text);
+}
+
+.symbol-search-item:hover {
+    background: var(--surface2);
+    color: var(--accent);
+}
+
+details.action-dropdown-panel {
+    display: inline-block;
+    position: relative;
+}
+
+details.action-dropdown-panel>summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+details.action-dropdown-panel>summary::-webkit-details-marker {
+    display: none;
+}
+
+.action-dropdown-wrap {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 100;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    width: 320px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+    text-align: left;
+}
+
+.action-cell {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+}
+
+/* =========================================
+   9. MODALS
+========================================= */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(4px);
+}
+
+.modal-active {
+    display: flex !important;
+}
+
+.modal-panel {
+    width: 380px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.tab-btn-active {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--accent);
+}
+
+.tab-btn-inactive {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid transparent;
+}
+
+.modal-desc {
+    font-family: var(--sans);
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 20px;
+}
+
+/* =========================================
+   10. UTILITIES
+========================================= */
+.hidden {
+    display: none !important;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.text-accent3 {
+    color: var(--accent3);
+}
+
+.mono-text {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+}
+
+.empty-state {
+    text-align: center;
+    color: var(--muted);
+    padding: 40px;
+}
+
+.header-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-family: var(--mono);
+    font-weight: 600;
+}
+
+.cursor-pointer-muted {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 1.1rem;
+}
+
+.inline-block {
+    display: inline-block;
+}
+
+/* Flex Helpers */
+.flex-row-gap-10 {
+    flex-direction: row;
+    gap: 10px;
+}
+
+.mt-10-flex-gap-10 {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.flex-gap-8 {
+    display: flex;
+    gap: 8px;
+}
+
+.flex-between {
+    display: flex;
+    justify-content: space-between;
+}
+
+.flex-1 {
+    flex: 1;
+}
+
+.flex-col {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Margins & Padding */
+.ml-auto {
+    margin-left: auto;
+}
+
+.p-0 {
+    padding: 0;
+}
+
+.m-0 {
+    margin: 0;
+}
+
+.mt-0 {
+    margin-top: 0;
+}
+
+.mt-8 {
+    margin-top: 8px;
+}
+
+.mt-20 {
+    margin-top: 20px;
+}
+
+/* Dimensions */
+.w-full {
+    width: 100%;
+}
+
+.w-36 {
+    width: 36px;
+}
+
+/* Add these new helper classes */
+.opacity-70 {
+    opacity: 0.7;
+}
+
+.pointer-events-none {
+    pointer-events: none;
+}

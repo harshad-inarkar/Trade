@@ -56,7 +56,9 @@ class SSHProxyManager:
 
     def stop(self) -> None:
         """Kills any existing local AutoSSH/SSH proxy processes."""
-        LOGGER.info("Stopping existing local proxy processes on port %s...", self.port)
+        LOGGER.critical(
+            "Stopping existing local proxy processes on port %s...", self.port
+        )
 
         # 1. Kill the AutoSSH monitor process securely
         subprocess.run(
@@ -88,11 +90,13 @@ class SSHProxyManager:
                     stderr=subprocess.DEVNULL,
                 )
 
+        self.clear_remote_zombies()
+
     def clear_remote_zombies(self) -> None:
         """Actively logs into Oracle server to kill ghost
         processes holding Port 8000."""
 
-        LOGGER.info(
+        LOGGER.critical(
             "🧹 Sweeping Oracle server for zombie connections on Port %s...",
             self.webhook_port,
         )
@@ -126,8 +130,7 @@ class SSHProxyManager:
             sys.exit(1)
 
         self.clear_remote_zombies()
-
-        LOGGER.info("🚀 Starting AutoSSH proxy to %s@%s...", self.user, self.host)
+        LOGGER.critical("🚀 Starting AutoSSH proxy to %s@%s...", self.user, self.host)
 
         # Securely pass all arguments as an explicit list
         autossh_cmd = [

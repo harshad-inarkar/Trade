@@ -6,8 +6,8 @@ import tomllib
 _nse_data_dir = "nse_data"
 _intraday_dir = "intraday"
 _indx_dir = "index"
-_web_scr = "web_scripts"
-_templates_dir = "templates"
+_apps_dir = "apps"
+templates_dir = "templates"
 _logs_dir = "logs"
 
 
@@ -101,5 +101,4 @@ REMOTE_INTRADAY_DIR_PATH: str | None = (
     else None
 )
 
-TEMPLATES_ROOT_DIR: str = str(ROOT_SRC_DIR_PATH_OBJ / _web_scr / _templates_dir)
 MASTER_CONFIG_PATH = Path("~/.config").expanduser()

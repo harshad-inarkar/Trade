@@ -1,0 +1,252 @@
+/* ═══════════════════════════════════════════════
+   NSE Portal — Table & Symbol Page Styles
+════════════════════════════════════════════════ */
+
+/* ── Meta bar chips (index page) ── */
+.meta-chips {
+  display:     flex;
+  align-items: center;
+  gap:         18px;
+  padding:     9px 0;
+  font-family: var(--mono);
+  font-size:   .70rem;
+  color:       var(--muted);
+  flex-shrink: 0;
+}
+
+.meta-chips strong { color: var(--text); padding-left: 3px; }
+.meta-chips span   { opacity: .55; }
+
+/* ═══════════════════════════════════════════════
+   DATA TABLE
+════════════════════════════════════════════════ */
+.table-wrap {
+  padding:   18px 28px;
+  overflow-x: auto;
+}
+
+table {
+  width:            100%;
+  border-collapse:  collapse;
+  font-family:      var(--mono);
+  font-size:        .78rem;
+}
+
+/* Head */
+th {
+  padding:      10px 14px;
+  text-align:   left;
+  color:        var(--muted);
+  font-size:    .65rem;
+  font-weight:  600;
+  letter-spacing: .04em;
+  border-bottom: 1px solid var(--border);
+  white-space:  nowrap;
+}
+
+/* Body */
+td {
+  padding:      9px 14px;
+  border-bottom: 1px solid var(--border);
+  white-space:  nowrap;
+  vertical-align: middle;
+}
+
+tr:hover td { background: var(--surface2); }
+
+/* Symbol pill link */
+.symbol-link {
+  display:       inline-block;
+  padding:       2px 9px;
+  border-radius: 3px;
+  background:    var(--surface2);
+  border:        1px solid var(--border);
+  color:         var(--accent);
+  text-decoration: none;
+  font-size:     .72rem;
+  transition:    border-color .15s, background .15s;
+}
+
+.symbol-link:hover {
+  border-color: var(--accent);
+  background:   rgba(0, 212, 170, .08);
+}
+
+/* MA action cells */
+.ma-up      { color: var(--green); font-weight: 600; }
+.ma-down    { color: var(--red);   font-weight: 600; }
+.ma-neutral { color: var(--muted); font-weight: 600; }
+
+/* ── Sortable column headers ── */
+.th-sort {
+  display:     inline-flex;
+  align-items: center;
+  gap:         6px;
+}
+
+.th-label {
+  color:       var(--muted);
+  text-decoration: none;
+  background:  transparent;
+  border:      none;
+  padding:     0;
+  transition:  color .2s;
+  white-space: nowrap;
+}
+
+.th-label:hover,
+.th-label.active       { background: transparent; border-color: transparent; }
+
+.th-sort:hover .th-label,
+.th-sort:has(.sort-arrows a.active) .th-label { color: var(--text); }
+
+/* ═══════════════════════════════════════════════
+   SYMBOL DETAIL PAGE
+════════════════════════════════════════════════ */
+
+/* ── Symbol header ── */
+.sym-header {
+  display:      flex;
+  align-items:  center;
+  flex-wrap:    wrap;
+  gap:          16px;
+  padding:      14px 28px;
+  border-bottom: 1px solid var(--border);
+  background:   var(--surface);
+}
+
+.sym-title {
+  display:     flex;
+  align-items: baseline;
+  gap:         10px;
+  flex-shrink: 0;
+}
+
+.sym-ticker {
+  font-family: var(--mono);
+  font-size:   1.15rem;
+  font-weight: 600;
+  color:       var(--text);
+  letter-spacing: .06em;
+}
+
+.sym-sector-badge {
+  font-family:   var(--mono);
+  font-size:     .62rem;
+  color:         var(--muted);
+  padding:       2px 8px;
+  border:        1px solid var(--border);
+  border-radius: 20px;
+  letter-spacing: .04em;
+}
+
+.sym-chips {
+  display:     flex;
+  align-items: center;
+  flex-wrap:   wrap;
+  gap:         14px;
+  margin-left: auto;
+}
+
+/* ── Chart outer wrapper ── */
+.chart-outer {
+  padding: 20px 28px;
+}
+
+/* ── Chart panel card ── */
+.chart-panel {
+  background:    var(--surface);
+  border:        1px solid var(--border);
+  border-radius: 6px;
+  overflow:      hidden;
+}
+
+.chart-panel-header {
+  display:        flex;
+  align-items:    center;
+  justify-content: space-between;
+  padding:        10px 18px;
+  border-bottom:  1px solid var(--border);
+  flex-wrap:      wrap;
+  gap:            10px;
+}
+
+.chart-panel-title {
+  font-family:    var(--mono);
+  font-size:      .62rem;
+  font-weight:    600;
+  color:          var(--muted);
+  letter-spacing: .1em;
+}
+
+/* Legend pills (rendered in HTML, Chart.js legend is hidden) */
+.chart-legend-pills {
+  display:     flex;
+  align-items: center;
+  gap:         14px;
+}
+
+.legend-pill {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+  font-family: var(--mono);
+  font-size:   .62rem;
+  color:       var(--muted);
+}
+
+.legend-swatch {
+  display:       inline-block;
+  width:         20px;
+  height:        2px;
+  border-radius: 1px;
+}
+
+.legend-swatch--fast { background: var(--accent); }
+.legend-swatch--slow { background: var(--red);    }
+
+/* ── Canvas wrapper — fixed height, no overflow ── */
+.chart-canvas-wrap {
+  position: relative;
+  height:   460px;
+  width:    100%;
+}
+
+.chart-canvas-wrap canvas {
+  display: block;
+  width:   100% !important;
+  height:  100% !important;
+}
+
+/* ── Chart footer stats bar ── */
+.chart-panel-footer {
+  display:       flex;
+  align-items:   center;
+  flex-wrap:     wrap;
+  gap:           0;
+  padding:       0;
+  border-top:    1px solid var(--border);
+}
+
+.stat-pill {
+  display:       flex;
+  align-items:   center;
+  gap:           7px;
+  padding:       7px 18px;
+  border-right:  1px solid var(--border);
+  font-family:   var(--mono);
+  font-size:     .68rem;
+}
+
+.stat-pill:last-child { border-right: none; }
+
+.stat-label {
+  font-size:      .60rem;
+  color:          var(--muted);
+  letter-spacing: .08em;
+}
+
+.stat-val {
+  color:       var(--text);
+  font-weight: 600;
+}

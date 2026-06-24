@@ -3,6 +3,7 @@ import os
 import sys
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import TextIO
 
 import tomllib
@@ -20,19 +21,39 @@ PROJECT_NAME = _pyproject.get("project", {}).get("name", __name__)
 BUFFER_SECONDS = 5
 LOGGER = logging.getLogger(PROJECT_NAME)
 
+_base_dir = Path(__file__).parent
+_app_config_path = _base_dir / "app_config.toml"
 
-def _bool_env_or_cfg(key: str, cfg: dict, default_val: bool = False) -> bool:
+_app_config = {}
+with (_app_config_path).open("rb") as f:
+    _app_config = tomllib.load(f)
+
+
+def bool_env_or_cfg(key: str, cfg: dict, default_val: bool = False) -> bool:
     val = os.environ.get(key)
     if val is not None:
         return val.lower() in ("1", "true", "yes", "on")
     return bool(cfg.get(key, default_val))
 
 
-def _str_env_or_cfg(key: str, cfg: dict, default_val: str = "") -> str:
-    return os.environ.get(key, cfg.get(key, default_val))
+def _str_env_or_cfg(key: str, cfg: dict | None = None, default_val: str = "") -> str:
+    return os.environ.get(key, cfg.get(key, default_val) if cfg else default_val)
+
+
+def get_project_log_level() -> str:
+    def_log_lvl = "critical"
+    log_level = _str_env_or_cfg("log_level", _app_config.get("apps", {}), def_log_lvl)
+    if not log_level:
+        log_level = def_log_lvl
+
+    return log_level
 
 
 def set_logger_config(log_level: str = "", log_handle: TextIO = sys.stdout) -> None:
+
+    if not log_level:
+        log_level = get_project_log_level()
+
     numeric_level = logging.getLevelNamesMapping().get(
         log_level.upper(), logging.CRITICAL
     )

@@ -1,8 +1,7 @@
 max_log_size = 50 #KB
-log_level = "info"         # debug | info | warning | error | critical
 
 [scripts.vol_app]
-module = "web_scripts.nse_vol_tracker.vol_app"
+module = "apps.nse_vol_tracker.vol_app"
 args = []
 
 [scripts.tv_update]
@@ -14,5 +13,5 @@ module = "tradeview.tv_scanner"
 args = []
 
 [scripts.trade_app]
-module = "web_scripts.trade_client.trade_app"
+module = "apps.trade_client.trade_app"
 args = []

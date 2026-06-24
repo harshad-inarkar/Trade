@@ -1,0 +1,3 @@
+# ── Apps-level settings ────────────────────────────────────────────────────────
+[apps]
+log_level = ""         # debug | info | warning | error | critical  default is critical if empty

@@ -10,10 +10,12 @@ SOURCE_TARGET=(
     "tradeapi"
     "orchest"
     "utils"
-    "web_scripts"
+    "apps"
     "push_src_git.sh"
     "pyproject.toml"
     "project_sanity_check.sh"
+    "deploy_remote.sh"
+    "stop_remote_process.sh"
 )
 
 # 2. Ensure the destination exists

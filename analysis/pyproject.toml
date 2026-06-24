@@ -79,4 +79,14 @@ explicit_package_bases = true
 # 3. Allow directory scanning to work seamlessly even if some subfolders lack an __init__.py
 namespace_packages = true
 
-disable_error_code = ["import-untyped", "var-annotated","operator","assignment","arg-type"]
+disable_error_code = [ "var-annotated","operator","assignment","arg-type"]
+
+# --- UPDATE 2: Add overrides for the specific libraries lacking stubs ---
+[[tool.mypy.overrides]]
+module = [
+    "tesserocr",
+    "google.cloud.*",  # The .* ensures all submodules are covered
+    "AppKit",
+    "Quartz"
+]
+ignore_missing_imports = true

@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}{{ symbol }} – NSE Portal{% endblock %}
+
+{% block extra_head %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="{{ url_for('static', path='css/table.css') }}">
+{% endblock %}
+
+{% block content %}
+  {# ── Symbol header ── #}
+  <div class="sym-header">
+    <div class="sym-title">
+      <span class="sym-ticker">{{ symbol }}</span>
+      {% if sector_name %}
+        <span class="sym-sector-badge">{{ sector_name }}</span>
+      {% endif %}
+    </div>
+
+    <div class="sym-chips">
+      <div class="chip">
+        <span class="chip-label">TF</span>
+        <strong>{{ timeframe }}m</strong>
+      </div>
+      <div class="chip">
+        <span class="chip-label">MA</span>
+        <strong>{{ ma_type | upper }}</strong>
+      </div>
+      <div class="chip">
+        <span class="chip-label">FAST</span>
+        <strong class="c-teal">{{ fast }}</strong>
+      </div>
+      <div class="chip">
+        <span class="chip-label">SLOW</span>
+        <strong class="c-red">{{ slow }}</strong>
+      </div>
+      <div class="chip">
+        <div class="live-dot"></div>
+        <strong>{{ refresh_time }}</strong>
+      </div>
+    </div>
+  </div>
+
+  {# ── Chart panel ── #}
+  <div class="chart-outer">
+    <div class="chart-panel">
+      <div class="chart-panel-header">
+        <span class="chart-panel-title">VOLUME · MOVING AVERAGE OVERLAY</span>
+        <div class="chart-legend-pills">
+          <span class="legend-pill legend-pill--fast">
+            <span class="legend-swatch legend-swatch--fast"></span>Fast MA ({{ fast }})
+          </span>
+          <span class="legend-pill legend-pill--slow">
+            <span class="legend-swatch legend-swatch--slow"></span>Slow MA ({{ slow }})
+          </span>
+        </div>
+      </div>
+
+      <div class="chart-canvas-wrap">
+        <canvas id="mainChart"></canvas>
+      </div>
+
+      <div class="chart-panel-footer" id="chartStats">
+        <div class="stat-pill">
+          <span class="stat-label">FAST NOW</span>
+          <span class="stat-val c-teal" id="statFastNow">—</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">SLOW NOW</span>
+          <span class="stat-val c-red" id="statSlowNow">—</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">RATIO F/S</span>
+          <span class="stat-val" id="statRatio">—</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">SIGNAL</span>
+          <span class="stat-val" id="statSignal">—</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">BARS</span>
+          <span class="stat-val" id="statBars">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Data payload ── #}
+  <script id="rawData" type="application/json">{{ data | tojson }}</script>
+
+  <script type="module">
+    import { VolumeChartManager } from "{{ url_for('static', path='js/chart_module.js') }}";
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const rawData = JSON.parse(document.getElementById('rawData').textContent);
+      const rows    = rawData.slice(1);  // skip header row
+
+      const labels  = rows.map(r => r[0]);  // timestamp_full
+      const slow    = rows.map(r => r[2]);  // volume_slow MA
+      const fast    = rows.map(r => r[3]);  // volume_fast MA
+      // Attempt to pick up LTP column if backend provides it
+      const prices  = rows.every(r => r[4] != null && r[4] !== '')
+        ? rows.map(r => Number(r[4]))
+        : null;
+
+      /* ── Populate footer stats ── */
+      function fmtVol(v) {
+        if (v == null || isNaN(v)) return '—';
+        const n = Number(v);
+        if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+        if (n >= 1e3) return (n / 1e3).toFixed(1)  + 'K';
+        return Math.round(n).toLocaleString();
+      }
+
+      const lastFast = fast[fast.length - 1];
+      const lastSlow = slow[slow.length - 1];
+      const ratio    = lastSlow ? (lastFast / lastSlow) : null;
+      const isBull   = lastFast > lastSlow;
+
+      document.getElementById('statFastNow').textContent = fmtVol(lastFast);
+      document.getElementById('statSlowNow').textContent = fmtVol(lastSlow);
+      document.getElementById('statRatio').textContent   = ratio ? ratio.toFixed(3) : '—';
+      document.getElementById('statBars').textContent    = rows.length;
+
+      const sigEl = document.getElementById('statSignal');
+      if (lastFast != null && lastSlow != null) {
+        sigEl.textContent   = isBull ? '↑ BULL' : '↓ BEAR';
+        sigEl.classList.add(isBull ? 'c-green' : 'c-red');
+      }
+
+      /* ── Chart ── */
+      new VolumeChartManager('mainChart', {
+        labels,
+        fast,
+        slow,
+        prices,
+        fastPeriod: {{ fast }},
+        slowPeriod: {{ slow }},
+        timeframe:  '{{ timeframe }}',
+      });
+    });
+  </script>
+{% endblock %}

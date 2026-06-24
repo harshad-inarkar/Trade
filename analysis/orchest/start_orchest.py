@@ -20,7 +20,7 @@ except ImportError:
 
 # ─── Custom Imports ───────────────────────────────────────────────────────────
 from utils.data.paths import NSE_LOGS_DIR, ROOT_SRC_DIR
-from utils.utility import out, set_logger_config
+from utils.utility import LOGGER
 
 # Default configurations
 MAX_LOG_SIZE_KB = 100  # KB
@@ -46,7 +46,6 @@ class ScriptManager:
         Path(log_root_dir).mkdir(parents=True, exist_ok=True)
 
         self.load_config()
-        set_logger_config(log_level=self.config.get("log_level", ""))
 
         self.max_bytes = self.config.get("max_log_size", MAX_LOG_SIZE_KB) * 1024
         self.log_monitor_interval = (
@@ -70,7 +69,9 @@ class ScriptManager:
 
     def load_config(self) -> None:
         if not self.config_path.exists():
-            out(f"Error: Configuration file '{self.config_path}' not found.")
+            LOGGER.critical(
+                f"Error: Configuration file '{self.config_path}' not found."
+            )
             sys.exit(1)
 
         with self.config_path.open("rb") as f:
@@ -159,24 +160,24 @@ class ScriptManager:
                                 handle.write(msg)
                                 handle.flush()
                 except OSError as exc:
-                    out(f"Error Cleaning File {name} {exc}")
+                    LOGGER.critical(f"Error Cleaning File {name} {exc}")
 
     def start(self, name: str) -> None:
         self.load_config()
         if name not in self.config["scripts"]:
-            out(f"Error: Script '{name}' not found in config.")
+            LOGGER.critical(f"Error: Script '{name}' not found in config.")
             return
 
         if name in self.processes and self.processes[name].poll() is None:
             pid = self.processes[name].pid
-            out(f"Warning: '{name}' is already running (PID: {pid}).")
+            LOGGER.critical(f"Warning: '{name}' is already running (PID: {pid}).")
             return
 
         script_info = self.config["scripts"][name]
         module_name = script_info.get("module")
 
         if not module_name:
-            out(f"Error: No 'module' specified for '{name}' in config.")
+            LOGGER.critical(f"Error: No 'module' specified for '{name}' in config.")
             return
 
         cmd = [
@@ -208,13 +209,13 @@ class ScriptManager:
             )
 
             self.processes[name] = process
-            out(
+            LOGGER.critical(
                 f"[+] Started '{name}' [{module_name}] PID: {process.pid} "
                 f"(Logging to {name}.log)"
             )
 
         except (OSError, ValueError) as e:
-            out(f"[-] Failed to start '{name}': {e}")
+            LOGGER.critical(f"[-] Failed to start '{name}': {e}")
             if name in self.log_handles:
                 self.log_handles[name].close()
                 del self.log_handles[name]
@@ -225,45 +226,49 @@ class ScriptManager:
             if process.poll() is None:
                 process.terminate()
                 process.wait(timeout=5)
-                out(f"[-] Stopped '{name}'")
+                LOGGER.critical(f"[-] Stopped '{name}'")
             else:
-                out(f"Warning: '{name}' is not currently running.")
+                LOGGER.critical(f"Warning: '{name}' is not currently running.")
         else:
-            out(f"Error: '{name}' is not being managed right now.")
+            LOGGER.critical(f"Error: '{name}' is not being managed right now.")
 
         if name in self.log_handles:
             self.log_handles[name].close()
             del self.log_handles[name]
 
     def restart(self, name: str) -> None:
-        out(f"[*] Restarting '{name}'...")
+        LOGGER.critical(f"[*] Restarting '{name}'...")
         self.stop(name)
         self.start(name)
 
     def status(self) -> None:
-        out("\n--- Process Status ---")
+        LOGGER.critical("\n--- Process Status ---")
         for name in self.config["scripts"]:
             if name in self.processes:
                 process = self.processes[name]
                 if process.poll() is None:
-                    out(f" 🟢 {name:<15} : RUNNING (PID: {process.pid})")
+                    LOGGER.critical(f" 🟢 {name:<15} : RUNNING (PID: {process.pid})")
                 else:
-                    out(f" 🔴 {name:<15} : STOPPED (Exit code: {process.returncode})")
+                    LOGGER.critical(
+                        f" 🔴 {name:<15} : STOPPED (Exit code: {process.returncode})"
+                    )
             else:
-                out(f" ⚪ {name:<15} : NOT STARTED")
-        out("----------------------\n")
+                LOGGER.critical(f" ⚪ {name:<15} : NOT STARTED")
+        LOGGER.critical("----------------------\n")
 
     def stats(self) -> None:
         if not PSUTIL_AVAILABLE:
-            out(
+            LOGGER.critical(
                 "\n[!] The 'psutil' library is missing. "
                 "Please run 'pip install psutil' to view stats.\n"
             )
             return
 
         interval_mins = self.stats_monitor_interval / 60
-        out(f"\n--- Performance Stats (Last {interval_mins:.1f} min Average) ---")
-        out(f"    Last Snapshot Taken: {self.last_stats_update}")
+        LOGGER.critical(
+            f"\n--- Performance Stats (Last {interval_mins:.1f} min Average) ---"
+        )
+        LOGGER.critical(f"    Last Snapshot Taken: {self.last_stats_update}")
 
         for name in self.config["scripts"]:
             if name in self.processes and self.processes[name].poll() is None:
@@ -271,22 +276,28 @@ class ScriptManager:
                     s = self.latest_stats[name]
                     cpu = s["cpu"]
                     rss = s["rss"]
-                    out(f" 🟢 {name:<15} : CPU: {cpu:>5.1f}% | RAM: {rss:>6.1f} MB")
+                    LOGGER.critical(
+                        f" 🟢 {name:<15} : CPU: {cpu:>5.1f}% | RAM: {rss:>6.1f} MB"
+                    )
                 else:
-                    out(f" 🟢 {name:<15} : (Gathering data...)")
+                    LOGGER.critical(f" 🟢 {name:<15} : (Gathering data...)")
             else:
-                out(f" ⚪ {name:<15} : NOT RUNNING")
+                LOGGER.critical(f" ⚪ {name:<15} : NOT RUNNING")
 
-        out("-" * 65)
+        LOGGER.critical("-" * 65)
         sys_s = self.latest_sys_stats
         if sys_s:
             cpu_s = sys_s["cpu"]
             ram_s = sys_s["ram"]
             swp_s = sys_s["swp"]
-            out(f" 🖥️ SYSTEM OVERVIEW : CPU: {cpu_s}% | RAM: {ram_s}% | SWAP: {swp_s}%")
+            LOGGER.critical(
+                f" 🖥️ SYSTEM OVERVIEW : CPU: {cpu_s}% | RAM: {ram_s}% | SWAP: {swp_s}%"
+            )
         else:
-            out(" 🖥️ SYSTEM OVERVIEW : (Gathering data...)")
-        out("-----------------------------------------------------------------\n")
+            LOGGER.critical(" 🖥️ SYSTEM OVERVIEW : (Gathering data...)")
+        LOGGER.critical(
+            "-----------------------------------------------------------------\n"
+        )
 
     def start_all(self) -> None:
         for name in self.config["scripts"]:
@@ -299,19 +310,19 @@ class ScriptManager:
 
 def _show_help() -> None:
     """Display available commands."""
-    out("Available commands:")
-    out("  status                - View running processes")
-    out("  stats                 - View Background CPU & Memory Averages")
-    out("  start <name>          - Start a script (e.g., start app)")
-    out("  stop <name>           - Stop a script")
-    out("  restart <name>        - Restart a single script")
-    out("  exit/quit             - Stop all scripts and close orchestrator")
+    LOGGER.critical("Available commands:")
+    LOGGER.critical("  status                - View running processes")
+    LOGGER.critical("  stats                 - View Background CPU & Memory Averages")
+    LOGGER.critical("  start <name>          - Start a script (e.g., start app)")
+    LOGGER.critical("  stop <name>           - Stop a script")
+    LOGGER.critical("  restart <name>        - Restart a single script")
+    LOGGER.critical("  exit/quit             - Stop all scripts and close orchestrator")
 
 
 def handle_command(manager: ScriptManager, action: str, args: list[str]) -> bool:
     """Process a single CLI command. Returns False to exit the loop."""
     if action in ("exit", "quit"):
-        out("Stopping all scripts and exiting...")
+        LOGGER.critical("Stopping all scripts and exiting...")
         manager.stop_all()
         return False
     if action == "status":
@@ -322,21 +333,21 @@ def handle_command(manager: ScriptManager, action: str, args: list[str]) -> bool
         if args:
             manager.start(args[0])
         else:
-            out("Usage: start <script_name>")
+            LOGGER.critical("Usage: start <script_name>")
     elif action == "stop":
         if args:
             manager.stop(args[0])
         else:
-            out("Usage: stop <script_name>")
+            LOGGER.critical("Usage: stop <script_name>")
     elif action == "restart":
         if args:
             manager.restart(args[0])
         else:
-            out("Usage: restart <script_name>")
+            LOGGER.critical("Usage: restart <script_name>")
     elif action == "help":
         _show_help()
     else:
-        out(f"Unknown command: {action}. Type 'help' for options.")
+        LOGGER.critical(f"Unknown command: {action}. Type 'help' for options.")
     return True
 
 
@@ -355,15 +366,15 @@ def main() -> None:
     manager = ScriptManager()
 
     if args.module_list:
-        out(f"Starting scripts: {', '.join(args.module_list)}")
+        LOGGER.critical(f"Starting scripts: {', '.join(args.module_list)}")
         for module_name in args.module_list:
             manager.start(module_name)
     else:
-        out("Starting all scripts based on config...")
+        LOGGER.critical("Starting all scripts based on config...")
         manager.start_all()
 
     manager.status()
-    out("Type 'help' for available commands.")
+    LOGGER.critical("Type 'help' for available commands.")
 
     while True:
         try:
@@ -378,7 +389,7 @@ def main() -> None:
                 break
 
         except KeyboardInterrupt:
-            out("\nCaught interrupt. Stopping all scripts and exiting...")
+            LOGGER.critical("\nCaught interrupt. Stopping all scripts and exiting...")
             manager.stop_all()
             break
 
