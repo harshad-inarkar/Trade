@@ -52,8 +52,6 @@ class UITableManager {
         if (activeEl) {
             activeEl.textContent = '₹ ' + Number(activeSum).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             activeEl.className = 'pnl-display ' + (activeSum > 0 ? 'pnl-positive' : (activeSum < 0 ? 'pnl-negative' : 'pnl-neutral'));
-            if (this.currentView === 'closed') activeEl.classList.add('hidden');
-            else activeEl.classList.remove('hidden');
         }
 
         // Update the Closed Element
@@ -61,8 +59,6 @@ class UITableManager {
         if (closedEl) {
             closedEl.textContent = '₹ ' + Number(closedSum).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             closedEl.className = 'pnl-display ' + (closedSum > 0 ? 'pnl-positive' : (closedSum < 0 ? 'pnl-negative' : 'pnl-neutral'));
-            if (this.currentView === 'active') closedEl.classList.add('hidden');
-            else closedEl.classList.remove('hidden');
         }
     }
 

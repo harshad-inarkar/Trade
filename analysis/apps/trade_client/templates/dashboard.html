@@ -263,204 +263,210 @@
     <div class="data-stack">
       <div class="panel p-0">
         <div class="tabs">
-          <button id="tab-active" class="btn-tab active" onclick="window.UI.togglePositions('active')">
+          <button id="tab-active" class="btn-tab {% if total_positions > 0 or total_closed == 0 %}active{% endif %}"
+            onclick="window.UI.togglePositions('active')">
             Active (<span id="live-position-count">{{ total_positions }}</span>)
           </button>
-          <button id="tab-closed" class="btn-tab" onclick="window.UI.togglePositions('closed')">
+          <button id="tab-closed" class="btn-tab {% if total_positions == 0 and total_closed > 0 %}active{% endif %}"
+            onclick="window.UI.togglePositions('closed')">
             Closed (<span id="live-closed-count">{{ total_closed }}</span>)
           </button>
 
           <div class="ml-auto total-pnl-wrap">
-            <span class="total-pnl-label">Total PnL:</span>
-
-            <span id="total-pnl-active"
-              class="pnl-display {% if active_pnl_total > 0 %}pnl-positive{% elif active_pnl_total < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
-              ₹ {{ "{:,.2f}".format(active_pnl_total | default(0)) }}
-            </span>
-
-            <span id="total-pnl-closed"
-              class="pnl-display hidden {% if closed_pnl_total > 0 %}pnl-positive{% elif closed_pnl_total < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
-              ₹ {{ "{:,.2f}".format(closed_pnl_total | default(0)) }}
-            </span>
+            <div>
+              <span class="total-pnl-label">Unrealized P&L:</span>
+              <span id="total-pnl-active"
+                class="pnl-display {% if active_pnl_total > 0 %}pnl-positive{% elif active_pnl_total < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+                ₹ {{ "{:,.2f}".format(active_pnl_total | default(0)) }}
+              </span>
+            </div>
+            <div>
+              <span class="total-pnl-label">Realized P&L:</span>
+              <span id="total-pnl-closed"
+                class="pnl-display {% if closed_pnl_total > 0 %}pnl-positive{% elif closed_pnl_total < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+                ₹ {{ "{:,.2f}".format(closed_pnl_total | default(0)) }}
+              </span>
+            </div>
           </div>
-
         </div>
-        <div class="table-wrap" id="view-active">
-          <table class="symbols-table" id="table-active">
-            <thead>
-              <tr>
-                <th class="w-36">#</th>
-                <th class="sortable" onclick="window.UI.sortTable('table-active', 1, false)">Symbol</th>
-                <th class="sortable" onclick="window.UI.sortTable('table-active', 2, false)">Side</th>
-                <th class="sortable" onclick="window.UI.sortTable('table-active', 3, true)">Qty</th>
-                <th class="sortable" onclick="window.UI.sortTable('table-active', 4, true)">Entry Price</th>
-                <th class="sortable" onclick="window.UI.sortTable('table-active', 5, true)">LTP</th>
-                <th class="sortable" onclick="window.UI.sortTable('table-active', 6, true)">PnL</th>
-                <th class="text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for pos in positions %}
-              <tr data-position-row="{{ pos.security_id }}" data-position-qty="{{ pos.qty }}">
-                <td>{{ loop.index }}</td>
-                <td>
-                  <span class="symbol-badge">{{ pos.display_name }}</span>
-                </td>
-                <td>
-                  {% set qty_num = pos.qty | int %}
-                  {% set side = 'B' if qty_num > 0 else ('S' if qty_num < 0 else '-' ) %} <span
-                    id="side-{{ pos.security_id }}" class="box-side box-{{ side }}">{{ side }}</span>
-                </td>
-                <td id="qty-{{ pos.security_id }}" class="mono-text">{{ qty_num | abs }}</td>
-                <td id="entry-{{ pos.security_id }}" class="mono-text">
-                  {{ "{:,.2f}".format(pos.entry_price | default(0)
-                  ) }}
-                </td>
-                <td id="ltp-{{ pos.security_id }}" class="mono-text">{{ "{:,.2f}".format(pos.ltp | default(0) ) }}</td>
-                <td>
-                  <span id="pnl-active-{{ pos.security_id }}"
-                    class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
-                    {{ "{:,.2f}".format(pos.pnl) }}
-                  </span>
-                </td>
-                <td>
-                  <div class="action-cell">
 
-                    <details class="action-dropdown-panel">
-                      <summary class="btn-action btn-close-mkt" title="Close Position">Close ▸</summary>
-                      <div class="action-dropdown-wrap">
-                        {{ trade_form('close', pos) }}
-                      </div>
-                    </details>
-
-                    <details class="action-dropdown-panel">
-                      <summary class="btn-action btn-reentry" title="Close now and set a re-entry order">Re-entry ▸
-                      </summary>
-                      <div class="action-dropdown-wrap">
-                        {{ trade_form('reentry', pos) }}
-                      </div>
-                    </details>
-
-                  </div>
-                </td>
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="6" class="empty-state">No Active Positions.</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        <div class="table-wrap hidden" id="view-closed">
-          <table class="symbols-table" id="table-closed">
-            <thead>
-              <tr>
-                <th class="w-36">#</th>
-                <th class="sortable" onclick="window.UI.sortTable('table-closed', 1, false)">Symbol</th>
-                <th class="sortable" onclick="window.UI.sortTable('table-closed', 2, true)">Qty</th>
-                <th class="sortable" onclick="window.UI.sortTable('table-closed', 3, true)">Buy Avg</th>
-                <th class="sortable" onclick="window.UI.sortTable('table-closed', 4, true)">Sell Avg</th>
-                <th class="sortable" onclick="window.UI.sortTable('table-closed', 5, true)">Realized PnL</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for pos in closed_positions %}
-              <tr data-position-row="{{ pos.security_id }}" data-position-qty="{{ pos.qty }}">
-                <td>{{ loop.index }}</td>
-                <td>
-                  <span class="symbol-badge">{{ pos.display_name }}</span>
-                </td>
-                <td>
-                  <span id="buyqty-{{ pos.security_id }}">{{ pos.buyqty }}</span>
-                </td>
-                <td id="buyavg-{{ pos.security_id }}" class="mono-text">
-                  {{ "{:,.2f}".format(pos.buy_avg | default(0) )
-                  }}
-                </td>
-                <td id="sellavg-{{ pos.security_id }}" class="mono-text">
-                  {{ "{:,.2f}".format(pos.sell_avg | default(0) )
-                  }}
-                </td>
-                <td>
-                  <span id="pnl-closed-{{ pos.security_id }}"
-                    class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
-                    {{ "{:,.2f}".format(pos.pnl) }}
-                  </span>
-                </td>
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="3" class="empty-state">No Closed Positions.</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
       </div>
-      <div class="panel p-0">
-        <div class="panel-header-custom">
-          <span>Pending Orders</span>
-          <div class="flex-gap-8">
-            <form action="/clean_orphaned" method="post" class="m-0">
-              <button type="submit" class="btn-action btn-accent3" title="Clear Orphaned Super Orders">
-                Clear
-                Super
-              </button>
-            </form>
-            <form action="/cancel_all" method="post" class="m-0">
-              <button type="submit" class="btn-action btn-red" title="Cancel ALL Pending Orders">Clear All</button>
-            </form>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table class="symbols-table">
-            <thead>
-              <tr>
-                <th class="w-36">#</th>
-                <th>Symbol</th>
-                <th>Type</th>
-                <th>Side</th>
-                <th>Detail</th>
-                <th class="text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for ord in active_orders %}
-              <tr>
-                <td>{{ loop.index }}</td>
-                <td>
-                  <span class="symbol-badge">{{ ord.symbol }}</span>
-                </td>
-                <td>
-                  <span class="badge-type badge-{{ ord.type }}">{{ ord.type }}</span>
-                </td>
-                <td>
-                  {% set oside = 'B' if ord.side == 'BUY' else ('S' if ord.side == 'SELL' else '-') %}
-                  <span class="box-side box-{{ oside }}">{{ oside }}</span>
-                </td>
-                <td class="order-detail">{{ ord.detail }}</td>
-                <td class="text-right">
-                  <form action="/cancel_order" method="post" class="inline-block">
-                    <input type="hidden" name="order_id" value="{{ ord.order_id }}">
-                    <input type="hidden" name="order_type" value="{{ ord.type }}">
-                    <input type="hidden" name="leg" value="{{ ord.leg }}">
-                    <button type="submit" class="btn-action btn-cancel-{{ ord.type | lower }}"
-                      title="Cancel this order">Cancel</button>
-                  </form>
-                </td>
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="6" class="empty-state">No Pending Orders.</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+      <div class="table-wrap {% if total_positions == 0 and total_closed > 0 %}hidden{% endif %}" id="view-active">
+        <table class="symbols-table" id="table-active">
+          <thead>
+            <tr>
+              <th class="w-36">#</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-active', 1, false)">Symbol</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-active', 2, false)">Side</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-active', 3, true)">Qty</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-active', 4, true)">Entry Price</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-active', 5, true)">LTP</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-active', 6, true)">PnL</th>
+              <th class="text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pos in positions %}
+            <tr data-position-row="{{ pos.security_id }}" data-position-qty="{{ pos.qty }}">
+              <td>{{ loop.index }}</td>
+              <td>
+                <span class="symbol-badge">{{ pos.display_name }}</span>
+              </td>
+              <td>
+                {% set qty_num = pos.qty | int %}
+                {% set side = 'B' if qty_num > 0 else ('S' if qty_num < 0 else '-' ) %} <span
+                  id="side-{{ pos.security_id }}" class="box-side box-{{ side }}">{{ side }}</span>
+              </td>
+              <td id="qty-{{ pos.security_id }}" class="mono-text">{{ qty_num | abs }}</td>
+              <td id="entry-{{ pos.security_id }}" class="mono-text">
+                {{ "{:,.2f}".format(pos.entry_price | default(0)
+                ) }}
+              </td>
+              <td id="ltp-{{ pos.security_id }}" class="mono-text">{{ "{:,.2f}".format(pos.ltp | default(0) ) }}</td>
+              <td>
+                <span id="pnl-active-{{ pos.security_id }}"
+                  class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+                  {{ "{:,.2f}".format(pos.pnl) }}
+                </span>
+              </td>
+              <td>
+                <div class="action-cell">
+
+                  <details class="action-dropdown-panel">
+                    <summary class="btn-action btn-close-mkt" title="Close Position">Close ▸</summary>
+                    <div class="action-dropdown-wrap">
+                      {{ trade_form('close', pos) }}
+                    </div>
+                  </details>
+
+                  <details class="action-dropdown-panel">
+                    <summary class="btn-action btn-reentry" title="Close now and set a re-entry order">Re-entry ▸
+                    </summary>
+                    <div class="action-dropdown-wrap">
+                      {{ trade_form('reentry', pos) }}
+                    </div>
+                  </details>
+
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="6" class="empty-state">No Active Positions.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="table-wrap {% if total_positions > 0 or total_closed == 0 %}hidden{% endif %}" id="view-closed">
+        <table class="symbols-table" id="table-closed">
+          <thead>
+            <tr>
+              <th class="w-36">#</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-closed', 1, false)">Symbol</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-closed', 2, true)">Qty</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-closed', 3, true)">Buy Avg</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-closed', 4, true)">Sell Avg</th>
+              <th class="sortable" onclick="window.UI.sortTable('table-closed', 5, true)">Realized PnL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pos in closed_positions %}
+            <tr data-position-row="{{ pos.security_id }}" data-position-qty="{{ pos.qty }}">
+              <td>{{ loop.index }}</td>
+              <td>
+                <span class="symbol-badge">{{ pos.display_name }}</span>
+              </td>
+              <td>
+                <span id="buyqty-{{ pos.security_id }}">{{ pos.buyqty }}</span>
+              </td>
+              <td id="buyavg-{{ pos.security_id }}" class="mono-text">
+                {{ "{:,.2f}".format(pos.buy_avg | default(0) )
+                }}
+              </td>
+              <td id="sellavg-{{ pos.security_id }}" class="mono-text">
+                {{ "{:,.2f}".format(pos.sell_avg | default(0) )
+                }}
+              </td>
+              <td>
+                <span id="pnl-closed-{{ pos.security_id }}"
+                  class="{% if pos.pnl > 0 %}pnl-positive{% elif pos.pnl < 0 %}pnl-negative{% else %}pnl-neutral{% endif %}">
+                  {{ "{:,.2f}".format(pos.pnl) }}
+                </span>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="3" class="empty-state">No Closed Positions.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
     </div>
-    {% endif %}
+    <div class="panel p-0">
+      <div class="panel-header-custom">
+        <span>Pending Orders</span>
+        <div class="flex-gap-8">
+          <form action="/clean_orphaned" method="post" class="m-0">
+            <button type="submit" class="btn-action btn-accent3" title="Clear Orphaned Super Orders">
+              Clear
+              Super
+            </button>
+          </form>
+          <form action="/cancel_all" method="post" class="m-0">
+            <button type="submit" class="btn-action btn-red" title="Cancel ALL Pending Orders">Clear All</button>
+          </form>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="symbols-table">
+          <thead>
+            <tr>
+              <th class="w-36">#</th>
+              <th>Symbol</th>
+              <th>Type</th>
+              <th>Side</th>
+              <th>Detail</th>
+              <th class="text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ord in active_orders %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              <td>
+                <span class="symbol-badge">{{ ord.symbol }}</span>
+              </td>
+              <td>
+                <span class="badge-type badge-{{ ord.type }}">{{ ord.type }}</span>
+              </td>
+              <td>
+                {% set oside = 'B' if ord.side == 'BUY' else ('S' if ord.side == 'SELL' else '-') %}
+                <span class="box-side box-{{ oside }}">{{ oside }}</span>
+              </td>
+              <td class="order-detail">{{ ord.detail }}</td>
+              <td class="text-right">
+                <form action="/cancel_order" method="post" class="inline-block">
+                  <input type="hidden" name="order_id" value="{{ ord.order_id }}">
+                  <input type="hidden" name="order_type" value="{{ ord.type }}">
+                  <input type="hidden" name="leg" value="{{ ord.leg }}">
+                  <button type="submit" class="btn-action btn-cancel-{{ ord.type | lower }}"
+                    title="Cancel this order">Cancel</button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="6" class="empty-state">No Pending Orders.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
   </div>
   <div id="access-modal" class="modal-overlay">
     <div class="panel modal-panel">
