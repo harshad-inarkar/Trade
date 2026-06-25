@@ -2,7 +2,6 @@ import contextlib
 import logging
 import os
 import subprocess
-import sys
 import time
 from pathlib import Path
 
@@ -24,7 +23,6 @@ class SSHProxyManager:
         # Extract configurations
         proxy_cfg = self.config.get("proxy", {})
         self.host = proxy_cfg.get("host", "")
-        self.user = proxy_cfg.get("user", "")
         self.port = proxy_cfg.get("port", 0)
         self.proxy_host = proxy_cfg.get("proxy_host", "localhost")
         self.webhook_port = proxy_cfg.get("webhook_port", 0)
@@ -33,10 +31,6 @@ class SSHProxyManager:
         # AutoSSH configurations
         self.server_alive_interval = proxy_cfg.get("server_alive_interval", 30)
         self.server_alive_count_max = proxy_cfg.get("server_alive_count_max", 3)
-
-        # Expand user path (e.g., ~/.ssh/...)
-        raw_key_path = proxy_cfg.get("key_path", "")
-        self.key_path = Path(raw_key_path).expanduser()
 
     def _load_config(self) -> dict:
         """Loads configuration from the TOML file."""
@@ -69,7 +63,7 @@ class SSHProxyManager:
 
         # 2. Kill via original SSH signature securely
         subprocess.run(
-            ["pkill", "-f", f"ssh -i {self.key_path}"],
+            ["pkill", "-f", "ssh"],
             check=False,
             stderr=subprocess.DEVNULL,
         )
@@ -110,9 +104,7 @@ class SSHProxyManager:
         # The local SSH command formatted securely as a list
         ssh_command_list = [
             "ssh",
-            "-i",
-            str(self.key_path),
-            f"{self.user}@{self.host}",
+            f"{self.host}",
             remote_bash_cmd,
         ]
 
@@ -125,12 +117,9 @@ class SSHProxyManager:
 
     def start(self) -> None:
         """Starts the AutoSSH proxy process in the background."""
-        if not self.key_path.exists():
-            LOGGER.error("Error: SSH key not found at %s", self.key_path)
-            sys.exit(1)
 
         self.clear_remote_zombies()
-        LOGGER.critical("🚀 Starting AutoSSH proxy to %s@%s...", self.user, self.host)
+        LOGGER.critical("🚀 Starting AutoSSH proxy to %s...", self.host)
 
         # Securely pass all arguments as an explicit list
         autossh_cmd = [
@@ -145,13 +134,11 @@ class SSHProxyManager:
             f"ServerAliveCountMax {self.server_alive_count_max}",
             "-o",
             "ExitOnForwardFailure=yes",
-            "-i",
-            str(self.key_path),
             "-D",
             str(self.port),
             "-R",
             f"{self.webhook_port}:{self.proxy_host}:{self.webhook_port}",
-            f"{self.user}@{self.host}",
+            f"{self.host}",
         ]
 
         env = os.environ.copy()
