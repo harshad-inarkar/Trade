@@ -6,6 +6,7 @@ Refactored for dynamic indicator processing via OOP.
 
 import csv as _csv
 import heapq
+import math
 import threading
 import time
 from collections.abc import AsyncIterator
@@ -393,6 +394,7 @@ class VolTrackerApp(BaseFastAPIApp):
         router.add_api_route(
             "/symbol/{symbol_name}", self.symbol_detail, methods=["GET"]
         )
+        router.add_api_route("/api/indicator", self.api_indicator, methods=["GET"])
         self.app.include_router(router)
 
     async def index(
@@ -553,23 +555,18 @@ class VolTrackerApp(BaseFastAPIApp):
         vol = nd[si : si + 1, :wptr, VOL]
         price = nd[si : si + 1, :wptr, PRICE]
 
-        vfast = IndicatorFactory.calculate(ma, vol, fast)[0]
-        vslow = IndicatorFactory.calculate(ma, vol, slow)[0]
-        pfast = IndicatorFactory.calculate(ma, price, fast)[0]
-        pslow = IndicatorFactory.calculate(ma, price, slow)[0]
-
         ts_list = self.data_service.cache.ts_list[tf][:wptr]
         tsf_list = self.data_service.cache.tsf_list[tf][:wptr]
 
-        data = [CACHE_FIELDS] + [
+        def safe_float(v: float | None) -> float:
+            return float(v) if v is not None and not math.isnan(v) else 0.0
+
+        data = [["timestamp_full", "timestamp", "volume", "price"]] + [
             [
                 tsf_list[i],
                 ts_list[i],
-                float(vslow[i]),
-                float(vfast[i]),
-                float(price[0, i]),
-                float(pfast[i]),
-                float(pslow[i]),
+                safe_float(vol[0, i]),
+                safe_float(price[0, i]),
             ]
             for i in range(wptr)
         ]
@@ -586,6 +583,41 @@ class VolTrackerApp(BaseFastAPIApp):
                 "slow": slow,
             },
         )
+
+    def api_indicator(
+        self,
+        symbol: str,
+        tf: str = MIN_TF,
+        source: str = "price",
+        ind_type: str = "rma",
+        p1: float = 8.0,
+    ) -> dict[str, list[float | None]]:
+        tf = tf if tf in TF_KEYS else MIN_TF
+        sym_list = self.data_service.cache.sym_list.get(tf, [])
+        if symbol not in sym_list:
+            raise HTTPException(404, "Symbol not found")
+
+        si = sym_list.index(symbol)
+        nd = self.data_service.cache.num_data[tf]
+        wptr = self.data_service.cache.write_ptr[tf]
+
+        if source == "volume":
+            base_data = nd[si : si + 1, :wptr, VOL]
+        else:
+            base_data = nd[si : si + 1, :wptr, PRICE]
+
+        try:
+            if ind_type == "raw":
+                res = base_data[0]
+            else:
+                res = IndicatorFactory.calculate(ind_type, base_data, int(p1))[0]
+        except (ValueError, TypeError, IndexError) as e:
+            raise HTTPException(500, f"Calculation error: {e}") from e
+
+        def safe_float(v: float) -> float | None:
+            return float(v) if v is not None and not math.isnan(v) else None
+
+        return {"data": [safe_float(x) for x in res]}
 
     def _render_index(
         self,

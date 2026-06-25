@@ -19,36 +19,43 @@
       <span class="sub">Intraday Analytics</span>
     </div>
 
-    {# ── Unified Dropdown & Input Configuration Bar ── #}
-    <div class="config-bar">
-      <div class="config-group">
-        <label>TF:</label>
-        <select id="tf-select" class="nav-select">
-          <option value="3" {% if timeframe=='3' %}selected{% endif %}>3m</option>
-          <option value="15" {% if timeframe=='15' %}selected{% endif %}>15m</option>
-          <option value="D" {% if timeframe=='D' %}selected{% endif %}>1D</option>
-        </select>
-      </div>
-
-      <div class="config-group">
-        <label>MA:</label>
-        <select id="ma-select" class="nav-select">
-          <option value="rma" {% if ma_type=='rma' %}selected{% endif %}>RMA</option>
-          <option value="ema" {% if ma_type=='ema' %}selected{% endif %}>EMA</option>
-          <option value="sma" {% if ma_type=='sma' %}selected{% endif %}>SMA</option>
-        </select>
-      </div>
-
-      <div class="config-group">
-        <label>FAST:</label>
-        <input type="number" id="fast-input" class="nav-input" value="{{ fast }}" min="1" max="200" />
-      </div>
-
-      <div class="config-group">
-        <label>SLOW:</label>
-        <input type="number" id="slow-input" class="nav-input" value="{{ slow }}" min="1" max="200" />
-      </div>
+    {% block header_config %}
+    {# ── Timeframe selector ── #}
+    <div class="tf-bar">
+      <span>TF:</span>
+      <a href="?tf=3&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+        class="{{ 'active' if timeframe == '3' else '' }}">3</a>
+      <a href="?tf=15&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+        class="{{ 'active' if timeframe == '15' else '' }}">15</a>
+      <a href="?tf=D&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+        class="{{ 'active' if timeframe == 'D' else '' }}">D</a>
     </div>
+
+    {# ── MA type selector ── #}
+    <div class="ma-controls">
+      <span>MA:</span>
+      <a href="?tf={{ timeframe }}&ma=rma&fast={{ fast }}&slow={{ slow }}"
+        class="{{ 'active' if ma_type == 'rma' else '' }}">RMA</a>
+      <a href="?tf={{ timeframe }}&ma=ema&fast={{ fast }}&slow={{ slow }}"
+        class="{{ 'active' if ma_type == 'ema' else '' }}">EMA</a>
+      <a href="?tf={{ timeframe }}&ma=sma&fast={{ fast }}&slow={{ slow }}"
+        class="{{ 'active' if ma_type == 'sma' else '' }}">SMA</a>
+    </div>
+
+    {# ── Fast / Slow period inputs ── #}
+    <form class="length-form" method="get" action="">
+      <input type="hidden" name="tf" value="{{ timeframe }}" />
+      <input type="hidden" name="ma" value="{{ ma_type }}" />
+      {% if sort %}<input type="hidden" name="sort" value="{{ sort }}" />{% endif %}
+      {% if order %}<input type="hidden" name="order" value="{{ order }}" />{% endif %}
+      {% if filter %}<input type="hidden" name="filter" value="{{ filter }}" />{% endif %}
+      <span>FAST:</span>
+      <input type="number" name="fast" value="{{ fast }}" min="1" max="200" />
+      <span>SLOW:</span>
+      <input type="number" name="slow" value="{{ slow }}" min="1" max="200" />
+      <button type="submit">APPLY</button>
+    </form>
+    {% endblock %}
 
     {# ── Primary navigation ── #}
     <nav class="header-nav">

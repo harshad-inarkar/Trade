@@ -1,19 +1,21 @@
 /**
  * VolumeChartManager — NSE Portal
- * Clean, dual-purpose MA chart (Volume / Price)
- * Features: Infinite X-Zoom/Pan, Dynamic Y-Scaling, Gridless Dark Mode
+ * Native Javascript Multi-Indicator Overlay Engine
+ * (Mathematical computations delegated strictly to FastAPI backend)
  */
 
 const C = {
-  TEAL:    '#00d4aa',
-  RED:     '#e05555',
-  BG:      '#0b0f14',
-  SURFACE: '#131920',
-  BORDER:  '#1e2a35',
-  TEXT:    '#c8d8e8',
-  MUTED:   '#4a6070',
-  MONO:    "'IBM Plex Mono', monospace",
+  BG: '#000000',
+  SURFACE: '#000000',
+  BORDER: '#1e2a35',
+  TEXT: '#c8d8e8',
+  MUTED: '#4a6070',
+  MONO: "'IBM Plex Mono', monospace",
 };
+
+// Indicator Color Ladder: Fastest -> Slowest
+const MA_COLORS = ['#c0c0c0', '#00ffff', '#ffff00', '#ff0000'];
+const DEFAULT_MA_COLOR = '#ffffff';
 
 function hexToRgb(hex) {
   const h = hex.replace('#', '');
@@ -28,29 +30,27 @@ function rgba(hex, a) {
 function fmtVol(v) {
   if (v == null || isNaN(v)) return '—';
   const n = Number(v);
-  if (n >= 1e6)  return (n / 1e6).toFixed(2) + 'M';
-  if (n >= 1e3)  return (n / 1e3).toFixed(1)  + 'K';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
   return Math.round(n).toLocaleString();
 }
 
-function fmtLabel(raw, { compact = false } = {}) {
+// FIXED: Dynamically format date vs HH:MM based on the timeframe context
+function fmtLabel(raw, isDaily = false) {
   if (!raw) return '';
   const s = String(raw).trim();
-  const sep = s.includes('T') ? 'T' : ' ';
-  const parts = s.split(sep);
-  if (parts.length >= 2) return parts[1].slice(0, 5);
-  const d = new Date(s + 'T00:00:00');
-  if (isNaN(d.getTime())) return s;
-  return compact
-    ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
-    : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
-}
+  const parts = s.split(' '); // Splits "123: 15/06_0915"
 
-function calcMaxTicks(n) {
-  if (n <= 20)  return n;
-  if (n <= 80)  return 10;
-  if (n <= 200) return 12;
-  return 14;
+  if (parts.length >= 2) {
+    const dtStr = parts[1]; // "15/06_0915"
+    if (dtStr.includes('_')) {
+      const [d, t] = dtStr.split('_');
+      if (isDaily) return d; // If Daily TF, only show "15/06"
+      return `${d} ${t.slice(0, 2)}:${t.slice(2)}`; // For intraday, show "15/06 09:15"
+    }
+    return dtStr;
+  }
+  return s;
 }
 
 const crosshairPlugin = {
@@ -80,19 +80,19 @@ function makeEndLabelPlugin() {
       if (!scales.y) return;
 
       chart.data.datasets.forEach((ds, i) => {
-        const meta   = chart.getDatasetMeta(i);
-        const points = meta.data;
+        if (chart.getDatasetMeta(i).hidden) return;
+        const points = chart.getDatasetMeta(i).data;
         if (!points.length) return;
 
-        const lastPt  = points[points.length - 1];
+        const lastPt = points[points.length - 1];
         const lastVal = ds.data[ds.data.length - 1];
         if (lastVal == null) return;
 
-        const isPrice = chart.options.plugins.customContext.isPrice;
-        const text    = isPrice ? '₹' + Number(lastVal).toFixed(2) : fmtVol(lastVal);
-        
-        const color  = ds.borderColor;
-        const padX   = 6, padY = 3, fSize = 9;
+        const source = ds.customSource;
+        const text = source === 'price' ? '₹' + Number(lastVal).toFixed(2) : fmtVol(lastVal);
+
+        const color = ds.borderColor;
+        const padX = 6, padY = 3, fSize = 9;
 
         ctx.save();
         ctx.font = `600 ${fSize}px ${C.MONO}`;
@@ -100,16 +100,16 @@ function makeEndLabelPlugin() {
         const bw = tw + padX * 2, bh = fSize + padY * 2;
         const bx = chartArea.right + 6, by = lastPt.y - bh / 2;
 
-        ctx.fillStyle = rgba(color, 0.18);
+        ctx.fillStyle = rgba(color, 0.25);
         ctx.beginPath();
         ctx.roundRect(bx, by, bw, bh, 3);
         ctx.fill();
 
-        ctx.strokeStyle = rgba(color, 0.55);
-        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
         ctx.stroke();
 
-        ctx.fillStyle = color;
+        ctx.fillStyle = '#fff';
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
         ctx.fillText(text, bx + padX, by + bh / 2);
@@ -119,9 +119,6 @@ function makeEndLabelPlugin() {
   };
 }
 
-/** * Calculates the Min and Max Y-axis bounds based solely on the data 
- * currently visible within the X-axis Zoom frame. 
- */
 function updateDynamicY({ chart }) {
   const xScale = chart.scales.x;
   const minIndex = Math.max(0, Math.floor(xScale.min));
@@ -148,61 +145,17 @@ function updateDynamicY({ chart }) {
   }
 }
 
-
-export class VolumeChartManager {
-  constructor(canvasId, config) {
+class ChartManager {
+  constructor(canvasId) {
     this.canvas = document.getElementById(canvasId);
-    if (!this.canvas) throw new Error(`Canvas #${canvasId} not found`);
-    this.ctx    = this.canvas.getContext('2d');
-    this.config = { isPrice: false, ...config };
-    this.chart  = null;
-    this._build();
+    this.ctx = this.canvas.getContext('2d');
+    this.chart = null;
   }
 
-  _build() {
-    const { fast, slow, fastPeriod, slowPeriod, labels, timeframe } = this.config;
-    const fLabel = fastPeriod ? `Fast MA (${fastPeriod})` : 'Fast MA';
-    const sLabel = slowPeriod ? `Slow MA (${slowPeriod})` : 'Slow MA';
+  build(labels, datasets, primarySource, tf) {
+    if (this.chart) this.chart.destroy();
 
-    const datasets = [
-      {
-        label: sLabel,
-        data: slow,
-        borderColor: C.RED,
-        backgroundColor: 'transparent',
-        borderWidth: 1.5,
-        tension: 0.4,
-        fill: false, // Absolutely no gradient fill under curve
-        pointRadius: 0,
-        pointHitRadius: 10,
-        pointHoverRadius: 4,
-        pointHoverBackgroundColor: C.RED,
-        pointHoverBorderColor: C.BG,
-        pointHoverBorderWidth: 2,
-        yAxisID: 'y'
-      },
-      {
-        label: fLabel,
-        data: fast,
-        borderColor: C.TEAL,
-        backgroundColor: 'transparent',
-        borderWidth: 1.5,
-        tension: 0.4,
-        fill: false, // Absolutely no gradient fill under curve
-        pointRadius: 0,
-        pointHitRadius: 10,
-        pointHoverRadius: 4,
-        pointHoverBackgroundColor: C.TEAL,
-        pointHoverBorderColor: C.BG,
-        pointHoverBorderWidth: 2,
-        yAxisID: 'y'
-      }
-    ];
-
-    const isDaily = String(timeframe).toUpperCase() === 'D';
     const tickBase = { color: C.MUTED, font: { family: C.MONO, size: 10 } };
-    
-    // Disable all background grids
     const gridBase = { display: false, drawTicks: false };
 
     this.chart = new Chart(this.ctx, {
@@ -212,54 +165,61 @@ export class VolumeChartManager {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: { duration: 500, easing: 'easeInOutCubic' },
+        animation: { duration: 0 },
         interaction: { mode: 'index', intersect: false, axis: 'x' },
         layout: { padding: { top: 16, right: 80, bottom: 4, left: 0 } },
         scales: {
           x: {
             grid: gridBase, border: { display: false },
-            ticks: { ...tickBase, maxRotation: 0, minRotation: 0, maxTicksLimit: calcMaxTicks(labels.length), autoSkip: true, autoSkipPadding: 28, callback: (_, idx) => fmtLabel(labels[idx], { compact: isDaily }) },
+            ticks: {
+              ...tickBase,
+              maxRotation: 0,
+              minRotation: 0,
+              maxTicksLimit: 14,
+              autoSkip: true,
+              autoSkipPadding: 28,
+              callback: (_, idx) => {
+                const isDaily = this.chart?.options?.plugins?.customContext?.tf === 'D';
+                return fmtLabel(labels[idx], isDaily);
+              }
+            },
           },
           y: {
-            beginAtZero: false, // Forces dynamic scaling range
+            beginAtZero: false,
             position: 'right', grid: gridBase, border: { display: false },
-            ticks: { 
-              ...tickBase, 
-              maxTicksLimit: 7, 
-              callback: (v) => this.config.isPrice ? '₹' + Number(v).toFixed(2) : fmtVol(v),
-              padding: 8 
+            ticks: {
+              ...tickBase,
+              maxTicksLimit: 7,
+              callback: function (v) {
+                const src = this.chart?.options?.plugins?.customContext?.primarySource || 'volume';
+                return src === 'price' ? '₹' + Number(v).toFixed(2) : fmtVol(v);
+              },
+              padding: 8
             },
           },
         },
         plugins: {
           legend: { display: false },
-          customContext: { isPrice: this.config.isPrice },
-          
-          // Infinite Pan & Zoom Hooks
+          customContext: { primarySource, tf },
           zoom: {
-            pan: {
-              enabled: true,
-              mode: 'x',
-              onPan: updateDynamicY
-            },
-            zoom: {
-              wheel: { enabled: true },
-              pinch: { enabled: true },
-              mode: 'x',
-              onZoom: updateDynamicY
-            }
+            pan: { enabled: true, mode: 'x', onPan: updateDynamicY },
+            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x', onZoom: updateDynamicY }
           },
-
           tooltip: {
-            backgroundColor: C.SURFACE, borderColor: C.BORDER, borderWidth: 1,
+            backgroundColor: '#131920', borderColor: C.BORDER, borderWidth: 1,
             titleColor: C.TEXT, bodyColor: C.MUTED,
             titleFont: { family: C.MONO, size: 10, weight: '600' }, bodyFont: { family: C.MONO, size: 10 },
             padding: 12, cornerRadius: 4, displayColors: true, boxWidth: 8, boxHeight: 8, boxPadding: 4,
             callbacks: {
-              title: (items) => String(items[0]?.label ?? '').trim(),
+              title: (items) => {
+                const raw = items[0]?.label ?? '';
+                const isDaily = this.chart?.options?.plugins?.customContext?.tf === 'D';
+                return fmtLabel(raw, isDaily);
+              },
               label: (ctx) => {
                 const val = Number(ctx.raw);
-                const fmt = this.config.isPrice ? '₹' + val.toFixed(2) : fmtVol(val);
+                const src = ctx.dataset.customSource;
+                const fmt = src === 'price' ? '₹' + val.toFixed(2) : fmtVol(val);
                 return `  ${ctx.dataset.label}: ${fmt}`;
               },
             },
@@ -269,111 +229,153 @@ export class VolumeChartManager {
     });
   }
 
-  update({ fast, slow, isPrice } = {}) {
-    if (!this.chart) return;
-    if (fast) this.chart.data.datasets[1].data = fast;
-    if (slow) this.chart.data.datasets[0].data = slow;
-    if (isPrice !== undefined) {
-        this.config.isPrice = isPrice;
-        this.chart.options.plugins.customContext.isPrice = isPrice;
+  update(labels, datasets, primarySource, tf) {
+    if (!this.chart) {
+      this.build(labels, datasets, primarySource, tf);
+    } else {
+      this.chart.data.labels = labels;
+      this.chart.data.datasets = datasets;
+      this.chart.options.plugins.customContext = { primarySource, tf };
+
+      this.chart.resetZoom('none');
+      delete this.chart.options.scales.y.min;
+      delete this.chart.options.scales.y.max;
+
+      this.chart.update('none');
     }
-    
-    // Clear custom Y zoom limits when changing tabs to prevent the new series from flat-lining
-    this.chart.resetZoom('none');
-    delete this.chart.options.scales.y.min;
-    delete this.chart.options.scales.y.max;
-    
-    this.chart.update('none');
   }
 }
 
 /* ─────────────────────────────────────────────
-   Page Initialization & Event Binding
+   State Management & Backend Fetching
 ───────────────────────────────────────────── */
 const rawDataEl = document.getElementById('rawData');
 const configEl = document.getElementById('chartConfig');
 
 if (rawDataEl && configEl) {
-    const rawData = JSON.parse(rawDataEl.textContent);
-    const config = JSON.parse(configEl.textContent);
-    const rows = rawData.slice(1);
+  const rawData = JSON.parse(rawDataEl.textContent);
+  const globalCfg = JSON.parse(configEl.textContent);
 
-    const labels    = rows.map(r => r[0]);
-    const volSlow   = rows.map(r => r[2]);
-    const volFast   = rows.map(r => r[3]);
-    const priceFast = rows.map(r => r[5]);
-    const priceSlow = rows.map(r => r[6]);
+  const SYMBOL = globalCfg.symbol;
+  const TF = globalCfg.timeframe;
 
-    const TAB_KEY = 'nse_active_tab';
-    let isPriceTab = sessionStorage.getItem(TAB_KEY) === 'price';
+  const rows = rawData.slice(1);
+  const labels = rows.map(r => r[0]);
 
-    const tabVol = document.getElementById('tabVol');
-    const tabPrice = document.getElementById('tabPrice');
+  const STATE_KEY = 'nse_sym_api_prefs_v2';
+  let state = JSON.parse(localStorage.getItem(STATE_KEY)) || {
+    indicators: [
+      { id: 1, source: 'volume', type: 'rma', p1: 8, data: null },
+      { id: 2, source: 'volume', type: 'rma', p1: 21, data: null }
+    ],
+    nextId: 3
+  };
 
-    if (isPriceTab) {
-        tabPrice.classList.add('active');
-        tabVol.classList.remove('active');
+  const chart = new ChartManager('mainChart');
+  const chipContainer = document.getElementById('indicatorChips');
+  const tfSel = document.getElementById('symTf');
+  const addBtn = document.getElementById('addIndBtn');
+  const addBtnBaseText = addBtn.innerHTML;
+
+  async function fetchIndicator(source, type, p1) {
+    try {
+      const res = await fetch(`/api/indicator?symbol=${SYMBOL}&tf=${TF}&source=${source}&ind_type=${type}&p1=${p1}`);
+      if (!res.ok) throw new Error("API Error");
+      const json = await res.json();
+      return json.data;
+    } catch (e) {
+      console.error("Failed to fetch indicator:", e);
+      return null;
+    }
+  }
+
+  async function renderState() {
+    state.indicators.sort((a, b) => parseInt(a.p1) - parseInt(b.p1));
+    const cacheState = {
+      nextId: state.nextId,
+      indicators: state.indicators.map(ind => ({ id: ind.id, source: ind.source, type: ind.type, p1: ind.p1 }))
+    };
+    localStorage.setItem(STATE_KEY, JSON.stringify(cacheState));
+
+    let fetches = state.indicators.map(async (ind) => {
+      if (!ind.data) {
+        ind.data = await fetchIndicator(ind.source, ind.type, ind.p1);
+      }
+    });
+
+    if (fetches.length > 0) {
+      addBtn.innerHTML = "↻...";
+      addBtn.disabled = true;
+      await Promise.all(fetches);
+      addBtn.innerHTML = addBtnBaseText;
+      addBtn.disabled = false;
     }
 
-    function updateFooterStats() {
-      const fastArr = isPriceTab ? priceFast : volFast;
-      const slowArr = isPriceTab ? priceSlow : volSlow;
-      
-      const lastFast = fastArr[fastArr.length - 1];
-      const lastSlow = slowArr[slowArr.length - 1];
-      const ratio    = lastSlow ? (lastFast / lastSlow) : null;
-      const isBull   = lastFast > lastSlow;
+    chipContainer.innerHTML = '';
+    state.indicators.forEach((ind, i) => {
+      let color = MA_COLORS[i] || DEFAULT_MA_COLOR;
+      let chip = document.createElement('div');
+      chip.className = 'ind-chip';
+      chip.innerHTML = `
+                <div class="ind-color" style="background: ${color};"></div>
+                ${ind.source.toUpperCase().substring(0, 3)} ${ind.type.toUpperCase()} ${ind.type === 'raw' ? '' : ind.p1}
+                <span class="ind-close" data-id="${ind.id}">×</span>
+            `;
+      chipContainer.appendChild(chip);
+    });
 
-      function fmt(v) {
-        if (v == null || isNaN(v)) return '—';
-        if (isPriceTab) return '₹' + Number(v).toFixed(2);
-        const n = Number(v);
-        if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
-        if (n >= 1e3) return (n / 1e3).toFixed(1)  + 'K';
-        return Math.round(n).toLocaleString();
-      }
+    let datasets = [];
 
-      document.getElementById('statFastNow').textContent = fmt(lastFast);
-      document.getElementById('statSlowNow').textContent = fmt(lastSlow);
-      document.getElementById('statRatio').textContent   = ratio ? ratio.toFixed(3) : '—';
-      document.getElementById('statBars').textContent    = rows.length;
+    state.indicators.forEach((ind, i) => {
+      if (!ind.data) return;
+      let color = MA_COLORS[i] || DEFAULT_MA_COLOR;
+      datasets.push({
+        label: `${ind.source.toUpperCase().substring(0, 3)} ${ind.type.toUpperCase()} ${ind.type === 'raw' ? '' : ind.p1}`.trim(),
+        data: ind.data,
+        borderColor: color,
+        borderWidth: 1.5,
+        tension: ind.type === 'raw' ? 0.1 : 0.4,
+        pointRadius: 0,
+        pointHitRadius: 10,
+        yAxisID: 'y',
+        customSource: ind.source
+      });
+    });
 
-      const sigEl = document.getElementById('statSignal');
-      if (lastFast != null && lastSlow != null) {
-        sigEl.textContent = isBull ? '↑ BULL' : '↓ BEAR';
-        sigEl.className = 'stat-val ' + (isBull ? 'c-green' : 'c-red');
-      }
+    const primarySource = state.indicators.length > 0 ? state.indicators[0].source : 'volume';
+    chart.update(labels, datasets, primarySource, TF);
+  }
+
+  addBtn.addEventListener('click', () => {
+    const src = document.getElementById('indSource').value;
+    const type = document.getElementById('indType').value;
+    const period = document.getElementById('indPeriod').value;
+
+    if (type !== 'raw' && (!period || period < 1)) return;
+
+    state.indicators.push({
+      id: state.nextId++,
+      source: src,
+      type: type,
+      p1: type === 'raw' ? 1 : parseInt(period),
+      data: null
+    });
+    renderState();
+  });
+
+  chipContainer.addEventListener('click', (e) => {
+    if (e.target.classList.contains('ind-close')) {
+      const idToRemove = parseInt(e.target.getAttribute('data-id'));
+      state.indicators = state.indicators.filter(ind => ind.id !== idToRemove);
+      renderState();
     }
+  });
 
-    const chart = new VolumeChartManager('mainChart', {
-      labels,
-      fast: isPriceTab ? priceFast : volFast,
-      slow: isPriceTab ? priceSlow : volSlow,
-      fastPeriod: config.fastPeriod,
-      slowPeriod: config.slowPeriod,
-      timeframe: config.timeframe,
-      isPrice: isPriceTab
-    });
+  tfSel.addEventListener('change', (e) => {
+    const params = new URLSearchParams(window.location.search);
+    params.set('tf', e.target.value);
+    window.location.search = params.toString();
+  });
 
-    updateFooterStats();
-
-    tabVol.addEventListener('click', () => {
-      if (!isPriceTab) return;
-      isPriceTab = false;
-      sessionStorage.setItem(TAB_KEY, 'volume');
-      tabVol.classList.add('active');
-      tabPrice.classList.remove('active');
-      chart.update({ fast: volFast, slow: volSlow, isPrice: false });
-      updateFooterStats();
-    });
-
-    tabPrice.addEventListener('click', () => {
-      if (isPriceTab) return;
-      isPriceTab = true;
-      sessionStorage.setItem(TAB_KEY, 'price');
-      tabPrice.classList.add('active');
-      tabVol.classList.remove('active');
-      chart.update({ fast: priceFast, slow: priceSlow, isPrice: true });
-      updateFooterStats();
-    });
+  renderState();
 }

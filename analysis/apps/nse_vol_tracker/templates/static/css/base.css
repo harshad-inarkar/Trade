@@ -157,6 +157,66 @@ header {
   margin: 0;
 }
 
+
+/* ── Header Controls  ── */
+.tf-bar, .ma-controls, .length-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: .68rem;
+  color: var(--muted);
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+.tf-bar a, .ma-controls a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  transition: all .2s;
+}
+.tf-bar a:hover, .ma-controls a:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.tf-bar a.active, .ma-controls a.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+.length-form input[type="number"] {
+  font-family: var(--mono);
+  font-size: .68rem;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  width: 48px;
+  outline: none;
+  text-align: center;
+  transition: border-color .2s;
+}
+.length-form input[type="number"]:focus { border-color: var(--accent); }
+.length-form button {
+  font-family: var(--mono);
+  font-size: .65rem;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+  transition: all .2s;
+  margin-left: 4px;
+}
+.length-form button:hover { border-color: var(--accent); color: var(--accent); }
+
+
+
 /* ── Primary Navigation Tabs ── */
 .header-nav {
   display: flex;

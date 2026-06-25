@@ -3,107 +3,54 @@
 {% block title %}{{ symbol }} – NSE Portal{% endblock %}
 
 {% block extra_head %}
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
-  
-  <link rel="stylesheet" href="{{ url_for('static', path='css/table.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', path='css/table.css') }}">
+{% endblock %}
+
+{% block header_config %}
+<div class="nav-config-bar">
+  <strong class="sym-title-bold">{{ symbol }}</strong>
+
+  <select id="symTf" class="nav-select">
+    <option value="3" {% if timeframe=='3' %}selected{% endif %}>3m</option>
+    <option value="15" {% if timeframe=='15' %}selected{% endif %}>15m</option>
+    <option value="D" {% if timeframe=='D' %}selected{% endif %}>1D</option>
+  </select>
+
+  <div class="nav-divider"></div>
+
+  <select id="indSource" class="nav-select">
+    <option value="volume">Volume</option>
+    <option value="price">Price</option>
+  </select>
+  <select id="indType" class="nav-select">
+    <option value="raw">Raw Line</option>
+    <option value="rma">RMA</option>
+    <option value="ema">EMA</option>
+    <option value="sma">SMA</option>
+  </select>
+  <input type="number" id="indPeriod" class="nav-input" value="8" min="1" max="200">
+  <button id="addIndBtn" class="nav-select btn-add-ind">+ ADD</button>
+</div>
 {% endblock %}
 
 {% block content %}
-  {# ── Symbol header ── #}
-  <div class="sym-header">
-    <div class="sym-title">
-      <span class="sym-ticker">{{ symbol }}</span>
-      {% if sector_name %}
-        <span class="sym-sector-badge">{{ sector_name }}</span>
-      {% endif %}
-    </div>
+<div class="sym-indicators-bar" id="indicatorChips">
+</div>
 
-    <div class="sym-chips">
-      <div class="chip">
-        <span class="chip-label">TF</span>
-        <strong>{{ timeframe }}m</strong>
-      </div>
-      <div class="chip">
-        <span class="chip-label">MA</span>
-        <strong>{{ ma_type | upper }}</strong>
-      </div>
-      <div class="chip">
-        <span class="chip-label">FAST</span>
-        <strong class="c-teal">{{ fast }}</strong>
-      </div>
-      <div class="chip">
-        <span class="chip-label">SLOW</span>
-        <strong class="c-red">{{ slow }}</strong>
-      </div>
-      <div class="chip">
-        <div class="live-dot"></div>
-        <strong>{{ refresh_time }}</strong>
-      </div>
+<div class="chart-outer-clean">
+  <div class="chart-panel-clean">
+    <div class="chart-canvas-wrap-clean">
+      <canvas id="mainChart"></canvas>
     </div>
   </div>
+</div>
 
-  {# ── Chart panel ── #}
-  <div class="chart-outer">
-    <div class="chart-panel">
-      <div class="chart-panel-header">
-        
-        {# Tab Navigation #}
-        <div class="chart-tabs">
-          <button class="tab-btn active" id="tabVol">Volume</button>
-          <button class="tab-btn" id="tabPrice">Price</button>
-        </div>
-
-        <div class="chart-legend-pills">
-          <span class="legend-pill legend-pill--fast">
-            <span class="legend-swatch legend-swatch--fast"></span>Fast MA ({{ fast }})
-          </span>
-          <span class="legend-pill legend-pill--slow">
-            <span class="legend-swatch legend-swatch--slow"></span>Slow MA ({{ slow }})
-          </span>
-        </div>
-      </div>
-
-      <div class="chart-canvas-wrap">
-        <canvas id="mainChart"></canvas>
-      </div>
-
-      <div class="chart-panel-footer" id="chartStats">
-        <div class="stat-pill">
-          <span class="stat-label">FAST NOW</span>
-          <span class="stat-val c-teal" id="statFastNow">—</span>
-        </div>
-        <div class="stat-pill">
-          <span class="stat-label">SLOW NOW</span>
-          <span class="stat-val c-red" id="statSlowNow">—</span>
-        </div>
-        <div class="stat-pill">
-          <span class="stat-label">RATIO F/S</span>
-          <span class="stat-val" id="statRatio">—</span>
-        </div>
-        <div class="stat-pill">
-          <span class="stat-label">SIGNAL</span>
-          <span class="stat-val" id="statSignal">—</span>
-        </div>
-        <div class="stat-pill">
-          <span class="stat-label">BARS</span>
-          <span class="stat-val" id="statBars">—</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  {# ── Data payload ── #}
-  <script id="chartConfig" type="application/json">
-    {
-      "fastPeriod": {{ fast }},
-      "slowPeriod": {{ slow }},
-      "timeframe": "{{ timeframe }}"
-    }
+<script id="chartConfig" type="application/json">
+    { "symbol": "{{ symbol }}", "timeframe": "{{ timeframe }}" }
   </script>
-  <script id="rawData" type="application/json">{{ data | tojson }}</script>
-  
-  {# External logic execution #}
-  <script type="module" src="{{ url_for('static', path='js/chart_module.js') }}"></script>
+<script id="rawData" type="application/json">{{ data | tojson }}</script>
+<script type="module" src="{{ url_for('static', path='js/chart_module.js') }}"></script>
 {% endblock %}
