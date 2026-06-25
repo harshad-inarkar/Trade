@@ -1,85 +1,102 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{% block title %}NSE Portal{% endblock %}</title>
-    <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="{{ url_for('static', path='css/base.css') }}" />
-    {% block extra_head %}{% endblock %}
-  </head>
 
-  <body>
-    <header>
-      <div class="header-brand">
-        <span class="logo">NSE&nbsp;PORTAL</span>
-        <span class="sub">Intraday Analytics</span>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}NSE Portal{% endblock %}</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', path='css/base.css') }}" />
+  {% block extra_head %}{% endblock %}
+</head>
+
+<body>
+  <header>
+    <div class="header-brand">
+      <span class="logo">NSE&nbsp;PORTAL</span>
+      <span class="sub">Intraday Analytics</span>
+    </div>
+
+    {# ── Unified Dropdown & Input Configuration Bar ── #}
+    <div class="config-bar">
+      <div class="config-group">
+        <label>TF:</label>
+        <select id="tf-select" class="nav-select">
+          <option value="3" {% if timeframe=='3' %}selected{% endif %}>3m</option>
+          <option value="15" {% if timeframe=='15' %}selected{% endif %}>15m</option>
+          <option value="D" {% if timeframe=='D' %}selected{% endif %}>1D</option>
+        </select>
       </div>
 
-      {# ── Timeframe selector ── #}
-      <div class="tf-bar">
-        <span>TF:</span>
-        <a
-          href="?tf=3&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
-          class="{{ 'active' if timeframe == '3' else '' }}"
-        >3</a>
-        <a
-          href="?tf=15&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
-          class="{{ 'active' if timeframe == '15' else '' }}"
-        >15</a>
-        <a
-          href="?tf=D&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
-          class="{{ 'active' if timeframe == 'D' else '' }}"
-        >D</a>
+      <div class="config-group">
+        <label>MA:</label>
+        <select id="ma-select" class="nav-select">
+          <option value="rma" {% if ma_type=='rma' %}selected{% endif %}>RMA</option>
+          <option value="ema" {% if ma_type=='ema' %}selected{% endif %}>EMA</option>
+          <option value="sma" {% if ma_type=='sma' %}selected{% endif %}>SMA</option>
+        </select>
       </div>
 
-      {# ── MA type selector ── #}
-      <div class="ma-controls">
-        <span>MA:</span>
-        <a
-          href="?tf={{ timeframe }}&ma=rma&fast={{ fast }}&slow={{ slow }}"
-          class="{{ 'active' if ma_type == 'rma' else '' }}"
-        >RMA</a>
-        <a
-          href="?tf={{ timeframe }}&ma=ema&fast={{ fast }}&slow={{ slow }}"
-          class="{{ 'active' if ma_type == 'ema' else '' }}"
-        >EMA</a>
-        <a
-          href="?tf={{ timeframe }}&ma=sma&fast={{ fast }}&slow={{ slow }}"
-          class="{{ 'active' if ma_type == 'sma' else '' }}"
-        >SMA</a>
+      <div class="config-group">
+        <label>FAST:</label>
+        <input type="number" id="fast-input" class="nav-input" value="{{ fast }}" min="1" max="200" />
       </div>
 
-      {# ── Fast / Slow period inputs ── #}
-      <form class="length-form" method="get" action="">
-        <input type="hidden" name="tf" value="{{ timeframe }}" />
-        <input type="hidden" name="ma" value="{{ ma_type }}" />
-        {% if sort %}<input type="hidden" name="sort" value="{{ sort }}" />{% endif %}
-        {% if order %}<input type="hidden" name="order" value="{{ order }}" />{% endif %}
-        {% if filter %}<input type="hidden" name="filter" value="{{ filter }}" />{% endif %}
-        <span>FAST:</span>
-        <input type="number" name="fast" value="{{ fast }}" min="1" max="200" />
-        <span>SLOW:</span>
-        <input type="number" name="slow" value="{{ slow }}" min="1" max="200" />
-        <button type="submit">APPLY</button>
-      </form>
+      <div class="config-group">
+        <label>SLOW:</label>
+        <input type="number" id="slow-input" class="nav-input" value="{{ slow }}" min="1" max="200" />
+      </div>
+    </div>
 
-      {# ── Primary navigation ── #}
-      <nav class="header-nav">
-        <a
-          href="/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
-          class="{% block nav_idx %}{% endblock %}"
-        >Index</a>
-        <a
-          href="/sectors/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
-          class="{% block nav_sec %}{% endblock %}"
-        >Sectors</a>
-      </nav>
-    </header>
+    {# ── Primary navigation ── #}
+    <nav class="header-nav">
+      <a href="/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+        class="{% block nav_idx %}{% endblock %}">Index</a>
+      <a href="/sectors/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+        class="{% block nav_sec %}{% endblock %}">Sectors</a>
+    </nav>
+  </header>
 
-    {% block content %}{% endblock %}
-  </body>
+  {% block content %}{% endblock %}
+
+  <script>
+    /** Config Modification Handlers (Auto-Submit) */
+    function updateConfig() {
+      const tf = document.getElementById('tf-select').value;
+      const ma = document.getElementById('ma-select').value;
+      const fast = document.getElementById('fast-input').value;
+      const slow = document.getElementById('slow-input').value;
+
+      const params = new URLSearchParams(window.location.search);
+      params.set('tf', tf);
+      params.set('ma', ma);
+      params.set('fast', fast);
+      params.set('slow', slow);
+
+      window.location.search = params.toString();
+    }
+
+    document.getElementById('tf-select').addEventListener('change', updateConfig);
+    document.getElementById('ma-select').addEventListener('change', updateConfig);
+
+    let typingTimer;
+    function handleInput() {
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(updateConfig, 800); // 800ms debounce
+    }
+    document.getElementById('fast-input').addEventListener('input', handleInput);
+    document.getElementById('slow-input').addEventListener('input', handleInput);
+
+    /** Timeframe-Native Auto-Refresh */
+    const tfVal = "{{ timeframe }}";
+    let refreshMs = 3 * 60 * 1000;         // 3 mins default
+    if (tfVal === '15') refreshMs = 15 * 60 * 1000;
+    if (tfVal === 'D') refreshMs = 24 * 60 * 60 * 1000;
+
+    setTimeout(() => window.location.reload(), refreshMs);
+  </script>
+</body>
+
 </html>

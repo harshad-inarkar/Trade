@@ -50,7 +50,6 @@ class AppConfig(BaseAppConfig):
     def __init__(self, path: Path):
         super().__init__(path)
 
-        # Load specific configs, falling back to defaults if not in TOML
         session_cfg = self.raw_cfg.get("session", {})
         self.start_session: str = session_cfg.get("start", "0915")
         self.end_session: str = session_cfg.get("end", "1530")
@@ -67,8 +66,6 @@ class AppConfig(BaseAppConfig):
 
 
 class MarketDataService:
-    """Handles data fetching, caching, and disk dumping."""
-
     REFRESH_DT_PAT = "Date: %d  Time: %H:%M"
 
     def __init__(self, config: AppConfig) -> None:
@@ -79,12 +76,12 @@ class MarketDataService:
     def load_all_data(
         self, ma_type: str = "rma", fast: int = 8, slow: int = 21
     ) -> None:
-        """Loads cache and immediately triggers the merge dump for external tools."""
         self.cache.load_files(self.intraday_path, self.config.last_ndays)
         ref_t = self.get_refresh_time_str()
         self.dump_merge(
             MIN_TF,
             self.config.filter_ltp or "",
+            "na",  # Default MA action
             self.config.sort_keys or [],
             ref_t,
             "desc",
@@ -149,32 +146,50 @@ class MarketDataService:
             )
         return result
 
-    def filter_list(self, symbols_list: list, filt: str) -> tuple[list, int, int, int]:
+    def filter_list(
+        self, symbols_list: list, filt: str, ma_act: str = "na"
+    ) -> tuple[list, int, int, int]:
         start, end = 0, float("inf")
         pos_count = neg_count = neut_count = 0
+        has_ltp_filt = False
+
         if filt:
             try:
                 start, end = [int(x) for x in filt.split("-")]
+                has_ltp_filt = True
             except ValueError:
-                return symbols_list, 0, 0, 0
+                pass
 
         ltp_idx = INDEX_FIELDS.index("ltp")
         pma_idx = INDEX_FIELDS.index("price_ma_action")
 
         filtered = [symbols_list[0]]
         for row in symbols_list[1:]:
-            if row[ltp_idx] is not None and start <= row[ltp_idx] <= end:
-                if row[pma_idx] == 1:
+            if row[ltp_idx] is not None:
+                # LTP Filter
+                if has_ltp_filt and not (start <= row[ltp_idx] <= end):
+                    continue
+
+                pma = row[pma_idx]
+
+                # MA Action Filter
+                if ma_act == "up" and pma <= 0:
+                    continue
+                if ma_act == "down" and pma >= 0:
+                    continue
+
+                if pma == 1:
                     pos_count += 1
-                elif row[pma_idx] == -1:
+                elif pma == -1:
                     neg_count += 1
                 else:
                     neut_count += 1
+
                 filtered.append(row)
+
         return filtered, pos_count, neg_count, neut_count
 
     def dump_index(self, ma_type: str = "rma", fast: int = 8, slow: int = 21) -> None:
-        """Groups symbols by 1000 LTP intervals and writes to candidates.txt"""
         ref_t = self.get_refresh_time_str()
         symbols_list = self.build_dynamic_averages(MIN_TF, ma_type, fast, slow)
         Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
@@ -219,6 +234,7 @@ class MarketDataService:
         self,
         tf: str,
         filt: str,
+        ma_act: str,
         sort_key_list: list,
         ref_t: str,
         order_by: str,
@@ -228,7 +244,6 @@ class MarketDataService:
         *,
         from_web: bool = False,
     ) -> None:
-        """Generates the sym_table.csv and candidates_merge.txt for scanning."""
         top = 40
         sym_idx = INDEX_FIELDS.index("symbol")
         initiator = "Web" if from_web else "Refresh"
@@ -258,7 +273,9 @@ class MarketDataService:
                     sidx = INDEX_FIELDS.index(
                         skey if skey in INDEX_FIELDS else "volume_fast"
                     )
-                    symbols_list, _, _, _ = self.filter_list(full_symb_list, filt)
+                    symbols_list, _, _, _ = self.filter_list(
+                        full_symb_list, filt, ma_act
+                    )
 
                     top_syms = heapq.nlargest(
                         top,
@@ -323,7 +340,7 @@ class MarketDataService:
 
             write_out.write(
                 f"#{initiator}|Timeframe: {tf} | sorted by {sort_key_list} {order_by} "
-                f"| Filter ltp {filt} | Refresh Time: {ref_t}\n"
+                f"| Filter ltp {filt} | MA Act {ma_act} | Refresh Time: {ref_t}\n"
             )
 
 
@@ -344,10 +361,7 @@ class BackgroundReloader:
 
 
 class VolTrackerApp(BaseFastAPIApp):
-    """Encapsulated App logic for NSE Vol Tracker."""
-
     def __init__(self, config: AppConfig):
-        # We pass self.lifespan_handler to bind to FastAPI's lifecycle event
         super().__init__(
             title="NSE Intraday Portal",
             config=config,
@@ -356,11 +370,8 @@ class VolTrackerApp(BaseFastAPIApp):
         )
 
         self.cfg: AppConfig = config
-
-        # Internal State Management
         self.data_service = MarketDataService(self.cfg)
         self.reloader = BackgroundReloader(self.data_service, self.cfg)
-
         self._setup_routes()
 
     @asynccontextmanager
@@ -392,11 +403,20 @@ class VolTrackerApp(BaseFastAPIApp):
         fast: int = 8,
         slow: int = 21,
         filt: Annotated[str, Query(alias="filter")] = "",
+        ma_act: str = "na",
         sort: str = "volume_fast",
         order: str = "desc",
     ) -> Any:
         return self._render_index(
-            request, tf if tf in TF_KEYS else MIN_TF, ma, fast, slow, filt, sort, order
+            request,
+            tf if tf in TF_KEYS else MIN_TF,
+            ma,
+            fast,
+            slow,
+            filt,
+            ma_act,
+            sort,
+            order,
         )
 
     async def sectors_index(
@@ -407,7 +427,8 @@ class VolTrackerApp(BaseFastAPIApp):
         fast: int = 8,
         slow: int = 21,
         filt: Annotated[str, Query(alias="filter")] = "",
-        sort: str = "volume_fast",  # Default to volume_fast
+        ma_act: str = "na",
+        sort: str = "volume_fast",
         order: str = "desc",
     ) -> Any:
         tf_safe = tf if tf in TF_KEYS else MIN_TF
@@ -425,7 +446,7 @@ class VolTrackerApp(BaseFastAPIApp):
                 if sym in data_map:
                     valid_syms.append(sym)
                     sec_vfast.append(data_map[sym][1])
-                    sec_vslow.append(data_map[sym][2])  # volume_slow
+                    sec_vslow.append(data_map[sym][2])
 
             if valid_syms:
                 avg_vfast = sum(sec_vfast) / len(sec_vfast)
@@ -446,7 +467,6 @@ class VolTrackerApp(BaseFastAPIApp):
                 )
 
         rev = order == "desc"
-        # Safely handle the sorts dynamically
         if sort == "volume_fast":
             sectors_data.sort(key=lambda x: x["avg_volume_fast"], reverse=rev)
         elif sort == "volume_slow":
@@ -454,9 +474,7 @@ class VolTrackerApp(BaseFastAPIApp):
         elif sort == "name":
             sectors_data.sort(key=lambda x: x["name"], reverse=rev)
         else:
-            sectors_data.sort(
-                key=lambda x: x["avg_volume_fast"], reverse=rev
-            )  # Fallback
+            sectors_data.sort(key=lambda x: x["avg_volume_fast"], reverse=rev)
 
         return self.templates.TemplateResponse(
             request,
@@ -471,6 +489,7 @@ class VolTrackerApp(BaseFastAPIApp):
                 "sort": sort,
                 "order": order,
                 "filter": filt,
+                "ma_act": ma_act,
             },
         )
 
@@ -483,6 +502,7 @@ class VolTrackerApp(BaseFastAPIApp):
         fast: int = 8,
         slow: int = 21,
         filt: Annotated[str, Query(alias="filter")] = "",
+        ma_act: str = "na",
         sort: str = "volume_fast",
         order: str = "desc",
     ) -> Any:
@@ -505,6 +525,7 @@ class VolTrackerApp(BaseFastAPIApp):
             fast,
             slow,
             filt,
+            ma_act,
             sort,
             order,
             sector_list=filtered_data,
@@ -574,6 +595,7 @@ class VolTrackerApp(BaseFastAPIApp):
         fast: int,
         slow: int,
         filt: str,
+        ma_act: str,
         sort_key: str,
         order_by: str,
         sector_list: list | None = None,
@@ -582,7 +604,9 @@ class VolTrackerApp(BaseFastAPIApp):
         raw_data = sector_list or self.data_service.build_dynamic_averages(
             tf, ma_type, fast, slow
         )
-        symbols_list, pos, neg, neut = self.data_service.filter_list(raw_data, filt)
+        symbols_list, pos, neg, neut = self.data_service.filter_list(
+            raw_data, filt, ma_act
+        )
 
         if sort_key in INDEX_FIELDS:
             sidx = INDEX_FIELDS.index(sort_key)
@@ -592,11 +616,11 @@ class VolTrackerApp(BaseFastAPIApp):
                 reverse=(order_by != "asc"),
             )
 
-        # Trigger dump for external scanners reflecting user's web view
         ref_t = self.data_service.get_refresh_time_str()
         self.data_service.dump_merge(
             tf,
             filt,
+            ma_act,
             [sort_key, None],
             ref_t,
             order_by,
@@ -620,6 +644,7 @@ class VolTrackerApp(BaseFastAPIApp):
                 "sort": sort_key,
                 "order": order_by,
                 "filter": filt,
+                "ma_act": ma_act,
                 "pos_count": pos,
                 "neg_count": neg,
                 "neut_count": neut,

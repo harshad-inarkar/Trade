@@ -26,6 +26,7 @@
       <strong>{{ sectors | length }}</strong>
     </div>
   </div>
+
   {# Sort controls #}
   <div class="sort-chips">
     <span class="sort-label">SORT:</span>
@@ -34,9 +35,9 @@
       VOL FAST
       <span class="sort-arrows">
         <a class="{{ 'active' if sort == 'volume_fast' and order == 'asc' else '' }}"
-          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=volume_fast&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
+          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=volume_fast&order=asc{% if filter %}&filter={{ filter }}{% endif %}{% if ma_act and ma_act != 'na' %}&ma_act={{ ma_act }}{% endif %}">▲</a>
         <a class="{{ 'active' if sort == 'volume_fast' and order == 'desc' else '' }}"
-          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=volume_fast&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
+          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=volume_fast&order=desc{% if filter %}&filter={{ filter }}{% endif %}{% if ma_act and ma_act != 'na' %}&ma_act={{ ma_act }}{% endif %}">▼</a>
       </span>
     </span>
 
@@ -44,9 +45,9 @@
       VOL SLOW
       <span class="sort-arrows">
         <a class="{{ 'active' if sort == 'volume_slow' and order == 'asc' else '' }}"
-          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=volume_slow&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
+          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=volume_slow&order=asc{% if filter %}&filter={{ filter }}{% endif %}{% if ma_act and ma_act != 'na' %}&ma_act={{ ma_act }}{% endif %}">▲</a>
         <a class="{{ 'active' if sort == 'volume_slow' and order == 'desc' else '' }}"
-          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=volume_slow&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
+          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=volume_slow&order=desc{% if filter %}&filter={{ filter }}{% endif %}{% if ma_act and ma_act != 'na' %}&ma_act={{ ma_act }}{% endif %}">▼</a>
       </span>
     </span>
 
@@ -54,14 +55,14 @@
       NAME A–Z
       <span class="sort-arrows">
         <a class="{{ 'active' if sort == 'name' and order == 'asc' else '' }}"
-          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=name&order=asc{% if filter %}&filter={{ filter }}{% endif %}">▲</a>
+          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=name&order=asc{% if filter %}&filter={{ filter }}{% endif %}{% if ma_act and ma_act != 'na' %}&ma_act={{ ma_act }}{% endif %}">▲</a>
         <a class="{{ 'active' if sort == 'name' and order == 'desc' else '' }}"
-          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=name&order=desc{% if filter %}&filter={{ filter }}{% endif %}">▼</a>
+          href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort=name&order=desc{% if filter %}&filter={{ filter }}{% endif %}{% if ma_act and ma_act != 'na' %}&ma_act={{ ma_act }}{% endif %}">▼</a>
       </span>
     </span>
   </div>
 
-  {# LTP range filter #}
+  {# LTP range & MA Action filter #}
   <form method="get" action="" class="filter-form">
     <input type="hidden" name="tf" value="{{ timeframe }}" />
     <input type="hidden" name="ma" value="{{ ma_type }}" />
@@ -70,10 +71,16 @@
     {% if sort %}<input type="hidden" name="sort" value="{{ sort }}" />{% endif %}
     {% if order %}<input type="hidden" name="order" value="{{ order }}" />{% endif %}
 
+    <select name="ma_act" class="filter-select" onchange="this.form.submit()">
+      <option value="na" {% if ma_act=='na' %}selected{% endif %}>MA: All</option>
+      <option value="up" {% if ma_act=='up' %}selected{% endif %}>MA: Up</option>
+      <option value="down" {% if ma_act=='down' %}selected{% endif %}>MA: Down</option>
+    </select>
+
     <input type="text" name="filter" value="{{ filter }}" placeholder="LTP range e.g. 100-500" />
     <button type="submit">FILTER</button>
 
-    {% if filter %}
+    {% if filter or (ma_act and ma_act != 'na') %}
     <a href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}"
       class="clear-btn">✕ clear</a>
     {% endif %}
@@ -98,7 +105,7 @@
     {# Card header #}
     <div class="card-header">
       <div class="sector-name">
-        <a href="/sectors/{{ s.name }}/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}"
+        <a href="/sectors/{{ s.name }}/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}{% if ma_act and ma_act != 'na' %}&ma_act={{ ma_act }}{% endif %}"
           class="sector-link">{{ s.name }}</a>
       </div>
       <div class="sector-rank">#{{ loop.index }}</div>
