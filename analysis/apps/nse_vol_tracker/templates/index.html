@@ -9,30 +9,18 @@
 {% endblock %}
 
 {% block content %}
-{# ── Meta bar ── #}
 <div class="meta-bar">
   <div class="meta-chips">
     <div class="chip">
-      <div class="live-dot"></div>
-      <strong>{{ refresh_time }}</strong>
+      <div class="live-dot"></div><strong>{{ refresh_time }}</strong>
     </div>
-    <div class="chip">
-      <span class="chip-label">TF</span>
-      <strong>{{ timeframe }}m</strong>
-    </div>
-    <div class="chip">
-      <span class="chip-label">SYMBOLS</span>
-      <strong>{{ count - 1 }}</strong>
-    </div>
+    <div class="chip"><span class="chip-label">TF</span><strong>{{ timeframe }}m</strong></div>
+    <div class="chip"><span class="chip-label">SYMBOLS</span><strong>{{ count - 1 }}</strong></div>
     {% if sector_name %}
-    <div class="chip">
-      <span class="chip-label">SECTOR</span>
-      <strong class="accent-text">{{ sector_name }}</strong>
-    </div>
+    <div class="chip"><span class="chip-label">SECTOR</span><strong class="accent-text">{{ sector_name }}</strong></div>
     {% endif %}
   </div>
 
-  {# ── LTP range & MA Action filter ── #}
   <form method="get" action="" class="filter-form">
     <input type="hidden" name="tf" value="{{ timeframe }}" />
     <input type="hidden" name="ma" value="{{ ma_type }}" />
@@ -41,23 +29,28 @@
     {% if sort %}<input type="hidden" name="sort" value="{{ sort }}" />{% endif %}
     {% if order %}<input type="hidden" name="order" value="{{ order }}" />{% endif %}
 
-    <select name="ma_act" class="filter-select" onchange="this.form.submit()">
-      <option value="na" {% if ma_act=='na' %}selected{% endif %}>MA: All</option>
-      <option value="up" {% if ma_act=='up' %}selected{% endif %}>MA: Up</option>
-      <option value="down" {% if ma_act=='down' %}selected{% endif %}>MA: Down</option>
+    <select name="pma_act" class="filter-select" onchange="this.form.submit()">
+      <option value="na" {% if pma_act=='na' %}selected{% endif %}>P-MA: All</option>
+      <option value="up" {% if pma_act=='up' %}selected{% endif %}>P-MA: Up</option>
+      <option value="down" {% if pma_act=='down' %}selected{% endif %}>P-MA: Down</option>
+    </select>
+
+    <select name="vma_act" class="filter-select" onchange="this.form.submit()">
+      <option value="na" {% if vma_act=='na' %}selected{% endif %}>V-MA: All</option>
+      <option value="up" {% if vma_act=='up' %}selected{% endif %}>V-MA: Up</option>
+      <option value="down" {% if vma_act=='down' %}selected{% endif %}>V-MA: Down</option>
     </select>
 
     <input type="text" name="filter" value="{{ filter }}" placeholder="LTP range e.g. 100-500" />
     <button type="submit">FILTER</button>
 
-    {% if filter or (ma_act and ma_act != 'na') %}
+    {% if filter or (pma_act and pma_act != 'na') or (vma_act and vma_act != 'na') %}
     <a href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}"
       class="clear-btn">✕ clear</a>
     {% endif %}
   </form>
 </div>
 
-{# ── Data table ── #}
 <div class="table-wrap">
   <table>
     <thead>
@@ -67,20 +60,20 @@
         ('volume_fast', 'VOL FAST'),
         ('volume_slow', 'VOL SLOW'),
         ('ltp', 'PRICE'),
-        ('price_ma_action','MA ACTION'),
+        ('price_ma_action','P-MA'),
+        ('vol_ma_action','V-MA'),
         ] %}
 
         {% for key, label in cols %}
         <th>
           <div class="th-sort">
-            <a href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort={{ key }}&order={{ 'desc' if sort == key and order == 'asc' else 'asc' }}{% if filter %}&filter={{ filter }}{% endif %}{% if ma_act and ma_act != 'na' %}&ma_act={{ ma_act }}{% endif %}"
+            <a href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort={{ key }}&order={{ 'desc' if sort == key and order == 'asc' else 'asc' }}{% if filter %}&filter={{ filter }}{% endif %}{% if pma_act and pma_act != 'na' %}&pma_act={{ pma_act }}{% endif %}{% if vma_act and vma_act != 'na' %}&vma_act={{ vma_act }}{% endif %}"
               class="th-label">{{ label }}</a>
-
             <span class="sort-arrows">
               <a class="{{ 'active' if sort == key and order == 'asc' else '' }}"
-                href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort={{ key }}&order=asc{% if filter %}&filter={{ filter }}{% endif %}{% if ma_act and ma_act != 'na' %}&ma_act={{ ma_act }}{% endif %}">▲</a>
+                href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort={{ key }}&order=asc{% if filter %}&filter={{ filter }}{% endif %}{% if pma_act and pma_act != 'na' %}&pma_act={{ pma_act }}{% endif %}{% if vma_act and vma_act != 'na' %}&vma_act={{ vma_act }}{% endif %}">▲</a>
               <a class="{{ 'active' if sort == key and order == 'desc' else '' }}"
-                href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort={{ key }}&order=desc{% if filter %}&filter={{ filter }}{% endif %}{% if ma_act and ma_act != 'na' %}&ma_act={{ ma_act }}{% endif %}">▼</a>
+                href="?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}&sort={{ key }}&order=desc{% if filter %}&filter={{ filter }}{% endif %}{% if pma_act and pma_act != 'na' %}&pma_act={{ pma_act }}{% endif %}{% if vma_act and vma_act != 'na' %}&vma_act={{ vma_act }}{% endif %}">▼</a>
             </span>
           </div>
         </th>
@@ -98,9 +91,10 @@
         <td>{{ "{:,.2f}".format(row[1]) }}</td>
         <td>{{ "{:,.2f}".format(row[2]) }}</td>
         <td>{{ "{:,.2f}".format(row[4]) }}</td>
-        <td class="{% if row[6] == 1 %}ma-up{% elif row[6] == -1 %}ma-down{% else %}ma-neutral{% endif %}">
-          {{ '↑' if row[6] == 1 else '↓' if row[6] == -1 else '−' }}&nbsp;{{ row[6] }}
-        </td>
+        <td class="{% if row[6] == 1 %}ma-up{% elif row[6] == -1 %}ma-down{% else %}ma-neutral{% endif %}">{{ '↑' if
+          row[6] == 1 else '↓' if row[6] == -1 else '-' }}</td>
+        <td class="{% if row[7] == 1 %}ma-up{% elif row[7] == -1 %}ma-down{% else %}ma-neutral{% endif %}">{{ '↑' if
+          row[7] == 1 else '↓' if row[7] == -1 else '-' }}</td>
       </tr>
       {% endfor %}
     </tbody>

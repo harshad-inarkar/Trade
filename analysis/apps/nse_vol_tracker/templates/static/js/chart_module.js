@@ -35,7 +35,6 @@ function fmtVol(v) {
   return Math.round(n).toLocaleString();
 }
 
-// FIXED: Dynamically format date vs HH:MM based on the timeframe context
 function fmtLabel(raw, isDaily = false) {
   if (!raw) return '';
   const s = String(raw).trim();
@@ -178,9 +177,10 @@ class ChartManager {
               maxTicksLimit: 14,
               autoSkip: true,
               autoSkipPadding: 28,
-              callback: (_, idx) => {
+              // FIXED: Uses 'val' (the exact zoomed data index) instead of 'idx' (the screen tick index)
+              callback: (val) => {
                 const isDaily = this.chart?.options?.plugins?.customContext?.tf === 'D';
-                return fmtLabel(labels[idx], isDaily);
+                return fmtLabel(labels[val], isDaily);
               }
             },
           },
@@ -265,8 +265,8 @@ if (rawDataEl && configEl) {
   const STATE_KEY = 'nse_sym_api_prefs_v2';
   let state = JSON.parse(localStorage.getItem(STATE_KEY)) || {
     indicators: [
-      { id: 1, source: 'volume', type: 'rma', p1: 8, data: null },
-      { id: 2, source: 'volume', type: 'rma', p1: 21, data: null }
+      { id: 1, source: 'price', type: 'rma', p1: 8, data: null },
+      { id: 2, source: 'price', type: 'rma', p1: 21, data: null }
     ],
     nextId: 3
   };
@@ -342,7 +342,7 @@ if (rawDataEl && configEl) {
       });
     });
 
-    const primarySource = state.indicators.length > 0 ? state.indicators[0].source : 'volume';
+    const primarySource = state.indicators.length > 0 ? state.indicators[0].source : 'price';
     chart.update(labels, datasets, primarySource, TF);
   }
 

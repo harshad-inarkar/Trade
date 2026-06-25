@@ -25,6 +25,11 @@ from utils.fastapi.fastapi_base import AppPaths, BaseAppConfig, BaseFastAPIApp
 from utils.logging.log_utils import out
 from utils.time.time_utils import wait_next_wall_clock
 
+_base_ma_len = 89
+_def_fast_ma_len = 8
+_def_slow_ma_len = 21
+
+
 paths = AppPaths.resolve(__file__)
 
 INDEX_FIELDS = [
@@ -35,6 +40,7 @@ INDEX_FIELDS = [
     "ltp",
     "price_surge",
     "price_ma_action",
+    "vol_ma_action",
 ]
 CACHE_FIELDS = [
     "timestamp_full",
@@ -50,7 +56,6 @@ CACHE_FIELDS = [
 class AppConfig(BaseAppConfig):
     def __init__(self, path: Path):
         super().__init__(path)
-
         session_cfg = self.raw_cfg.get("session", {})
         self.start_session: str = session_cfg.get("start", "0915")
         self.end_session: str = session_cfg.get("end", "1530")
@@ -75,14 +80,18 @@ class MarketDataService:
         self.intraday_path = NSE_INTRADAY_DIR_PATH
 
     def load_all_data(
-        self, ma_type: str = "rma", fast: int = 8, slow: int = 21
+        self,
+        ma_type: str = "rma",
+        fast: int = _def_fast_ma_len,
+        slow: int = _def_slow_ma_len,
     ) -> None:
         self.cache.load_files(self.intraday_path, self.config.last_ndays)
         ref_t = self.get_refresh_time_str()
         self.dump_merge(
             MIN_TF,
             self.config.filter_ltp or "",
-            "na",  # Default MA action
+            "na",
+            "na",
             self.config.sort_keys or [],
             ref_t,
             "desc",
@@ -110,7 +119,7 @@ class MarketDataService:
 
         vfast = IndicatorFactory.calculate(ma_type, vol_matrix, fast_len)[:, -1]
         vslow = IndicatorFactory.calculate(ma_type, vol_matrix, slow_len)[:, -1]
-        vbase = IndicatorFactory.calculate(ma_type, vol_matrix, 89)[:, -1]
+        vbase = IndicatorFactory.calculate(ma_type, vol_matrix, _base_ma_len)[:, -1]
 
         pfast = IndicatorFactory.calculate(ma_type, price_matrix, fast_len)[:, -1]
         pslow = IndicatorFactory.calculate(ma_type, price_matrix, slow_len)[:, -1]
@@ -128,11 +137,9 @@ class MarketDataService:
                 1000 * (pfast[si] - pslow[si]) / pslow[si] if pslow[si] != 0 else 0
             )
 
-            pma = (
-                1
-                if p_surge > 0 and pfast[si] > pslow[si]
-                else (-1 if p_surge < 0 and pfast[si] < pslow[si] else 0)
-            )
+            # Strict Boolean Logic (Fast > Slow)
+            pma = 1 if pfast[si] > pslow[si] else (-1 if pfast[si] < pslow[si] else 0)
+            vma = 1 if vfast[si] > vslow[si] else (-1 if vfast[si] < vslow[si] else 0)
 
             result.append(
                 [
@@ -143,12 +150,13 @@ class MarketDataService:
                     round(float(ltp_last[si]), 2),
                     round(float(p_surge), 2),
                     pma,
+                    vma,
                 ]
             )
         return result
 
     def filter_list(
-        self, symbols_list: list, filt: str, ma_act: str = "na"
+        self, symbols_list: list, filt: str, pma_act: str = "na", vma_act: str = "na"
     ) -> tuple[list, int, int, int]:
         start, end = 0, float("inf")
         pos_count = neg_count = neut_count = 0
@@ -163,20 +171,27 @@ class MarketDataService:
 
         ltp_idx = INDEX_FIELDS.index("ltp")
         pma_idx = INDEX_FIELDS.index("price_ma_action")
+        vma_idx = INDEX_FIELDS.index("vol_ma_action")
 
         filtered = [symbols_list[0]]
         for row in symbols_list[1:]:
             if row[ltp_idx] is not None:
-                # LTP Filter
                 if has_ltp_filt and not (start <= row[ltp_idx] <= end):
                     continue
 
                 pma = row[pma_idx]
+                vma = row[vma_idx]
 
-                # MA Action Filter
-                if ma_act == "up" and pma <= 0:
+                # Price MA Filter
+                if pma_act == "up" and pma <= 0:
                     continue
-                if ma_act == "down" and pma >= 0:
+                if pma_act == "down" and pma >= 0:
+                    continue
+
+                # Vol MA Filter
+                if vma_act == "up" and vma <= 0:
+                    continue
+                if vma_act == "down" and vma >= 0:
                     continue
 
                 if pma == 1:
@@ -190,11 +205,15 @@ class MarketDataService:
 
         return filtered, pos_count, neg_count, neut_count
 
-    def dump_index(self, ma_type: str = "rma", fast: int = 8, slow: int = 21) -> None:
+    def dump_index(
+        self,
+        ma_type: str = "rma",
+        fast: int = _def_fast_ma_len,
+        slow: int = _def_slow_ma_len,
+    ) -> None:
         ref_t = self.get_refresh_time_str()
         symbols_list = self.build_dynamic_averages(MIN_TF, ma_type, fast, slow)
         Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
-
         sym_idx = INDEX_FIELDS.index("symbol")
         ltp_idx = INDEX_FIELDS.index("ltp")
 
@@ -235,13 +254,14 @@ class MarketDataService:
         self,
         tf: str,
         filt: str,
-        ma_act: str,
+        pma_act: str,
+        vma_act: str,
         sort_key_list: list,
         ref_t: str,
         order_by: str,
         ma_type: str = "rma",
-        fast: int = 8,
-        slow: int = 21,
+        fast: int = _def_fast_ma_len,
+        slow: int = _def_slow_ma_len,
         *,
         from_web: bool = False,
     ) -> None:
@@ -275,7 +295,7 @@ class MarketDataService:
                         skey if skey in INDEX_FIELDS else "volume_fast"
                     )
                     symbols_list, _, _, _ = self.filter_list(
-                        full_symb_list, filt, ma_act
+                        full_symb_list, filt, pma_act, vma_act
                     )
 
                     top_syms = heapq.nlargest(
@@ -341,7 +361,8 @@ class MarketDataService:
 
             write_out.write(
                 f"#{initiator}|Timeframe: {tf} | sorted by {sort_key_list} {order_by} "
-                f"| Filter ltp {filt} | MA Act {ma_act} | Refresh Time: {ref_t}\n"
+                f"| Filter ltp {filt} | PMA {pma_act} | VMA {vma_act}"
+                f"| Refresh Time: {ref_t}\n"
             )
 
 
@@ -369,7 +390,6 @@ class VolTrackerApp(BaseFastAPIApp):
             template_dir=paths.templates,
             lifespan=self.lifespan_handler,
         )
-
         self.cfg: AppConfig = config
         self.data_service = MarketDataService(self.cfg)
         self.reloader = BackgroundReloader(self.data_service, self.cfg)
@@ -402,10 +422,11 @@ class VolTrackerApp(BaseFastAPIApp):
         request: Request,
         tf: str = MIN_TF,
         ma: str = "rma",
-        fast: int = 8,
-        slow: int = 21,
+        fast: int = _def_fast_ma_len,
+        slow: int = _def_slow_ma_len,
         filt: Annotated[str, Query(alias="filter")] = "",
-        ma_act: str = "na",
+        pma_act: str = "na",
+        vma_act: str = "na",
         sort: str = "volume_fast",
         order: str = "desc",
     ) -> Any:
@@ -416,7 +437,8 @@ class VolTrackerApp(BaseFastAPIApp):
             fast,
             slow,
             filt,
-            ma_act,
+            pma_act,
+            vma_act,
             sort,
             order,
         )
@@ -426,10 +448,11 @@ class VolTrackerApp(BaseFastAPIApp):
         request: Request,
         tf: str = MIN_TF,
         ma: str = "rma",
-        fast: int = 8,
-        slow: int = 21,
+        fast: int = _def_fast_ma_len,
+        slow: int = _def_slow_ma_len,
         filt: Annotated[str, Query(alias="filter")] = "",
-        ma_act: str = "na",
+        pma_act: str = "na",
+        vma_act: str = "na",
         sort: str = "volume_fast",
         order: str = "desc",
     ) -> Any:
@@ -441,9 +464,7 @@ class VolTrackerApp(BaseFastAPIApp):
         sectors_data = []
 
         for sec_name, symbols in sector_map.items():
-            sec_vfast = []
-            sec_vslow = []
-            valid_syms = []
+            sec_vfast, sec_vslow, valid_syms = [], [], []
             for sym in symbols:
                 if sym in data_map:
                     valid_syms.append(sym)
@@ -491,7 +512,8 @@ class VolTrackerApp(BaseFastAPIApp):
                 "sort": sort,
                 "order": order,
                 "filter": filt,
-                "ma_act": ma_act,
+                "pma_act": pma_act,
+                "vma_act": vma_act,
             },
         )
 
@@ -501,14 +523,14 @@ class VolTrackerApp(BaseFastAPIApp):
         sector_name: str,
         tf: str = MIN_TF,
         ma: str = "rma",
-        fast: int = 8,
-        slow: int = 21,
+        fast: int = _def_fast_ma_len,
+        slow: int = _def_slow_ma_len,
         filt: Annotated[str, Query(alias="filter")] = "",
-        ma_act: str = "na",
+        pma_act: str = "na",
+        vma_act: str = "na",
         sort: str = "volume_fast",
         order: str = "desc",
     ) -> Any:
-
         sector_map = load_sector_symbols()
         if sector_name not in sector_map:
             raise HTTPException(404, "Sector not found")
@@ -527,7 +549,8 @@ class VolTrackerApp(BaseFastAPIApp):
             fast,
             slow,
             filt,
-            ma_act,
+            pma_act,
+            vma_act,
             sort,
             order,
             sector_list=filtered_data,
@@ -540,8 +563,8 @@ class VolTrackerApp(BaseFastAPIApp):
         symbol_name: str,
         tf: str = MIN_TF,
         ma: str = "rma",
-        fast: int = 8,
-        slow: int = 21,
+        fast: int = _def_fast_ma_len,
+        slow: int = _def_slow_ma_len,
     ) -> Any:
         tf = tf if tf in TF_KEYS else MIN_TF
         sym_list = self.data_service.cache.sym_list.get(tf, [])
@@ -558,16 +581,11 @@ class VolTrackerApp(BaseFastAPIApp):
         ts_list = self.data_service.cache.ts_list[tf][:wptr]
         tsf_list = self.data_service.cache.tsf_list[tf][:wptr]
 
-        def safe_float(v: float | None) -> float:
+        def safe_float(v: float) -> float:
             return float(v) if v is not None and not math.isnan(v) else 0.0
 
         data = [["timestamp_full", "timestamp", "volume", "price"]] + [
-            [
-                tsf_list[i],
-                ts_list[i],
-                safe_float(vol[0, i]),
-                safe_float(price[0, i]),
-            ]
+            [tsf_list[i], ts_list[i], safe_float(vol[0, i]), safe_float(price[0, i])]
             for i in range(wptr)
         ]
 
@@ -590,7 +608,7 @@ class VolTrackerApp(BaseFastAPIApp):
         tf: str = MIN_TF,
         source: str = "price",
         ind_type: str = "rma",
-        p1: float = 8.0,
+        p1: float = _def_fast_ma_len,
     ) -> dict[str, list[float | None]]:
         tf = tf if tf in TF_KEYS else MIN_TF
         sym_list = self.data_service.cache.sym_list.get(tf, [])
@@ -601,16 +619,18 @@ class VolTrackerApp(BaseFastAPIApp):
         nd = self.data_service.cache.num_data[tf]
         wptr = self.data_service.cache.write_ptr[tf]
 
-        if source == "volume":
-            base_data = nd[si : si + 1, :wptr, VOL]
-        else:
-            base_data = nd[si : si + 1, :wptr, PRICE]
+        base_data = (
+            nd[si : si + 1, :wptr, VOL]
+            if source == "volume"
+            else nd[si : si + 1, :wptr, PRICE]
+        )
 
         try:
-            if ind_type == "raw":
-                res = base_data[0]
-            else:
-                res = IndicatorFactory.calculate(ind_type, base_data, int(p1))[0]
+            res = (
+                base_data[0]
+                if ind_type == "raw"
+                else IndicatorFactory.calculate(ind_type, base_data, int(p1))[0]
+            )
         except (ValueError, TypeError, IndexError) as e:
             raise HTTPException(500, f"Calculation error: {e}") from e
 
@@ -627,7 +647,8 @@ class VolTrackerApp(BaseFastAPIApp):
         fast: int,
         slow: int,
         filt: str,
-        ma_act: str,
+        pma_act: str,
+        vma_act: str,
         sort_key: str,
         order_by: str,
         sector_list: list | None = None,
@@ -637,7 +658,7 @@ class VolTrackerApp(BaseFastAPIApp):
             tf, ma_type, fast, slow
         )
         symbols_list, pos, neg, neut = self.data_service.filter_list(
-            raw_data, filt, ma_act
+            raw_data, filt, pma_act, vma_act
         )
 
         if sort_key in INDEX_FIELDS:
@@ -652,7 +673,8 @@ class VolTrackerApp(BaseFastAPIApp):
         self.data_service.dump_merge(
             tf,
             filt,
-            ma_act,
+            pma_act,
+            vma_act,
             [sort_key, None],
             ref_t,
             order_by,
@@ -676,7 +698,8 @@ class VolTrackerApp(BaseFastAPIApp):
                 "sort": sort_key,
                 "order": order_by,
                 "filter": filt,
-                "ma_act": ma_act,
+                "pma_act": pma_act,
+                "vma_act": vma_act,
                 "pos_count": pos,
                 "neg_count": neg,
                 "neut_count": neut,
