@@ -28,36 +28,30 @@ class IndicatorFactory:
         return res
 
     @staticmethod
-    def ema(arr: np.ndarray, period: int) -> np.ndarray:
+    def _calc_exponential_ma(arr: np.ndarray, alpha: float) -> np.ndarray:
+        """Common recursive formula for EMA, RMA, and SMMA."""
+        res = np.zeros_like(arr, dtype=np.float64)
+
+        if arr.ndim == 2:
+            res[:, 0] = arr[:, 0]
+            for t in range(1, arr.shape[1]):
+                res[:, t] = alpha * arr[:, t] + (1 - alpha) * res[:, t - 1]
+        else:
+            res[0] = arr[0]
+            for t in range(1, arr.shape[0]):
+                res[t] = alpha * arr[t] + (1 - alpha) * res[t - 1]
+
+        return res
+
+    @classmethod
+    def ema(cls, arr: np.ndarray, period: int) -> np.ndarray:
         alpha = 2.0 / (period + 1)
-        ema_arr = np.zeros_like(arr, dtype=np.float64)
+        return cls._calc_exponential_ma(arr, alpha)
 
-        if arr.ndim == 2:
-            ema_arr[:, 0] = arr[:, 0]
-            for t in range(1, arr.shape[1]):
-                ema_arr[:, t] = alpha * arr[:, t] + (1 - alpha) * ema_arr[:, t - 1]
-        else:
-            ema_arr[0] = arr[0]
-            for t in range(1, arr.shape[0]):
-                ema_arr[t] = alpha * arr[t] + (1 - alpha) * ema_arr[t - 1]
-
-        return ema_arr
-
-    @staticmethod
-    def rma(arr: np.ndarray, period: int) -> np.ndarray:
+    @classmethod
+    def rma(cls, arr: np.ndarray, period: int) -> np.ndarray:
         alpha = 1.0 / period
-        rma_arr = np.zeros_like(arr, dtype=np.float64)
-
-        if arr.ndim == 2:
-            rma_arr[:, 0] = arr[:, 0]
-            for t in range(1, arr.shape[1]):
-                rma_arr[:, t] = alpha * arr[:, t] + (1 - alpha) * rma_arr[:, t - 1]
-        else:
-            rma_arr[0] = arr[0]
-            for t in range(1, arr.shape[0]):
-                rma_arr[t] = alpha * arr[t] + (1 - alpha) * rma_arr[t - 1]
-
-        return rma_arr
+        return cls._calc_exponential_ma(arr, alpha)
 
     @classmethod
     def calculate(cls, ma_type: str, arr: np.ndarray, period: int) -> np.ndarray:
@@ -66,4 +60,5 @@ class IndicatorFactory:
             return cls.sma(arr, period)
         if ma_type == "ema":
             return cls.ema(arr, period)
+        # Default to RMA if unmapped
         return cls.rma(arr, period)

@@ -15,6 +15,7 @@ SOURCE_TARGET=(
     "project_sanity_check.sh"
     "deploy_remote.sh"
     "stop_remote_process.sh"
+    "search_replace.sh"
 )
 
 # 2. Ensure the destination exists
