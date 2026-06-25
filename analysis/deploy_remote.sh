@@ -1,8 +1,7 @@
 #!/bin/bash
 
 # --- Configuration ---
-REMOTE_USER="ubuntu"
-REMOTE_HOST="80.225.247.216"
+REMOTE_HOST="oracle-server"
 TARGET_DIR="~/trade_client"
 
 # --- Source Files & Folders ---
@@ -14,10 +13,11 @@ SOURCE_TARGET=(
     "pyproject.toml"
 )
 
+echo "##############"
 echo "🚀 Starting deployment to $REMOTE_HOST..."
 
 # Step 1: Create target directory remotely
-ssh "$REMOTE_USER@$REMOTE_HOST" "mkdir -p $TARGET_DIR"
+ssh "$REMOTE_HOST" "mkdir -p $TARGET_DIR"
 
 # Step 2: Sync files using rsync (Legacy macOS Compatible Mirror Mode)
 echo "📦 Syncing source code..."
@@ -27,13 +27,13 @@ rsync -avz --delete -e "ssh" \
     --exclude '*.log' \
     --exclude 'venv' \
     "${SOURCE_TARGET[@]}" \
-    "$REMOTE_USER@$REMOTE_HOST:$TARGET_DIR"
+    "$REMOTE_HOST:$TARGET_DIR"
 
 echo "✅ Rsync Complete!"
 
 # Step 3: Automate Remote Orchestration via Tmux
 echo "🤖 Automating Orchestration on server..."
-ssh "$REMOTE_USER@$REMOTE_HOST" << EOF
+ssh "$REMOTE_HOST" << EOF
     cd $TARGET_DIR
     
     # Activate virtual environment if present

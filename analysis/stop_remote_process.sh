@@ -1,13 +1,10 @@
 #!/bin/bash
 
 # --- Configuration ---
-REMOTE_USER="ubuntu"
-REMOTE_HOST="80.225.247.216"
+REMOTE_HOST="oracle-server"
 
-
-# Step 3: Automate Remote Orchestration via Tmux
-echo "🤖 Automating Orchestration on server..."
-ssh "$REMOTE_USER@$REMOTE_HOST" << EOF
+echo "🤖 Stop Process on $REMOTE_HOST..."
+ssh "$REMOTE_HOST" << EOF
     
     # Kill old session to avoid 'address already in use' port 8000 blockages
     echo "🛑 Killing existing 'bot' tmux session if active..."
@@ -25,10 +22,6 @@ ssh "$REMOTE_USER@$REMOTE_HOST" << EOF
     else
         echo "✅ Port 8000 is clear."
     fi
-
-    sleep 1
-
-    echo "🎉 Process Stopped!"
 EOF
 
-echo "✨ Process Stopped!"
+echo "✅ Process Stopped!"
