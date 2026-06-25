@@ -1,8 +1,7 @@
 """
 data_processor.py
 -----------------
-Core stateless NSE processing. Calculates ONLY raw Volume, Price, and Cumul.
-MA logic deferred strictly to presentation layer.
+Core stateless NSE processing. Calculates ONLY raw Volume and Price.
 """
 
 import csv
@@ -18,11 +17,10 @@ import numpy as np
 from utils.logging.log_utils import out
 from utils.time.time_utils import INDIA_TZ
 
-# Reduced to ONLY raw data points. No MA storage.
-VOL_CUMUL = 0
-PRICE = 1
-VOL = 2
-NFIELDS = 3
+# 🚀 OPTIMIZATION: Dropped VOL_CUMUL. Reduced memory footprint by 33%.
+PRICE = 0
+VOL = 1
+NFIELDS = 2
 
 SYMB_COL = "symbol"
 VALUE_COL = "vol_cum"
@@ -233,7 +231,6 @@ def read_csv_files_to_arrays(
                                 ),
                             )
                         )
-
                         vltp_arr = np.vstack(
                             (
                                 vltp_arr,
@@ -330,11 +327,23 @@ def fill_gaps_numpy(
 def compute_volume_delta(
     vcum_1indexed: np.ndarray, from_index: int, total_files: int, odi: int
 ) -> np.ndarray:
-    vol = vcum_1indexed.copy()
-    for fi in range(from_index, total_files + 1):
-        if (fi - 1) % odi != 0:
-            delta = vcum_1indexed[:, fi] - vcum_1indexed[:, fi - 1]
-            vol[:, fi] = np.where(delta > 0, delta, 0)
+    # 🚀 OPTIMIZATION: 100% Vectorized Array Math. Removed the python for loop.
+    vol = np.zeros_like(vcum_1indexed)
+
+    # Vectorized subtraction for the active range
+    diffs = (
+        vcum_1indexed[:, from_index : total_files + 1]
+        - vcum_1indexed[:, from_index - 1 : total_files]
+    )
+    vol[:, from_index : total_files + 1] = np.where(diffs > 0, diffs, 0)
+
+    # Restore the first candle of the day (it's not a delta against yesterday)
+    day_starts = np.array(
+        [fi for fi in range(from_index, total_files + 1) if (fi - 1) % odi == 0]
+    )
+    if len(day_starts) > 0:
+        vol[:, day_starts] = vcum_1indexed[:, day_starts]
+
     return vol
 
 

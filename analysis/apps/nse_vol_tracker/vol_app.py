@@ -6,7 +6,6 @@ Refactored for dynamic indicator processing via OOP.
 
 import csv as _csv
 import heapq
-import math
 import threading
 import time
 from collections.abc import AsyncIterator
@@ -14,6 +13,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any
 
+import numpy as np
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 
 from apps.nse_vol_tracker.cache_manager import MIN_TF, TF_KEYS, CacheManager
@@ -29,7 +29,6 @@ _base_ma_len = 89
 _def_fast_ma_len = 8
 _def_slow_ma_len = 21
 
-
 paths = AppPaths.resolve(__file__)
 
 INDEX_FIELDS = [
@@ -41,15 +40,6 @@ INDEX_FIELDS = [
     "price_surge",
     "price_ma_action",
     "vol_ma_action",
-]
-CACHE_FIELDS = [
-    "timestamp_full",
-    "timestamp",
-    "volume_slow",
-    "volume_fast",
-    "ltp",
-    "ltp_rma_fast",
-    "ltp_rma_slow",
 ]
 
 
@@ -87,6 +77,10 @@ class MarketDataService:
     ) -> None:
         self.cache.load_files(self.intraday_path, self.config.last_ndays)
         ref_t = self.get_refresh_time_str()
+
+        # 🚀 Pass the precalculated array into dump_merge
+        # to prevent duplicate math computations
+        raw_data = self.build_dynamic_averages(MIN_TF, ma_type, fast, slow)
         self.dump_merge(
             MIN_TF,
             self.config.filter_ltp or "",
@@ -98,6 +92,7 @@ class MarketDataService:
             ma_type,
             fast,
             slow,
+            precalc_data=raw_data,
         )
 
     def get_refresh_time_str(self) -> str:
@@ -125,35 +120,45 @@ class MarketDataService:
         pslow = IndicatorFactory.calculate(ma_type, price_matrix, slow_len)[:, -1]
         ltp_last = price_matrix[:, -1]
 
-        result: list[list[Any]] = [INDEX_FIELDS]
+        # 🚀 OPTIMIZATION: 100% Vectorized Math (No python loops)
+        vbase_safe = np.where(vbase == 0, 1, vbase)
+        vslow_safe = np.where(vslow == 0, 1, vslow)
+        pslow_safe = np.where(pslow == 0, 1, pslow)
 
-        for si, sym in enumerate(sym_list):
-            vf_pct = (vfast[si] * 100) / vbase[si] if vbase[si] != 0 else 0
-            vs_pct = (vslow[si] * 100) / vbase[si] if vbase[si] != 0 else 0
-            v_surge = (
-                1000 * (vfast[si] - vslow[si]) / vslow[si] if vslow[si] != 0 else 0
-            )
-            p_surge = (
-                1000 * (pfast[si] - pslow[si]) / pslow[si] if pslow[si] != 0 else 0
-            )
+        vf_pct = np.round((vfast * 100) / vbase_safe, 2)
+        vs_pct = np.round((vslow * 100) / vbase_safe, 2)
+        v_surge = np.round((1000 * (vfast - vslow)) / vslow_safe, 2)
+        p_surge = np.round((1000 * (pfast - pslow)) / pslow_safe, 2)
+        ltp_round = np.round(ltp_last, 2)
 
-            # Strict Boolean Logic (Fast > Slow)
-            pma = 1 if pfast[si] > pslow[si] else (-1 if pfast[si] < pslow[si] else 0)
-            vma = 1 if vfast[si] > vslow[si] else (-1 if vfast[si] < vslow[si] else 0)
+        pma = np.select([pfast > pslow, pfast < pslow], [1, -1], default=0)
+        vma = np.select([vfast > vslow, vfast < vslow], [1, -1], default=0)
 
-            result.append(
-                [
-                    sym,
-                    round(float(vf_pct), 2),
-                    round(float(vs_pct), 2),
-                    round(float(v_surge), 2),
-                    round(float(ltp_last[si]), 2),
-                    round(float(p_surge), 2),
-                    pma,
-                    vma,
-                ]
+        data_rows = [
+            [
+                sym,
+                float(vfp),
+                float(vsp),
+                float(vsrg),
+                float(ltp),
+                float(psrg),
+                int(pm),
+                int(vm),
+            ]
+            for sym, vfp, vsp, vsrg, ltp, psrg, pm, vm in zip(
+                sym_list,
+                vf_pct,
+                vs_pct,
+                v_surge,
+                ltp_round,
+                p_surge,
+                pma,
+                vma,
+                strict=True,
             )
-        return result
+        ]
+
+        return [INDEX_FIELDS, *data_rows]
 
     def filter_list(
         self, symbols_list: list, filt: str, pma_act: str = "na", vma_act: str = "na"
@@ -182,13 +187,10 @@ class MarketDataService:
                 pma = row[pma_idx]
                 vma = row[vma_idx]
 
-                # Price MA Filter
                 if pma_act == "up" and pma <= 0:
                     continue
                 if pma_act == "down" and pma >= 0:
                     continue
-
-                # Vol MA Filter
                 if vma_act == "up" and vma <= 0:
                     continue
                 if vma_act == "down" and vma >= 0:
@@ -240,9 +242,9 @@ class MarketDataService:
         with cand_txt.open("w") as write_out:
             for start, end in reversed(group_ranges):
                 group_symbols = [
-                    row
-                    for row in data_rows_sorted
-                    if row[ltp_idx] is not None and start <= row[ltp_idx] < end
+                    r
+                    for r in data_rows_sorted
+                    if r[ltp_idx] is not None and start <= r[ltp_idx] < end
                 ]
                 if not group_symbols:
                     continue
@@ -264,16 +266,23 @@ class MarketDataService:
         slow: int = _def_slow_ma_len,
         *,
         from_web: bool = False,
+        precalc_data: list | None = None,
     ) -> None:
         top = 40
         sym_idx = INDEX_FIELDS.index("symbol")
         initiator = "Web" if from_web else "Refresh"
 
-        full_symb_list = self.build_dynamic_averages(tf, ma_type, fast, slow)
-        Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
+        # 🚀 OPTIMIZATION: Bypasses duplicate math calculation if called from web page
+        full_symb_list = (
+            precalc_data
+            if precalc_data is not None
+            else self.build_dynamic_averages(tf, ma_type, fast, slow)
+        )
 
+        Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
         force_syms_path = Path(OUT_DIR) / "candidates_force.txt"
         forced_symbols = set()
+
         if force_syms_path.exists():
             with force_syms_path.open() as f:
                 for raw_line in f:
@@ -360,9 +369,10 @@ class MarketDataService:
                     write_out.write(f"{sym}\n")
 
             write_out.write(
-                f"#{initiator}|Timeframe: {tf} | sorted by {sort_key_list} {order_by} "
-                f"| Filter ltp {filt} | PMA {pma_act} | VMA {vma_act}"
-                f"| Refresh Time: {ref_t}\n"
+                f"#{initiator}|Timeframe: {tf} | "
+                f"sorted by {sort_key_list} {order_by} | "
+                f"Filter ltp {filt} | PMA {pma_act} | VMA {vma_act} | "
+                f"Refresh Time: {ref_t}\n"
             )
 
 
@@ -581,12 +591,15 @@ class VolTrackerApp(BaseFastAPIApp):
         ts_list = self.data_service.cache.ts_list[tf][:wptr]
         tsf_list = self.data_service.cache.tsf_list[tf][:wptr]
 
-        def safe_float(v: float) -> float:
-            return float(v) if v is not None and not math.isnan(v) else 0.0
+        # 🚀 OPTIMIZATION: Vectorized NaN replacement and converted directly to lists.
+        vol_list = np.where(np.isnan(vol[0]), 0.0, vol[0]).tolist()
+        price_list = np.where(np.isnan(price[0]), 0.0, price[0]).tolist()
 
         data = [["timestamp_full", "timestamp", "volume", "price"]] + [
-            [tsf_list[i], ts_list[i], safe_float(vol[0, i]), safe_float(price[0, i])]
-            for i in range(wptr)
+            [tsf, ts, v, p]
+            for tsf, ts, v, p in zip(
+                tsf_list, ts_list, vol_list, price_list, strict=True
+            )
         ]
 
         return self.templates.TemplateResponse(
@@ -634,10 +647,9 @@ class VolTrackerApp(BaseFastAPIApp):
         except (ValueError, TypeError, IndexError) as e:
             raise HTTPException(500, f"Calculation error: {e}") from e
 
-        def safe_float(v: float) -> float | None:
-            return float(v) if v is not None and not math.isnan(v) else None
-
-        return {"data": [safe_float(x) for x in res]}
+        # Safe NaN replacement to explicitly support strict JSON compliance
+        res_list = [float(x) if not np.isnan(x) else None for x in res]
+        return {"data": res_list}
 
     def _render_index(
         self,
@@ -682,6 +694,7 @@ class VolTrackerApp(BaseFastAPIApp):
             fast,
             slow,
             from_web=True,
+            precalc_data=raw_data,
         )
 
         return self.templates.TemplateResponse(

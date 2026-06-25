@@ -4,6 +4,7 @@ Place this file alongside app.py.
 """
 
 import csv
+from functools import lru_cache
 from pathlib import Path
 
 from utils.data.paths import NSE_INDX_DATA
@@ -13,6 +14,9 @@ CATEGORIES_CSV = Path(NSE_INDX_DATA) / "categories.csv"
 UNIQ_CATEGORIES_CSV = Path(NSE_INDX_DATA) / "uniq_categories.csv"
 
 
+# 🚀 OPTIMIZATION: Cache the parsed results to memory
+# so we don't spam disk I/O on every request
+@lru_cache(maxsize=1)
 def load_sector_symbols(csv_path: str | Path = CATEGORIES_CSV) -> dict[str, list[str]]:
     """
     Returns an ordered dict: { sector_name: [symbol, ...] }

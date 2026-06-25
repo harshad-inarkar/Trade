@@ -16,7 +16,6 @@ from apps.nse_vol_tracker.data_processor import (
     NFIELDS,
     PRICE,
     VOL,
-    VOL_CUMUL,
     build_timestamps,
     compute_volume_delta,
     discover_files,
@@ -47,6 +46,7 @@ class CacheManager:
         self._sorted_dates: list[str] | None = None
         self._committed_total: dict[str, int] = dict.fromkeys(TF_KEYS, 0)
 
+        # Retained strictly for boundaries between incremental updates
         self._seed_vcum: dict[str, np.ndarray] = dict.fromkeys(TF_KEYS)
         self._seed_vltp: dict[str, np.ndarray] = dict.fromkeys(TF_KEYS)
 
@@ -73,8 +73,8 @@ class CacheManager:
 
         ref = self._refresh_time
         out(
-            f"✅ {datetime.now(INDIA_TZ).strftime('%M:%S')} : Done. Last: "
-            f"{ref.strftime('%d%m%Y-%H%M') if ref else '-'}"
+            f"✅ {datetime.now(INDIA_TZ).strftime('%M:%S')} : Done. "
+            f"Last: {ref.strftime('%d%m%Y-%H%M') if ref else '-'}"
         )
 
     def _load_csv_files(
@@ -306,8 +306,8 @@ class CacheManager:
                     )
                 wptr_start = wptr
 
+            # 🚀 OPTIMIZATION: Stopped injecting vcum_1idx into num_data array
             for c, fi in enumerate(range(from_index, total + 1)):
-                nd[:n_syms, wptr_start + c, VOL_CUMUL] = vcum_1idx[:n_syms, fi]
                 nd[:n_syms, wptr_start + c, PRICE] = vltp_1idx[:n_syms, fi]
                 nd[:n_syms, wptr_start + c, VOL] = vol_1idx[:n_syms, fi]
 
@@ -333,8 +333,13 @@ class CacheManager:
                 self.ts_list[tf_str] += list(res["ts_list"])
                 self.tsf_list[tf_str] += list(res["tsf_list"])
 
+            # Save cumulative values strictly for bridging boundaries
             p1, p2 = max(new_wptr - 2, 0), new_wptr - 1
-            self._seed_vcum[tf_str] = nd[:n_syms, [p1, p2], VOL_CUMUL].copy()
-            self._seed_vltp[tf_str] = nd[:n_syms, [p1, p2], PRICE].copy()
+            self._seed_vcum[tf_str] = vcum_1idx[
+                :n_syms, [from_index + p1, from_index + p2]
+            ].copy()
+            self._seed_vltp[tf_str] = vltp_1idx[
+                :n_syms, [from_index + p1, from_index + p2]
+            ].copy()
 
         self._ready = True
