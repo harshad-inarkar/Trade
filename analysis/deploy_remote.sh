@@ -64,6 +64,19 @@ ssh "$REMOTE_HOST" << EOF
 
     sleep 1
 
+    echo "🔍 Checking for stuck processes on port 5000..."
+    STUCK_PID=\$(sudo lsof -t -i:5000)
+    if [ ! -z "\$STUCK_PID" ]; then
+        echo "🛑 Killing zombie process (\$STUCK_PID) bound to port 5000..."
+        sudo kill -9 \$STUCK_PID
+    else
+        echo "✅ Port 5000 is clear."
+    fi
+
+    sleep 1
+
+
+
     # Spin up fresh orchestrator inside a detached background tmux window
 
     echo "🚀 Initializing orchestrator inside fresh 'bot' tmux session..."
@@ -71,7 +84,7 @@ ssh "$REMOTE_HOST" << EOF
     # tmux new-session -d -s bot "export log_level="info" && export refresh_master_script="true" && python orchest/start_orchest.py -ml trade_app"
     # tmux new-session -d -s bot "export log_level="info" && python orchest/start_orchest.py -ml trade_app"
 
-    tmux new-session -d -s bot "python orchest/start_orchest.py -ml trade_app"
+    tmux new-session -d -s bot "python orchest/start_orchest.py -ml trade_app vol_app"
     
     echo "🎉 Server execution handed off safely!"
 EOF

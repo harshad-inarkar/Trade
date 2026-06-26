@@ -22,6 +22,18 @@ ssh "$REMOTE_HOST" << EOF
     else
         echo "✅ Port 8000 is clear."
     fi
+
+    echo "🔍 Checking for stuck processes on port 5000..."
+    STUCK_PID=\$(sudo lsof -t -i:5000)
+    if [ ! -z "\$STUCK_PID" ]; then
+        echo "🛑 Killing zombie process (\$STUCK_PID) bound to port 5000..."
+        sudo kill -9 \$STUCK_PID
+    else
+        echo "✅ Port 5000 is clear."
+    fi
+
+    sleep 1
+
 EOF
 
 echo "✅ Process Stopped!"
