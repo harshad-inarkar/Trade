@@ -17,10 +17,17 @@ from typing import ClassVar
 import requests
 import tomllib
 
+from utils.data.nse_holidays_list import gen_holidays_list
+
 # ─── Custom Imports ───────────────────────────────────────────────────────────
-from utils.data.paths import NSE_INTRADAY_DIR_PATH, REMOTE_INTRADAY_DIR_PATH
+from utils.data.paths import (
+    HOLIDAYS_LIST_PATH,
+    NSE_INTRADAY_DIR_PATH,
+    REMOTE_INTRADAY_DIR_PATH,
+)
 from utils.data.sync_data import sync_data_args
-from utils.time.time_utils import INDIA_TZ, out
+from utils.logging.log_utils import out, set_out_log_level
+from utils.time.time_utils import INDIA_TZ
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -28,15 +35,14 @@ from utils.time.time_utils import INDIA_TZ, out
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @dataclass
 class DownloaderConfig:
-    start_session: str = "0915"
-    end_session: str = "1530"
+    start_session: str = ""
+    end_session: str = ""
     reset_remote_sched: bool = False
-    gcp_state_filename: str = ".gcp_state"
-    session_url: str = "https://www.nseindia.com"
-    refer_url: str = "https://www.nseindia.com/market-data/most-active-underlying"
-    api_url: str = (
-        "https://www.nseindia.com/api/live-analysis-most-active-underlying?csv=true"
-    )
+    gcp_state_filename: str = ""
+    gcp_scheduler_job: str = ""
+    session_url: str = ""
+    refer_url: str = ""
+    api_url: str = ""
 
     @classmethod
     def load_from_toml(cls, path: Path) -> "DownloaderConfig":
@@ -55,6 +61,7 @@ class DownloaderConfig:
         gcp = data.get("gcp", {})
         c.reset_remote_sched = gcp.get("reset_remote_sched", c.reset_remote_sched)
         c.gcp_state_filename = gcp.get("gcp_state_filename", c.gcp_state_filename)
+        c.gcp_scheduler_job = gcp.get("gcp_scheduler_job", c.gcp_scheduler_job)
 
         api = data.get("api", {})
         c.session_url = api.get("session_url", c.session_url)
@@ -142,7 +149,7 @@ class NSEDailyDownloader:
                     "scheduler",
                     "jobs",
                     to_state,
-                    "nse-downloader-function-job",
+                    self.config.gcp_scheduler_job,
                     "--location=asia-south1",
                 ],
                 capture_output=True,
@@ -184,59 +191,81 @@ class NSEDailyDownloader:
         now = datetime.now(INDIA_TZ) + timedelta(seconds=30)
         timestamp = now.strftime("%H%M")
 
-        date_timestamp = datetime.now(INDIA_TZ).strftime("%d%m%Y")
-        data_dir = f"{NSE_INTRADAY_DIR_PATH}/{date_timestamp}"
-
         valid_flag, timestamp, time_exceeded_flag = self._check_valid_session(timestamp)
 
-        if not valid_flag:
-            out(f"Not Valid timestamp {timestamp}. Ignore download")
-            return
-
-        Path(data_dir).mkdir(parents=True, exist_ok=True)
-
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            ),
-            "Referer": self.config.refer_url,
-        }
-
-        session = requests.Session()
-        session.get(self.config.session_url, headers=headers)
+        today = now.strftime("%d-%b-%Y")
+        is_holiday = False
 
         try:
-            response = session.get(self.config.api_url, headers=headers, timeout=30)
-            response.raise_for_status()
-        except requests.RequestException as e:
-            out(f"Failed to download data from NSE: {e}")
-            return
+            if not HOLIDAYS_LIST_PATH.exists():
+                out(f"{HOLIDAYS_LIST_PATH} Not Found. Generate..")
+                gen_holidays_list()
 
-        content_str = response.content.decode(encoding="utf-8-sig")
-        reader = csv.DictReader(StringIO(content_str))
+            with HOLIDAYS_LIST_PATH.open(encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    holiday_date = row.get("Date")
+                    if holiday_date and holiday_date == today:
+                        is_holiday = True
+                        break
+        except (OSError, csv.Error, RuntimeError) as e:
+            out(f"Could not check holidays list ({HOLIDAYS_LIST_PATH}): {e}")
 
-        filtered_rows = []
-        for row in reader:
-            filtered_row = {}
-            for src, v_out in self.COLUMN_MAP:
-                if src in row:
-                    val = row[src]
-                    if v_out == "vol_val_cum":
-                        with contextlib.suppress(ValueError):
-                            val = f"{float(val):.2f}"
-                    filtered_row[v_out] = val
+        if not is_holiday:
+            date_timestamp = datetime.now(INDIA_TZ).strftime("%d%m%Y")
+            data_dir = f"{NSE_INTRADAY_DIR_PATH}/{date_timestamp}"
 
-            if len(filtered_row) == len(self.COLUMN_MAP):
-                filtered_rows.append(filtered_row)
+            if not valid_flag:
+                out(f"Not Valid timestamp {timestamp}. Ignore download")
+                return
 
-        file_path = f"{data_dir}/nse_data_{timestamp}.csv"
+            Path(data_dir).mkdir(parents=True, exist_ok=True)
 
-        with Path(file_path).open("w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=self.OUTPUT_COLUMNS)
-            writer.writeheader()
-            writer.writerows(filtered_rows)
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                ),
+                "Referer": self.config.refer_url,
+            }
 
-        out(f"Downloaded: {file_path} in {time.time() - t1:.2f}s")
+            session = requests.Session()
+            session.get(self.config.session_url, headers=headers)
+
+            try:
+                response = session.get(self.config.api_url, headers=headers, timeout=30)
+                response.raise_for_status()
+            except requests.RequestException as e:
+                out(f"Failed to download data from NSE: {e}")
+                return
+
+            content_str = response.content.decode(encoding="utf-8-sig")
+            reader = csv.DictReader(StringIO(content_str))
+
+            filtered_rows = []
+            for row in reader:
+                filtered_row = {}
+                for src, v_out in self.COLUMN_MAP:
+                    if src in row:
+                        val = row[src]
+                        if v_out == "vol_val_cum":
+                            with contextlib.suppress(ValueError):
+                                val = f"{float(val):.2f}"
+                        filtered_row[v_out] = val
+
+                if len(filtered_row) == len(self.COLUMN_MAP):
+                    filtered_rows.append(filtered_row)
+
+            file_path = f"{data_dir}/nse_data_{timestamp}.csv"
+
+            with Path(file_path).open("w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=self.OUTPUT_COLUMNS)
+                writer.writeheader()
+                writer.writerows(filtered_rows)
+
+            out(f"Downloaded: {file_path} in {time.time() - t1:.2f}s")
+        else:
+            out(f"Trading Holiday today ({today}). No Download")
+
         self._handle_gcp_sync(time_exceeded_flag=time_exceeded_flag)
 
 
@@ -244,7 +273,10 @@ class NSEDailyDownloader:
 # Execution Entry Point
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 if __name__ == "__main__":
+    set_out_log_level("critical")
     downloader = NSEDailyDownloader()
+
     if downloader.config.reset_remote_sched:
         out("Reset Remote Sched Config is ACTIVE")
+
     downloader.download()

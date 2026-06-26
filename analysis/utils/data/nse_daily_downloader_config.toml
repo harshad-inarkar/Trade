@@ -4,8 +4,9 @@ end = "1530"
 
 [gcp]
 # Equivalent to the old --reset-remote-sched argument
-reset_remote_sched = true
+reset_remote_sched = false
 gcp_state_filename = ".gcp_state"
+gcp_scheduler_job = "nse-downloader-function-job"
 
 [api]
 session_url = "https://www.nseindia.com"
