@@ -2,6 +2,7 @@
 """
 NSE Daily Data Downloader (Object-Oriented)
 Downloads intraday CSV reports from NSE and syncs with GCP.
+(Ruff & Mypy Compliant)
 """
 
 import contextlib
@@ -18,21 +19,22 @@ import requests
 import tomllib
 
 from utils.data.nse_holidays_list import gen_holidays_list
-
-# ─── Custom Imports ───────────────────────────────────────────────────────────
 from utils.data.paths import (
     HOLIDAYS_LIST_PATH,
     NSE_INTRADAY_DIR_PATH,
+    NSE_LOGS_DIR,
     REMOTE_INTRADAY_DIR_PATH,
 )
 from utils.data.sync_data import sync_data_args
-from utils.logging.log_utils import out, set_out_log_level
+from utils.logging.log_utils import (
+    LogFileManager,
+    out,
+    set_logger_config,
+    set_out_log_level,
+)
 from utils.time.time_utils import INDIA_TZ
 
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Configuration Data Class
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @dataclass
 class DownloaderConfig:
     start_session: str = ""
@@ -71,9 +73,6 @@ class DownloaderConfig:
         return c
 
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Main Downloader Class
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class NSEDailyDownloader:
     COLUMN_MAP: ClassVar[list[tuple[str, str]]] = [
         ("Symbol", "symbol"),
@@ -89,8 +88,6 @@ class NSEDailyDownloader:
         self.base_dir = Path(__file__).parent
         self.config = DownloaderConfig.load_from_toml(self.base_dir / config_filename)
         self.gcp_state_file = self.base_dir / self.config.gcp_state_filename
-
-    # ─── Time & Session Management ─────────────────────────────────────────────
 
     def _calculate_intervals(
         self,
@@ -128,8 +125,6 @@ class NSEDailyDownloader:
             time_exceeded = True
 
         return valid_flag, new_ts, time_exceeded
-
-    # ─── GCP Scheduler Management ──────────────────────────────────────────────
 
     def _read_gcp_state(self) -> str:
         if self.gcp_state_file.exists():
@@ -184,8 +179,6 @@ class NSEDailyDownloader:
             else:
                 out("Scheduler resume skipped: gcp_state is not 'pause'")
 
-    # ─── Core Download Logic ───────────────────────────────────────────────────
-
     def download(self) -> None:
         t1 = time.time()
         now = datetime.now(INDIA_TZ) + timedelta(seconds=30)
@@ -239,10 +232,10 @@ class NSEDailyDownloader:
                 return
 
             content_str = response.content.decode(encoding="utf-8-sig")
-            reader = csv.DictReader(StringIO(content_str))
+            csv_reader = csv.DictReader(StringIO(content_str))
 
             filtered_rows = []
-            for row in reader:
+            for row in csv_reader:
                 filtered_row = {}
                 for src, v_out in self.COLUMN_MAP:
                     if src in row:
@@ -269,14 +262,24 @@ class NSEDailyDownloader:
         self._handle_gcp_sync(time_exceeded_flag=time_exceeded_flag)
 
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Execution Entry Point
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 if __name__ == "__main__":
+    # Initialize LogFileManager natively for this script
+    log_manager = LogFileManager(log_dir=NSE_LOGS_DIR)
+    log_manager.start_monitor()
+
+    # Route default script logger output to the managed rotating file
+    script_log_name = Path(__file__).stem
+    managed_file_handle = log_manager.open_log(script_log_name)
+    set_logger_config(log_handle=managed_file_handle)
     set_out_log_level("critical")
-    downloader = NSEDailyDownloader()
 
-    if downloader.config.reset_remote_sched:
-        out("Reset Remote Sched Config is ACTIVE")
+    try:
+        downloader = NSEDailyDownloader()
+        if downloader.config.reset_remote_sched:
+            out("Reset Remote Sched Config is ACTIVE")
 
-    downloader.download()
+        downloader.download()
+    finally:
+        # Guarantee clean exit of file handlers
+        log_manager.close_log(script_log_name)
+        log_manager.stop_monitor()

@@ -26,12 +26,16 @@ rsync -avz --delete -e "ssh" \
     --exclude '*.pyc' \
     --exclude '*.log' \
     --exclude 'venv' \
+    --exclude '.DS_Store' \
     "${SOURCE_TARGET[@]}" \
     "$REMOTE_HOST:$TARGET_DIR"
 
 echo "✅ Rsync Complete!"
 
 # Step 3: Automate Remote Orchestration via Tmux
+
+
+: '
 echo "🤖 Automating Orchestration on server..."
 ssh "$REMOTE_HOST" << EOF
     cd $TARGET_DIR
@@ -61,14 +65,16 @@ ssh "$REMOTE_HOST" << EOF
     sleep 1
 
     # Spin up fresh orchestrator inside a detached background tmux window
+
     echo "🚀 Initializing orchestrator inside fresh 'bot' tmux session..."
         
     # tmux new-session -d -s bot "export log_level="info" && export refresh_master_script="true" && python orchest/start_orchest.py -ml trade_app"
     # tmux new-session -d -s bot "export log_level="info" && python orchest/start_orchest.py -ml trade_app"
 
-    # tmux new-session -d -s bot "python orchest/start_orchest.py -ml trade_app"
+    tmux new-session -d -s bot "python orchest/start_orchest.py -ml trade_app"
     
     echo "🎉 Server execution handed off safely!"
 EOF
+'
 
 echo "✨ Deployment and automation workflow complete!"

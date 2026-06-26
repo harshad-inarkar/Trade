@@ -1,3 +1,6 @@
 # ── Apps-level settings ────────────────────────────────────────────────────────
-[apps]
+[logs]
 log_level = ""         # debug | info | warning | error | critical  default is critical if empty
+log_max_size_kb = 100
+log_monitor_interval_min = 15
+
