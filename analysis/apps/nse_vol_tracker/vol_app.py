@@ -78,8 +78,7 @@ class MarketDataService:
         self.cache.load_files(self.intraday_path, self.config.last_ndays)
         ref_t = self.get_refresh_time_str()
 
-        # 🚀 Pass the precalculated array into dump_merge
-        # to prevent duplicate math computations
+        # 🚀 OPTIMIZATION: Compute averages once; share with both dump calls
         raw_data = self.build_dynamic_averages(MIN_TF, ma_type, fast, slow)
         self.dump_merge(
             MIN_TF,
@@ -94,6 +93,7 @@ class MarketDataService:
             slow,
             precalc_data=raw_data,
         )
+        self.dump_index(ma_type, fast, slow, precalc_data=raw_data)
 
     def get_refresh_time_str(self) -> str:
         dt = self.cache.get_refresh_time()
@@ -212,9 +212,16 @@ class MarketDataService:
         ma_type: str = "rma",
         fast: int = _def_fast_ma_len,
         slow: int = _def_slow_ma_len,
+        *,
+        precalc_data: list | None = None,
     ) -> None:
         ref_t = self.get_refresh_time_str()
-        symbols_list = self.build_dynamic_averages(MIN_TF, ma_type, fast, slow)
+        # 🚀 OPTIMIZATION: Reuse precalc_data when provided (avoids duplicate MA math)
+        symbols_list = (
+            precalc_data
+            if precalc_data is not None
+            else self.build_dynamic_averages(MIN_TF, ma_type, fast, slow)
+        )
         Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
         sym_idx = INDEX_FIELDS.index("symbol")
         ltp_idx = INDEX_FIELDS.index("ltp")
@@ -281,7 +288,7 @@ class MarketDataService:
 
         Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
         force_syms_path = Path(OUT_DIR) / "candidates_force.txt"
-        forced_symbols = set()
+        forced_symbols: set[str] = set()
 
         if force_syms_path.exists():
             with force_syms_path.open() as f:
@@ -297,19 +304,19 @@ class MarketDataService:
             writer = _csv.writer(out_csv)
             writer.writerow(INDEX_FIELDS)
 
-            symbol_full_row_map = {}
+            filtered_symb_list, _, _, _ = self.filter_list(
+                full_symb_list, filt, pma_act, vma_act
+            )
+
+            symbol_full_row_map: dict[str, list] = {}
             for skey in sort_key_list:
                 if skey:
                     sidx = INDEX_FIELDS.index(
                         skey if skey in INDEX_FIELDS else "volume_fast"
                     )
-                    symbols_list, _, _, _ = self.filter_list(
-                        full_symb_list, filt, pma_act, vma_act
-                    )
-
                     top_syms = heapq.nlargest(
                         top,
-                        symbols_list[1:],
+                        filtered_symb_list[1:],
                         key=lambda x: x[sidx] if x[sidx] is not None else float("-inf"),
                     )
                     for row in top_syms:
@@ -331,7 +338,7 @@ class MarketDataService:
                 item[0]: rank for rank, item in enumerate(sorted_sidx1, 1)
             }
 
-            sidx2_rank_map = {}
+            sidx2_rank_map: dict[str, int] = {}
             sidx2_exist = bool(len(sort_key_list) > 1 and sort_key_list[1])
             if sidx2_exist:
                 sidx2 = INDEX_FIELDS.index(
@@ -409,7 +416,6 @@ class VolTrackerApp(BaseFastAPIApp):
     async def lifespan_handler(self, app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG002
         t0 = time.time()
         self.data_service.load_all_data()
-        self.data_service.dump_index()
         out(f"⏱ Initial load took {time.time() - t0:.2f}s")
         self.reloader.start()
         yield
@@ -577,13 +583,15 @@ class VolTrackerApp(BaseFastAPIApp):
         slow: int = _def_slow_ma_len,
     ) -> Any:
         tf = tf if tf in TF_KEYS else MIN_TF
-        sym_list = self.data_service.cache.sym_list.get(tf, [])
-        if symbol_name not in sym_list:
+        # 🚀 OPTIMIZATION: O(1) lookup via sym_idx_map instead of O(n) list.index()
+        si = self.data_service.cache.sym_idx_map[tf].get(symbol_name)
+        if si is None:
             raise HTTPException(404, "Symbol not found")
 
-        si = sym_list.index(symbol_name)
         nd = self.data_service.cache.num_data[tf]
         wptr = self.data_service.cache.write_ptr[tf]
+        if nd is None:
+            raise HTTPException(503, "Cache not ready")
 
         vol = nd[si : si + 1, :wptr, VOL]
         price = nd[si : si + 1, :wptr, PRICE]
@@ -624,13 +632,15 @@ class VolTrackerApp(BaseFastAPIApp):
         p1: float = _def_fast_ma_len,
     ) -> dict[str, list[float | None]]:
         tf = tf if tf in TF_KEYS else MIN_TF
-        sym_list = self.data_service.cache.sym_list.get(tf, [])
-        if symbol not in sym_list:
+        # 🚀 OPTIMIZATION: O(1) lookup via sym_idx_map instead of O(n) list.index()
+        si = self.data_service.cache.sym_idx_map[tf].get(symbol)
+        if si is None:
             raise HTTPException(404, "Symbol not found")
 
-        si = sym_list.index(symbol)
         nd = self.data_service.cache.num_data[tf]
         wptr = self.data_service.cache.write_ptr[tf]
+        if nd is None:
+            raise HTTPException(503, "Cache not ready")
 
         base_data = (
             nd[si : si + 1, :wptr, VOL]
@@ -648,7 +658,9 @@ class VolTrackerApp(BaseFastAPIApp):
             raise HTTPException(500, f"Calculation error: {e}") from e
 
         # Safe NaN replacement to explicitly support strict JSON compliance
-        res_list = [float(x) if not np.isnan(x) else None for x in res]
+        res_list: list[float | None] = [
+            float(x) if not np.isnan(x) else None for x in res
+        ]
         return {"data": res_list}
 
     def _render_index(

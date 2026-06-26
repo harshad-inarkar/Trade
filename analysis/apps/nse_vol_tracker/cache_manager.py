@@ -24,7 +24,8 @@ from apps.nse_vol_tracker.data_processor import (
     get_one_day_intervals,
     read_csv_files_to_arrays,
 )
-from utils.time.time_utils import INDIA_TZ, out
+from utils.logging.log_utils import out
+from utils.time.time_utils import INDIA_TZ
 
 MIN_TF = "3"
 TF_KEYS = (MIN_TF, "15", "D")
@@ -37,7 +38,9 @@ class CacheManager:
         self._ready = False
 
         self.sym_list: dict[str, list[str]] = {tf: [] for tf in TF_KEYS}
-        self.num_data: dict[str, np.ndarray] = dict.fromkeys(TF_KEYS)
+        # O(1) symbol -> array-row index lookup, kept in sync with sym_list
+        self.sym_idx_map: dict[str, dict[str, int]] = {tf: {} for tf in TF_KEYS}
+        self.num_data: dict[str, np.ndarray | None] = dict.fromkeys(TF_KEYS)
         self.write_ptr: dict[str, int] = dict.fromkeys(TF_KEYS, 0)
         self.ts_list: dict[str, list[str]] = {tf: [] for tf in TF_KEYS}
         self.tsf_list: dict[str, list[str]] = {tf: [] for tf in TF_KEYS}
@@ -47,8 +50,8 @@ class CacheManager:
         self._committed_total: dict[str, int] = dict.fromkeys(TF_KEYS, 0)
 
         # Retained strictly for boundaries between incremental updates
-        self._seed_vcum: dict[str, np.ndarray] = dict.fromkeys(TF_KEYS)
-        self._seed_vltp: dict[str, np.ndarray] = dict.fromkeys(TF_KEYS)
+        self._seed_vcum: dict[str, np.ndarray | None] = dict.fromkeys(TF_KEYS)
+        self._seed_vltp: dict[str, np.ndarray | None] = dict.fromkeys(TF_KEYS)
 
     @property
     def is_ready(self) -> bool:
@@ -108,30 +111,32 @@ class CacheManager:
                 else 0
             )
 
-            self._seed_slot = 0 if from_index == last_committed else 1
+            # Determine which seed column to use for boundary bridging.
+            # Passed explicitly to derived-tf workers to avoid shared mutable state.
+            seed_slot = 0 if from_index == last_committed else 1
             from_index = (
                 last_committed + 1 if from_index != last_committed else from_index
             )
 
             files_to_read = new_files
-            known_symbols = self.sym_list[MIN_TF]
+            known_symbols: list[str] | None = self.sym_list[MIN_TF]
         else:
             from_index, files_to_read, known_symbols = 1, sorted_files, None
+            seed_slot = 1  # unused for full load; defined for consistent signature
 
         sym_list, vcum, vltp, total = read_csv_files_to_arrays(
             files_to_read, sorted_dates, tf_min, odi_min, known_symbols
         )
         n_syms = len(sym_list)
-        slot = getattr(self, "_seed_slot", 1)
 
         if incremental and from_index > 1:
             if (sv_vcum := self._seed_vcum[MIN_TF]) is not None:
                 vcum[: min(sv_vcum.shape[0], n_syms), from_index - 1] = sv_vcum[
-                    : min(sv_vcum.shape[0], n_syms), slot
+                    : min(sv_vcum.shape[0], n_syms), seed_slot
                 ]
             if (sv_vltp := self._seed_vltp[MIN_TF]) is not None:
                 vltp[: min(sv_vltp.shape[0], n_syms), from_index - 1] = sv_vltp[
-                    : min(sv_vltp.shape[0], n_syms), slot
+                    : min(sv_vltp.shape[0], n_syms), seed_slot
                 ]
 
         fill_gaps_numpy(vcum, vltp, from_index, total, odi_min)
@@ -140,7 +145,7 @@ class CacheManager:
             from_index, total, sorted_dates, tf_min, odi_min
         )
 
-        result = {
+        result: dict = {
             MIN_TF: {
                 "sym_list": sym_list,
                 "vcum": vcum,
@@ -167,6 +172,7 @@ class CacheManager:
                     total,
                     sorted_dates,
                     from_index,
+                    seed_slot,
                     incremental=incremental,
                 )
                 for tf_str in ("15", "D")
@@ -185,6 +191,7 @@ class CacheManager:
         min_total: int,
         sorted_dates: list[str],
         min_from_index: int,
+        seed_slot: int,
         *,
         incremental: bool,
     ) -> dict:
@@ -198,11 +205,11 @@ class CacheManager:
             from_idx = math.ceil(min_from_index / tfratio)
 
             if from_idx == old_total:
-                self._seed_slot = 0
-                fill_from_idx = from_idx = old_total
+                seed_slot = 0
+                from_idx = old_total
             else:
-                self._seed_slot = 1
-                fill_from_idx = from_idx = old_total + 1
+                seed_slot = 1
+                from_idx = old_total + 1
 
             if total < from_idx:
                 return {
@@ -217,29 +224,26 @@ class CacheManager:
         else:
             total, from_idx = math.ceil(min_total / tfratio), 1
 
-        vcum_d, vltp_d = (
-            np.full((n_syms, total + 1), np.nan),
-            np.full((n_syms, total + 1), np.nan),
-        )
+        vcum_d = np.full((n_syms, total + 1), np.nan)
+        vltp_d = np.full((n_syms, total + 1), np.nan)
+
         for nfi in range(from_idx, total + 1):
             if (mi := min(nfi * tfratio, min_total)) >= min_from_index:
                 vcum_d[:, nfi] = min_vcum[:n_syms, mi]
                 vltp_d[:, nfi] = min_vltp[:n_syms, mi]
 
-        slot = getattr(self, "_seed_slot", 1)
         if incremental and from_idx > 1:
             if (sv_vcum := self._seed_vcum.get(tf_str)) is not None:
                 vcum_d[: min(sv_vcum.shape[0], n_syms), from_idx - 1] = sv_vcum[
-                    : min(sv_vcum.shape[0], n_syms), slot
+                    : min(sv_vcum.shape[0], n_syms), seed_slot
                 ]
             if (sv_vltp := self._seed_vltp.get(tf_str)) is not None:
                 vltp_d[: min(sv_vltp.shape[0], n_syms), from_idx - 1] = sv_vltp[
-                    : min(sv_vltp.shape[0], n_syms), slot
+                    : min(sv_vltp.shape[0], n_syms), seed_slot
                 ]
 
-        _fill_from = fill_from_idx if incremental else from_idx
-        fill_gaps_numpy(vcum_d, vltp_d, _fill_from, total, odi)
-        vol_d = compute_volume_delta(vcum_d, _fill_from, total, odi)
+        fill_gaps_numpy(vcum_d, vltp_d, from_idx, total, odi)
+        vol_d = compute_volume_delta(vcum_d, from_idx, total, odi)
         ts_list, tsf_list = build_timestamps(from_idx, total, sorted_dates, tf, odi)
 
         return {
@@ -263,41 +267,53 @@ class CacheManager:
             if res is None or res["vcum"] is None:
                 continue
 
-            sym_list, n_syms = res["sym_list"], len(res["sym_list"])
-            vcum_1idx, vltp_1idx, vol_1idx = res["vcum"], res["vltp"], res["vol"]
-            from_index, total = res["from_index"], res["total"]
+            sym_list: list[str] = res["sym_list"]
+            n_syms = len(sym_list)
+            vcum_1idx: np.ndarray = res["vcum"]
+            vltp_1idx: np.ndarray = res["vltp"]
+            vol_1idx: np.ndarray = res["vol"]
+            from_index: int = res["from_index"]
+            total: int = res["total"]
 
             if (n_new := total - from_index + 1) <= 0:
                 continue
             odi_tf = get_one_day_intervals(tf_str)[1]
 
+            # overwrite is only meaningful in the incremental branch;
+            # initialise to False so mypy sees it as always bound.
+            overwrite = False
+
             if not incremental:
-                nd = np.empty(
+                nd: np.ndarray = np.empty(
                     (n_syms, total + _BUFFER_DAYS * odi_tf, NFIELDS), dtype=np.float64
                 )
                 wptr_start = 0
             else:
-                nd, wptr = self.num_data[tf_str], self.write_ptr[tf_str]
+                existing_nd = self.num_data[tf_str]
+                wptr = self.write_ptr[tf_str]
                 overwrite = from_index == self._committed_total[tf_str]
                 if overwrite:
                     wptr = max(wptr - 1, 0)
                     n_new = total - from_index + 1
 
-                if nd is None or wptr + n_new > nd.shape[1]:
+                if existing_nd is None or wptr + n_new > existing_nd.shape[1]:
                     extra = max(n_new, _BUFFER_DAYS * odi_tf)
                     nd = (
                         np.empty((n_syms, n_new + extra, NFIELDS), dtype=np.float64)
-                        if nd is None
+                        if existing_nd is None
                         else np.concatenate(
                             [
-                                nd[:, :wptr, :],
+                                existing_nd[:, :wptr, :],
                                 np.empty(
-                                    (nd.shape[0], extra, NFIELDS), dtype=np.float64
+                                    (existing_nd.shape[0], extra, NFIELDS),
+                                    dtype=np.float64,
                                 ),
                             ],
                             axis=1,
                         )
                     )
+                else:
+                    nd = existing_nd
 
                 if n_syms > nd.shape[0]:
                     nd = np.concatenate(
@@ -312,24 +328,19 @@ class CacheManager:
                 nd[:n_syms, wptr_start + c, VOL] = vol_1idx[:n_syms, fi]
 
             new_wptr = wptr_start + n_new
-            (
-                self.num_data[tf_str],
-                self.sym_list[tf_str],
-                self.write_ptr[tf_str],
-                self._committed_total[tf_str],
-            ) = nd, sym_list, new_wptr, total
+            self.num_data[tf_str] = nd
+            self.sym_list[tf_str] = sym_list
+            self.sym_idx_map[tf_str] = {s: i for i, s in enumerate(sym_list)}
+            self.write_ptr[tf_str] = new_wptr
+            self._committed_total[tf_str] = total
 
             if not incremental:
-                self.ts_list[tf_str], self.tsf_list[tf_str] = (
-                    list(res["ts_list"]),
-                    list(res["tsf_list"]),
-                )
+                self.ts_list[tf_str] = list(res["ts_list"])
+                self.tsf_list[tf_str] = list(res["tsf_list"])
             else:
                 if overwrite:
-                    self.ts_list[tf_str], self.tsf_list[tf_str] = (
-                        self.ts_list[tf_str][:-1],
-                        self.tsf_list[tf_str][:-1],
-                    )
+                    self.ts_list[tf_str] = self.ts_list[tf_str][:-1]
+                    self.tsf_list[tf_str] = self.tsf_list[tf_str][:-1]
                 self.ts_list[tf_str] += list(res["ts_list"])
                 self.tsf_list[tf_str] += list(res["tsf_list"])
 

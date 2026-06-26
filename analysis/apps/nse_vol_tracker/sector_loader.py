@@ -11,7 +11,6 @@ from utils.data.paths import NSE_INDX_DATA
 
 # Resolve path relative to this file so it works regardless of cwd
 CATEGORIES_CSV = Path(NSE_INDX_DATA) / "categories.csv"
-UNIQ_CATEGORIES_CSV = Path(NSE_INDX_DATA) / "uniq_categories.csv"
 
 
 # 🚀 OPTIMIZATION: Cache the parsed results to memory

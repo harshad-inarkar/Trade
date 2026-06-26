@@ -36,6 +36,11 @@ new_symb_map = {"LTIM": "LTM"}
 _READ_WORKERS = min(16, (os.cpu_count() or 4) + 4)
 
 
+def _get_col_indices(header: list[str]) -> tuple[int, int, int]:
+    """Return (symbol_col, value_col, ltp_col) indices from a CSV header row."""
+    return header.index(SYMB_COL), header.index(VALUE_COL), header.index(LTP_COL)
+
+
 def calculate_intervals(
     tf: int, start_time_str: str = START_SESSION, end_time_str: str = END_SESSION
 ) -> int:
@@ -82,7 +87,8 @@ def discover_files(
     data_dir: str | Path, last_n_days: int | None = None
 ) -> tuple[list[dict], list[str]]:
     csv_files = [str(p) for p in Path(data_dir).rglob("*.csv")]
-    files_with_dates, uniq_dates = [], set()
+    files_with_dates: list[dict] = []
+    uniq_dates: set = set()
 
     for filename in csv_files:
         m = re.match(DATE_PATTERN, filename)
@@ -102,21 +108,14 @@ def discover_files(
         )
         uniq_dates.add(file_date.date())
 
-    sorted_files = sorted(
-        files_with_dates,
-        key=lambda x: (
-            x["date_obj"] if hasattr(x["date_obj"], "__lt__") else str(x["date_obj"])
-        ),
-    )
+    # date_obj is always datetime — sort directly without hasattr guards
+    sorted_files = sorted(files_with_dates, key=lambda x: x["date_obj"])
     sorted_dates_all = [d.strftime("%d%m%Y") for d in sorted(uniq_dates)]
 
     if last_n_days and last_n_days > 0 and len(sorted_dates_all) > last_n_days:
         use_dates = set(sorted_dates_all[-last_n_days:])
         sorted_files = [
-            f
-            for f in sorted_files
-            if hasattr(f["date_obj"], "strftime")
-            and f["date_obj"].strftime("%d%m%Y") in use_dates
+            f for f in sorted_files if f["date_obj"].strftime("%d%m%Y") in use_dates
         ]
         sorted_dates = sorted_dates_all[-last_n_days:]
     else:
@@ -127,21 +126,16 @@ def discover_files(
 
 def _read_chunk(
     chunk_items: list[tuple[int, dict]],
-    sym_to_idx: dict,
+    sym_to_idx: dict[str, int],
     vcum_arr: np.ndarray,
     vltp_arr: np.ndarray,
 ) -> set[str]:
-    excluded = set()
+    excluded: set[str] = set()
     for n_file, finfo in chunk_items:
         try:
             with Path(finfo["filename"]).open(encoding="utf-8-sig") as f:
                 reader = csv.reader(f)
-                header = next(reader)
-                sym_i, val_i, ltp_i = (
-                    header.index(SYMB_COL),
-                    header.index(VALUE_COL),
-                    header.index(LTP_COL),
-                )
+                sym_i, val_i, ltp_i = _get_col_indices(next(reader))
 
                 for row in reader:
                     if len(row) <= max(sym_i, val_i, ltp_i):
@@ -179,7 +173,7 @@ def read_csv_files_to_arrays(
     if known_symbols is not None:
         sym_list = list(known_symbols)
     else:
-        sym_set = set()
+        sym_set: set[str] = set()
         prev_f = next(
             (
                 sorted_files[i - 1]
@@ -191,7 +185,7 @@ def read_csv_files_to_arrays(
         )
         with Path(prev_f["filename"]).open(encoding="utf-8-sig") as f:
             reader = csv.reader(f)
-            sym_i = next(reader).index(SYMB_COL)
+            sym_i = _get_col_indices(next(reader))[0]
             for row in reader:
                 if len(row) > sym_i:
                     sym_set.add(
@@ -199,22 +193,17 @@ def read_csv_files_to_arrays(
                     )
         sym_list = sorted(sym_set)
 
-    sym_to_idx = {s: i for i, s in enumerate(sym_list)}
+    sym_to_idx: dict[str, int] = {s: i for i, s in enumerate(sym_list)}
     vcum_arr = np.full((len(sym_list), total_files + 1), np.nan)
     vltp_arr = np.full((len(sym_list), total_files + 1), np.nan)
-    excluded = set()
 
     if known_symbols is not None:
+        # Sequential read with dynamic symbol expansion for incremental updates
         for finfo in sorted_files:
             n_file = file_col[finfo["filename"]]
             with Path(finfo["filename"]).open(encoding="utf-8-sig") as f:
                 reader = csv.reader(f)
-                header = next(reader)
-                sym_i, val_i, ltp_i = (
-                    header.index(SYMB_COL),
-                    header.index(VALUE_COL),
-                    header.index(LTP_COL),
-                )
+                sym_i, val_i, ltp_i = _get_col_indices(next(reader))
                 for row in reader:
                     if len(row) <= max(sym_i, val_i, ltp_i):
                         continue
@@ -223,40 +212,27 @@ def read_csv_files_to_arrays(
                         si = len(sym_list)
                         sym_list.append(sym)
                         sym_to_idx[sym] = si
-                        vcum_arr = np.vstack(
-                            (
-                                vcum_arr,
-                                np.full(
-                                    (1, vcum_arr.shape[1]), np.nan, dtype=vcum_arr.dtype
-                                ),
-                            )
+                        new_row = np.full(
+                            (1, vcum_arr.shape[1]), np.nan, dtype=vcum_arr.dtype
                         )
-                        vltp_arr = np.vstack(
-                            (
-                                vltp_arr,
-                                np.full(
-                                    (1, vltp_arr.shape[1]), np.nan, dtype=vltp_arr.dtype
-                                ),
-                            )
-                        )
-
+                        vcum_arr = np.vstack((vcum_arr, new_row))
+                        vltp_arr = np.vstack((vltp_arr, new_row))
                     try:
                         vcum_arr[si, n_file] = float(row[val_i])
                         vltp_arr[si, n_file] = float(row[ltp_i].strip('"'))
                     except ValueError:
                         pass
     else:
+        # Parallel read for full initial load (symbol set is pre-determined)
         items = [(file_col[f["filename"]], f) for f in sorted_files]
-        chunks = [
-            items[i : i + max(1, len(items) // _READ_WORKERS)]
-            for i in range(0, len(items), max(1, len(items) // _READ_WORKERS))
-        ]
+        chunk_size = max(1, len(items) // _READ_WORKERS)
+        chunks = [items[i : i + chunk_size] for i in range(0, len(items), chunk_size)]
         with ThreadPoolExecutor() as executor:
             for fut in [
                 executor.submit(_read_chunk, chunk, sym_to_idx, vcum_arr, vltp_arr)
                 for chunk in chunks
             ]:
-                excluded.update(fut.result())
+                fut.result()  # exceptions surface; excluded symbols not tracked here
 
     return sym_list, vcum_arr, vltp_arr, total_files
 
@@ -300,14 +276,16 @@ def fill_gaps_numpy(
         next_db = day_bounds[i + 1] if i + 1 < len(day_bounds) else n_cols
         start_db = max(db - 1, 0)
 
-        vcum_seg, vltp_seg = (
-            vcum_work[:, start_db:next_db],
-            vltp_work[:, start_db:next_db],
-        )
+        vcum_seg = vcum_work[:, start_db:next_db]
+        vltp_seg = vltp_work[:, start_db:next_db]
         if vcum_seg.shape[1] == 0:
             continue
 
-        if (from_index + db - 1) % odi == 0 and db > 0:
+        # Sentinel ensures mypy sees save_vcum as always bound before the restore below
+        save_vcum: np.ndarray = np.empty(0)
+        is_day_start_restore = (from_index + db - 1) % odi == 0 and db > 0
+
+        if is_day_start_restore:
             save_vcum = vcum_seg[:, 0].copy()
             vcum_seg[:, 0] = 0.0
 
@@ -317,7 +295,7 @@ def fill_gaps_numpy(
         _interp_seg(vcum_seg)
         _interp_seg(vltp_seg)
 
-        if (from_index + db - 1) % odi == 0 and db > 0:
+        if is_day_start_restore:
             vcum_seg[:, 0] = save_vcum
 
     vcum_1indexed[:, from_index : total_files + 1] = vcum_work
