@@ -10,6 +10,7 @@ _indx_dir = "index"
 _apps_dir = "apps"
 templates_dir = "templates"
 _logs_dir = "logs"
+_holidays_list = "holidays_list.csv"
 
 
 class PathManager:
@@ -119,3 +120,5 @@ REMOTE_INTRADAY_DIR_PATH: str | None = (
 
 MASTER_CONFIG_PATH = Path("~/.config").expanduser()
 CONFIG_DIR = ROOT_SRC_DIR_PATH_OBJ / "utils/config"
+HOLIDAYS_LIST_PATH = Path(OUT_DIR) / _holidays_list
+
