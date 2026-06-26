@@ -7,12 +7,9 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime
 from pathlib import Path
 
 import tomllib
-
-from utils.time.time_utils import INDIA_TZ
 
 try:
     import psutil
@@ -140,11 +137,6 @@ class ScriptManager:
 
         try:
             out_target = self.log_manager.open_log(name)
-            start_time = datetime.now(INDIA_TZ).strftime("%Y-%m-%d %H:%M:%S")
-
-            out_target.write(f"{'#' * 60}\nStart: {start_time}\n{'#' * 60}\n")
-            out_target.flush()
-
             process = subprocess.Popen(
                 cmd,
                 cwd=ROOT_SRC_DIR,

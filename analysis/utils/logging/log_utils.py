@@ -8,12 +8,14 @@ import os
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
 import tomllib
 
 from utils.data.paths import CONFIG_DIR, ROOT_SRC_DIR_PATH_OBJ
+from utils.time.time_utils import INDIA_TZ
 
 _pyproject: dict = {}
 with (ROOT_SRC_DIR_PATH_OBJ / "pyproject.toml").open("rb") as f:
@@ -139,6 +141,11 @@ class LogFileManager:
         log_path = self.log_dir / f"{name}.log"
         handle = log_path.open("a", encoding="utf-8")
         self.handles[name] = handle
+        start_time = datetime.now(INDIA_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        handle.write(f"{'#' * 60}\nStart: {start_time}\n{'#' * 60}\n")
+        handle.write(f"Project Log Level : {get_project_log_level()}")
+        handle.flush()
+
         return handle
 
     def close_log(self, name: str) -> None:
