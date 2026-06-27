@@ -279,7 +279,7 @@ if (rawDataEl && configEl) {
 
   async function fetchIndicator(source, type, p1) {
     try {
-      const res = await fetch(`/api/indicator?symbol=${SYMBOL}&tf=${TF}&source=${source}&ind_type=${type}&p1=${p1}`);
+      const res = await fetch(`${window.VolConfig.apiBase}/api/indicator?symbol=${SYMBOL}&tf=${TF}&source=${source}&ind_type=${type}&p1=${p1}`);
       if (!res.ok) throw new Error("API Error");
       const json = await res.json();
       return json.data;

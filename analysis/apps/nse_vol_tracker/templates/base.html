@@ -49,9 +49,9 @@
     {% endblock %}
 
     <nav class="header-nav">
-      <a href="/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+      <a href="{{ request.scope.get('root_path', '') }}/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}{% if filter %}&filter={{ filter }}{% endif %}{% if pma_act and pma_act != 'na' %}&pma_act={{ pma_act }}{% endif %}{% if vma_act and vma_act != 'na' %}&vma_act={{ vma_act }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}"
         class="{% block nav_idx %}{% endblock %}">Index</a>
-      <a href="/sectors/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+      <a href="{{ request.scope.get('root_path', '') }}/sectors/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}{% if filter %}&filter={{ filter }}{% endif %}{% if pma_act and pma_act != 'na' %}&pma_act={{ pma_act }}{% endif %}{% if vma_act and vma_act != 'na' %}&vma_act={{ vma_act }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}"
         class="{% block nav_sec %}{% endblock %}">Sectors</a>
     </nav>
   </header>

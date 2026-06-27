@@ -85,7 +85,7 @@
       {% for row in symbols[1:] %}
       <tr>
         <td>
-          <a href="/symbol/{{ row[0] }}?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
+          <a href="{{ request.scope.get('root_path', '') }}/symbol/{{ row[0] }}?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}"
             class="symbol-link">{{ row[0] }}</a>
         </td>
         <td>{{ "{:,.2f}".format(row[1]) }}</td>

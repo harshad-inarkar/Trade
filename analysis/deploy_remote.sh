@@ -81,7 +81,7 @@ ssh "$REMOTE_HOST" << EOF
     echo "🚀 Initializing orchestrator inside fresh 'bot' tmux session..."
         
     # tmux new-session -d -s bot "export log_level="info" && export refresh_master_script="true" && python orchest/start_orchest.py -ml trade_app"
-    tmux new-session -d -s bot "export log_level="info" && python orchest/start_orchest.py -ml trade_app"
+    tmux new-session -d -s bot "export log_level="info" && python orchest/start_orchest.py -ml trade_app vol_app"
 
     # tmux new-session -d -s bot "python orchest/start_orchest.py -ml trade_app"
     

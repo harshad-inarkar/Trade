@@ -29,6 +29,9 @@ _base_ma_len = 89
 _def_fast_ma_len = 8
 _def_slow_ma_len = 21
 
+_app_root_path = "/vol_portal"
+_app_cur_redirect_url = "./"
+
 paths = AppPaths.resolve(__file__)
 
 INDEX_FIELDS = [
@@ -406,7 +409,7 @@ class VolTrackerApp(BaseFastAPIApp):
             config=config,
             template_dir=paths.templates,
             lifespan=self.lifespan_handler,
-            root_path="/vol_portal",
+            root_path=_app_root_path,
         )
         self.cfg: AppConfig = config
         self.data_service = MarketDataService(self.cfg)
@@ -520,7 +523,6 @@ class VolTrackerApp(BaseFastAPIApp):
             request,
             "sectoral_index.html",
             {
-                "request": request,
                 "sectors": sectors_data,
                 "refresh_time": self.data_service.get_refresh_time_str(),
                 "timeframe": tf_safe,
@@ -616,7 +618,6 @@ class VolTrackerApp(BaseFastAPIApp):
             request,
             "symbol.html",
             {
-                "request": request,
                 "symbol": symbol_name,
                 "data": data,
                 "timeframe": tf,

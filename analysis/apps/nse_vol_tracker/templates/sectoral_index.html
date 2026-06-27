@@ -92,7 +92,7 @@
     data-vol="{{ vol if vol else 0 }}" data-name="{{ s.name }}" data-count="{{ s.symbol_count }}">
     <div class="card-header">
       <div class="sector-name">
-        <a href="/sectors/{{ s.name }}/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}{% if pma_act and pma_act != 'na' %}&pma_act={{ pma_act }}{% endif %}{% if vma_act and vma_act != 'na' %}&vma_act={{ vma_act }}{% endif %}"
+        <a href="{{ s.name }}/?tf={{ timeframe }}&ma={{ ma_type }}&fast={{ fast }}&slow={{ slow }}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filter %}&filter={{ filter }}{% endif %}{% if pma_act and pma_act != 'na' %}&pma_act={{ pma_act }}{% endif %}{% if vma_act and vma_act != 'na' %}&vma_act={{ vma_act }}{% endif %}"
           class="sector-link">{{ s.name }}</a>
       </div>
       <div class="sector-rank">#{{ loop.index }}</div>

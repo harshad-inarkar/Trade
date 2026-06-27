@@ -18,7 +18,7 @@ paths = AppPaths.resolve(__file__)
 _MIN_QUERY_LEN = 2
 
 _app_root_path = "/trade_portal"
-_app_base_redirect_url = "./"
+_app_cur_redirect_url = "./"
 
 
 # ==========================================
@@ -422,7 +422,6 @@ class TradePortalApp(BaseFastAPIApp):
             request=request,
             name="dashboard.html",
             context={
-                "request": request,
                 "positions": snapshot.positions,
                 "closed_positions": snapshot.closed_positions,
                 "total_positions": snapshot.total_positions,
@@ -448,7 +447,7 @@ class TradePortalApp(BaseFastAPIApp):
         self.trader.update_credentials(
             client_id, access_token, self.trader.client_name, "Manual Update"
         )
-        return RedirectResponse(url=_app_base_redirect_url, status_code=303)
+        return RedirectResponse(url=_app_cur_redirect_url, status_code=303)
 
     async def _generate_token(
         self,
@@ -457,11 +456,11 @@ class TradePortalApp(BaseFastAPIApp):
         totp: str = Form(...),
     ) -> RedirectResponse:
         self.trader.generate_token(client_id, pin, totp)
-        return RedirectResponse(url=_app_base_redirect_url, status_code=303)
+        return RedirectResponse(url=_app_cur_redirect_url, status_code=303)
 
     async def _renew_token(self) -> RedirectResponse:
         self.trader.renew_token()
-        return RedirectResponse(url=_app_base_redirect_url, status_code=303)
+        return RedirectResponse(url=_app_cur_redirect_url, status_code=303)
 
     async def _search_symbols(self, q: str = Query("")) -> list[SymbolSearchItem]:
         q = (q or "").strip()
@@ -559,7 +558,7 @@ class TradePortalApp(BaseFastAPIApp):
         else:
             LOGGER.warning("Could not resolve %s %s", exchange, symbol)
 
-        redirect_url = "?view=order" if view == "order" else _app_base_redirect_url
+        redirect_url = "?view=order" if view == "order" else _app_cur_redirect_url
         return RedirectResponse(url=redirect_url, status_code=303)
 
     async def _close_reentry(
@@ -643,7 +642,7 @@ class TradePortalApp(BaseFastAPIApp):
                                 inst_reentry,
                             )
 
-        return RedirectResponse(url=_app_base_redirect_url, status_code=303)
+        return RedirectResponse(url=_app_cur_redirect_url, status_code=303)
 
     async def _close_position(
         self,
@@ -657,7 +656,7 @@ class TradePortalApp(BaseFastAPIApp):
             sec_id, exchange_seg, net_qty, product_type, limit_price=limit_price
         )
 
-        return RedirectResponse(url=_app_base_redirect_url, status_code=303)
+        return RedirectResponse(url=_app_cur_redirect_url, status_code=303)
 
     async def _cancel_order(
         self,
@@ -674,11 +673,11 @@ class TradePortalApp(BaseFastAPIApp):
                 self.trader.cancel_alert_order(order_id)
             case _:
                 self.trader.cancel_normal_order(order_id)
-        return RedirectResponse(url=_app_base_redirect_url, status_code=303)
+        return RedirectResponse(url=_app_cur_redirect_url, status_code=303)
 
     async def _clean_orphaned(self) -> RedirectResponse:
         self.trader.clean_orphaned_orders()
-        return RedirectResponse(url=_app_base_redirect_url, status_code=303)
+        return RedirectResponse(url=_app_cur_redirect_url, status_code=303)
 
     async def _cancel_all(self) -> RedirectResponse:
         for o in self.trader.get_pending_orders():
@@ -689,7 +688,7 @@ class TradePortalApp(BaseFastAPIApp):
             self.trader.cancel_forever_order(o["order_id"])
         for o in self.trader.get_all_alerts():
             self.trader.cancel_alert_order(o["order_id"])
-        return RedirectResponse(url=_app_base_redirect_url, status_code=303)
+        return RedirectResponse(url=_app_cur_redirect_url, status_code=303)
 
     async def _receive_webhook(self, alert: TradeAlert) -> dict:
         LOGGER.info("Incoming Webhook Alert: %s", alert.model_dump())

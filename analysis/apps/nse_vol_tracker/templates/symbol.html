@@ -52,5 +52,14 @@
     { "symbol": "{{ symbol }}", "timeframe": "{{ timeframe }}" }
   </script>
 <script id="rawData" type="application/json">{{ data | tojson }}</script>
+
+
+
+<script>
+  window.VolConfig = {
+      apiBase: "{{ request.scope.get('root_path', '') }}"
+  };
+</script>
+
 <script type="module" src="{{ url_for('static', path='js/chart_module.js') }}"></script>
 {% endblock %}
