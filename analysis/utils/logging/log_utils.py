@@ -143,7 +143,7 @@ class LogFileManager:
         self.handles[name] = handle
         start_time = datetime.now(INDIA_TZ).strftime("%Y-%m-%d %H:%M:%S")
         handle.write(f"{'#' * 60}\nStart: {start_time}\n{'#' * 60}\n")
-        handle.write(f"Project Log Level : {get_project_log_level()}")
+        handle.write(f"Project Log Level : {get_project_log_level()}\n")
         handle.flush()
 
         return handle

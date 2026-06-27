@@ -12,7 +12,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@300;500;700&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/dashboard.css" />
+  <link rel="stylesheet" href="{{ url_for('static', path='css/dashboard.css') }}" />
   <script>
     window.DhanConfig = {
       isDashboard: ("{{ view }}" !== "order"),
@@ -29,7 +29,7 @@
   {% set is_reentry = (mode == 'reentry') %}
 
   <form
-    action="{% if mode == 'place' %}/place_order{% if view_ctx == 'order' %}?view=order{% endif %}{% elif is_reentry %}/close_reentry{% else %}/close_position{% endif %}"
+    action="{% if mode == 'place' %}place_order{% if view_ctx == 'order' %}?view=order{% endif %}{% elif is_reentry %}close_reentry{% else %}close_position{% endif %}"
     method="post" class="order-form">
 
     {% if is_close or is_reentry %}
@@ -247,9 +247,9 @@
     {% endif %}
     <div class="ml-auto">
       {% if view == 'order' %}
-      <a href="/" class="header-link">Show Full Dashboard</a>
+      <a href="./" class="header-link">Show Full Dashboard</a>
       {% else %}
-      <a href="/?view=order" class="header-link">Place Order Only</a>
+      <a href="?view=order" class="header-link">Place Order Only</a>
       {% endif %}
     </div>
   </div>
@@ -407,13 +407,13 @@
         <div class="panel-header-custom">
           <span>Pending Orders</span>
           <div class="flex-gap-8">
-            <form action="/clean_orphaned" method="post" class="m-0">
+            <form action="clean_orphaned" method="post" class="m-0">
               <button type="submit" class="btn-action btn-accent3" title="Clear Orphaned Super Orders">
                 Clear
                 Super
               </button>
             </form>
-            <form action="/cancel_all" method="post" class="m-0">
+            <form action="cancel_all" method="post" class="m-0">
               <button type="submit" class="btn-action btn-red" title="Cancel ALL Pending Orders">Clear All</button>
             </form>
           </div>
@@ -446,7 +446,7 @@
                 </td>
                 <td class="order-detail">{{ ord.detail }}</td>
                 <td class="text-right">
-                  <form action="/cancel_order" method="post" class="inline-block">
+                  <form action="cancel_order" method="post" class="inline-block">
                     <input type="hidden" name="order_id" value="{{ ord.order_id }}">
                     <input type="hidden" name="order_type" value="{{ ord.type }}">
                     <input type="hidden" name="leg" value="{{ ord.leg }}">
@@ -482,7 +482,7 @@
         <button type="button" class="btn tab-btn-inactive" id="btn-tab-update"
           onclick="switchAuthTab('update')">Manual</button>
       </div>
-      <form id="form-generate" action="/generate_token" method="post" class="order-form">
+      <form id="form-generate" action="generate_token" method="post" class="order-form">
         <div class="form-group">
           <label>Client ID</label>
           <input type="text" name="client_id" value="{{ client_id }}" required />
@@ -499,7 +499,7 @@
           <button type="submit" class="btn btn-buy">Generate New Token</button>
         </div>
       </form>
-      <form id="form-renew" action="/renew_token" method="post" class="order-form hidden">
+      <form id="form-renew" action="renew_token" method="post" class="order-form hidden">
         <p class="modal-desc">
           Click below to renew your currently active session. This securely extends your token validity without
           requiring a PIN or TOTP code.
@@ -508,7 +508,7 @@
           <button type="submit" class="btn btn-accent4">Renew Existing Token</button>
         </div>
       </form>
-      <form id="form-update" action="/update_token" method="post" class="order-form hidden">
+      <form id="form-update" action="update_token" method="post" class="order-form hidden">
         <div class="form-group">
           <label>Client ID</label>
           <input type="text" name="client_id" value="{{ client_id }}" required />
@@ -523,7 +523,7 @@
       </form>
     </div>
   </div>
-  <script src="/static/js/dashboard.js"></script>
+  <script src="{{ url_for('static', path='js/dashboard.js') }}"></script>
 </body>
 
 </html>

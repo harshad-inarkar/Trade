@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from utils.data.paths import templates_dir
-from utils.logging.log_utils import LOGGER, get_project_log_level
+from utils.logging.log_utils import get_project_log_level, out
 
 
 @dataclass(frozen=True)
@@ -68,15 +68,29 @@ class BaseFastAPIApp:
         config: BaseAppConfig,
         template_dir: Path,
         lifespan: Callable[[FastAPI], AsyncIterator[None]] | None = None,
+        root_path: str = "/",
     ):
         self.cfg = config
-        self.app = FastAPI(title=title, lifespan=lifespan)
+        self.app = FastAPI(title=title, lifespan=lifespan, root_path=root_path)
         self.templates = Jinja2Templates(directory=template_dir)
 
         # Automatically mount static directory
         static_dir = template_dir / "static"
         static_dir.mkdir(parents=True, exist_ok=True)
-        self.app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+        mount_path = (
+            "/static"  # f"{root_path}/static" if root_path != "/" else "/static"
+        )
+
+        self.app.mount(
+            mount_path,
+            StaticFiles(directory=str(static_dir.resolve())),
+            name="static",
+        )
+        out(
+            f"Static files mounted at {mount_path} -> {static_dir.resolve()}",
+            log_level="critical",
+        )
 
     def _setup_routes(self) -> None:
         """Override this method in the child class to register routes."""
@@ -90,6 +104,8 @@ class BaseFastAPIApp:
                 port=self.cfg.port,
                 reload=self.cfg.reload,
                 log_level=log_level,
+                proxy_headers=True,
+                forwarded_allow_ips="*",
             )
         except (KeyboardInterrupt, SystemExit, KeyError):
-            LOGGER.exception("FastApi Run Exception")
+            out("FastApi Run Exception", log_level="error")

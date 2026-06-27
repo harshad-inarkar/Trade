@@ -180,7 +180,7 @@ class SymbolSearch {
             this.debounceTimer = setTimeout(async () => {
                 const reqId = ++this.reqId;
                 try {
-                    const res = await fetch(`/api/search_symbols?q=${encodeURIComponent(val)}`);
+                    const res = await fetch(`./api/search_symbols?q=${encodeURIComponent(val)}`);
                     if (!res.ok) return;
                     const matches = await res.json();
                     if (reqId !== this.reqId) return;
@@ -282,7 +282,7 @@ class LiveDashboard {
         this.fetchInFlight = true;
 
         try {
-            const res = await fetch("/api/live_data");
+            const res = await fetch("./api/live_data");
             const data = await res.json();
 
             const fundsEl = document.getElementById("live-funds");

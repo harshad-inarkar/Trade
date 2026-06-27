@@ -3,11 +3,7 @@ from datetime import datetime, timedelta
 
 from pytz import timezone as _pytz_timezone
 
-from utils.logging.log_utils import out
-
 INDIA_TZ = _pytz_timezone("Asia/Kolkata")
-
-
 _buffer_seconds = 5
 
 
@@ -39,6 +35,8 @@ def wait_next_wall_clock(interval_min: int, buf: int = _buffer_seconds) -> None:
     if wait <= 0:
         target += timedelta(minutes=interval_min)
         wait = (target - datetime.now(INDIA_TZ)).total_seconds()
+
+    from utils.logging.log_utils import out  # noqa: PLC0415
 
     out(f"\n  Next scan at {target.strftime('%H:%M:%S')}  ({wait:.0f}s)")
 

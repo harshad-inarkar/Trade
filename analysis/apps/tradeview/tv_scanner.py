@@ -27,8 +27,9 @@ from PIL import Image
 # ─── Custom Imports ───────────────────────────────────────────────────────────
 from tradeapi.dhan_trade import DhanTrader
 from utils.data.paths import OUT_DIR
+from utils.logging.log_utils import out
 from utils.ocr.ocr_engine import ocr_pil as _engine_ocr_pil
-from utils.time.time_utils import INDIA_TZ, out, wait_next_wall_clock
+from utils.time.time_utils import INDIA_TZ, wait_next_wall_clock
 
 # ─────────────────────────────────────────────────────────────────────────────
 # macOS Background App Registration
