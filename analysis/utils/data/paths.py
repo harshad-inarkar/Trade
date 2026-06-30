@@ -1,13 +1,14 @@
 from importlib.util import find_spec
 from pathlib import Path
 
-import tomllib
+from utils.config.config_loader import load_config_toml
 
 # ─── Internal Directory Constants (Kept as is) ──────────────────────────────
 _nse_data_dir = "nse_data"
 _intraday_dir = "intraday"
 _indx_dir = "index"
 _apps_dir = "apps"
+out_dir_name = "out"
 templates_dir = "templates"
 _logs_dir = "logs"
 _holidays_list = "holidays_list.csv"
@@ -28,13 +29,8 @@ class PathManager:
 
     def _load_config(self) -> dict:
         """Loads path settings from TOML config if it exists."""
-        if self.config_path.exists():
-            try:
-                with self.config_path.open("rb") as f:
-                    return tomllib.load(f).get("paths", {})
-            except tomllib.TOMLDecodeError:
-                pass
-        return {}
+
+        return load_config_toml(self.config_path)
 
     def _find_pyproject_root(self) -> Path:
         """Walks up the directory tree to find the pyproject.toml file."""
@@ -101,7 +97,7 @@ REMOTE_DIR: str | None = (
 )
 
 # Derived Paths
-OUT_DIR: str = str(ROOT_DATA_DIR_PATH_OBJ / "out")
+OUT_DIR: str = str(ROOT_DATA_DIR_PATH_OBJ / out_dir_name)
 
 NSE_LOGS_DIR: str = str(ROOT_DATA_DIR_PATH_OBJ / _nse_data_dir / _logs_dir)
 NSE_INDX_DATA: str = str(ROOT_DATA_DIR_PATH_OBJ / _nse_data_dir / _indx_dir)
@@ -119,5 +115,5 @@ REMOTE_INTRADAY_DIR_PATH: str | None = (
 )
 
 MASTER_CONFIG_PATH = Path("~/.config").expanduser()
-CONFIG_DIR = ROOT_SRC_DIR_PATH_OBJ / "utils/config"
+CONFIG_DIR: Path = ROOT_SRC_DIR_PATH_OBJ / "utils/config"
 HOLIDAYS_LIST_PATH = Path(OUT_DIR) / _holidays_list

@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import ClassVar
 
 import requests
-import tomllib
 
+from utils.config.config_loader import load_config_toml
 from utils.data.nse_holidays_list import gen_holidays_list
 from utils.data.paths import (
     HOLIDAYS_LIST_PATH,
@@ -48,12 +48,8 @@ class DownloaderConfig:
 
     @classmethod
     def load_from_toml(cls, path: Path) -> "DownloaderConfig":
-        if not path.exists():
-            out(f"[!] Config file {path.name} not found. Using defaults.")
-            return cls()
 
-        with path.open("rb") as f:
-            data = tomllib.load(f)
+        data = load_config_toml(path)
 
         c = cls()
         session = data.get("session", {})

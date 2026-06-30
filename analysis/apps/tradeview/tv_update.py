@@ -7,9 +7,10 @@ from datetime import datetime
 from pathlib import Path
 
 import pyautogui
-import tomllib
 
-from utils.data.paths import OUT_DIR
+from utils.config.config_loader import load_config_toml
+from utils.data.paths import OUT_DIR, out_dir_name
+from utils.data.sync_data import sync_with_rsync
 from utils.logging.log_utils import out
 from utils.time.time_utils import INDIA_TZ, wait_next_wall_clock
 
@@ -50,13 +51,7 @@ class TVUpdateConfig:
         self.data = self._load()
 
     def _load(self) -> dict:
-        if self.config_path.exists():
-            try:
-                with self.config_path.open("rb") as f:
-                    return tomllib.load(f)
-            except (OSError, tomllib.TOMLDecodeError) as e:
-                out(f"Error reading {self.config_path}: {e}")
-        return {}
+        return load_config_toml(self.config_path)
 
     def save_coordinates(
         self, indicator: tuple[int, int], textbox: tuple[int, int], ok: tuple[int, int]
@@ -97,6 +92,10 @@ class TVUpdaterApp:
 
         # Load Settings (Args -> Config -> Defaults)
         settings = self.config.data.get("settings", {})
+
+        self.remote_flag = args.remote_flag
+        self.remote_host = settings.get("remote_host", "")
+        self.remote_root_data = settings.get("remote_root_data", "")
 
         self.reload_interval = settings.get("reload_interval", 15)
         self.buffer_seconds = settings.get("buffer_seconds", 15)
@@ -208,6 +207,17 @@ class TVUpdaterApp:
             )
             time.sleep(1.5)
 
+    def _download_remote(self) -> None:
+        if not self.remote_flag:
+            return
+        remote_path = Path(self.remote_root_data) / out_dir_name
+
+        sync_with_rsync(
+            remote_host=self.remote_host,
+            remote_path=f"{remote_path}/",
+            local_path=OUT_DIR,
+        )
+
     def _perform_update(self) -> None:
         """Core automation sequence."""
         # App Status Check
@@ -220,14 +230,18 @@ class TVUpdaterApp:
 
         # 1. User Active Check (Initial Warning)
         subprocess.run(["afplay", "/System/Library/Sounds/Tink.aiff"], check=False)
-        time.sleep(2)
+
+        # Read latest candidates
+        if self.remote_flag:
+            self._download_remote()
+        else:
+            time.sleep(2)
 
         if self._is_user_active(1):
             now_str = datetime.now(INDIA_TZ).astimezone().strftime("%H:%M:%S")
             out(f"[{now_str}] User active. Skipping update...")
             return
 
-        # Read latest candidates
         if not self.candidates_path.exists():
             out(f"Error: {self.candidates_path} not found. Skipping update.")
             return
@@ -310,11 +324,19 @@ class TVUpdaterApp:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TradingView Indicator Auto-Updater")
+
     parser.add_argument(
         "-ns",
         "--new-setup",
         action="store_true",
         help="Force new coordinate setup",
+    )
+
+    parser.add_argument(
+        "-rf",
+        "--remote-flag",
+        action="store_true",
+        help="Use Remote Server",
     )
 
     args, _ = parser.parse_known_args()

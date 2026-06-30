@@ -6,7 +6,7 @@ args = []
 
 [scripts.tv_update]
 module = "apps.tradeview.tv_update"
-args = []
+args = ['--remote-flag']
 
 [scripts.tv_scanner]
 module = "apps.tradeview.tv_scanner"

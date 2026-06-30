@@ -63,12 +63,12 @@ class CacheManager:
     def load_files(self, data_dir: str | Path, last_n_days: int | None = None) -> None:
         incremental = self._ready and self._refresh_time is not None
         label = "Reloading" if incremental else "Loading data"
-        out(f"🔄 {datetime.now(INDIA_TZ).strftime('%M:%S')} : {label}...")
+        out(f"🔄 {datetime.now(INDIA_TZ).strftime('%H:%M:%S')} : {label}...")
 
         result = self._load_csv_files(data_dir, last_n_days, incremental=incremental)
 
         if result is None:
-            out(f"✅ {datetime.now(INDIA_TZ).strftime('%M:%S')} : No updates.")
+            out(f"✅ {datetime.now(INDIA_TZ).strftime('%H:%M:%S')} : No updates.")
             return
 
         with self._lock:
@@ -76,7 +76,7 @@ class CacheManager:
 
         ref = self._refresh_time
         out(
-            f"✅ {datetime.now(INDIA_TZ).strftime('%M:%S')} : Done. "
+            f"✅ {datetime.now(INDIA_TZ).strftime('%H:%M:%S')} : Done. "
             f"Last: {ref.strftime('%d%m%Y-%H%M') if ref else '-'}"
         )
 
@@ -345,12 +345,9 @@ class CacheManager:
                 self.tsf_list[tf_str] += list(res["tsf_list"])
 
             # Save cumulative values strictly for bridging boundaries
-            p1, p2 = max(new_wptr - 2, 0), new_wptr - 1
-            self._seed_vcum[tf_str] = vcum_1idx[
-                :n_syms, [from_index + p1, from_index + p2]
-            ].copy()
-            self._seed_vltp[tf_str] = vltp_1idx[
-                :n_syms, [from_index + p1, from_index + p2]
-            ].copy()
+            idx1 = max(total - 1, 0)
+            idx2 = total
+            self._seed_vcum[tf_str] = vcum_1idx[:n_syms, [idx1, idx2]].copy()
+            self._seed_vltp[tf_str] = vltp_1idx[:n_syms, [idx1, idx2]].copy()
 
         self._ready = True

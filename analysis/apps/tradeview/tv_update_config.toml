@@ -1,4 +1,6 @@
 [settings]
+remote_host = "oracle-server"
+remote_root_data = "~/trade_client"
 reload_interval = 30
 buffer_seconds = -10
 tv_focus_flag = true

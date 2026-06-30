@@ -12,12 +12,12 @@ from types import MappingProxyType
 from typing import Any
 
 import requests
-import tomllib
 from cryptography.fernet import Fernet, InvalidToken
 from requests.exceptions import RequestException
 
 from tradeapi.price_strike_calc import get_price_strike, get_strike_interval
 from tradeapi.scrip_master import ScripMaster, _get_today_str
+from utils.config.config_loader import load_config_toml
 from utils.data.paths import MASTER_CONFIG_PATH
 from utils.logging.log_utils import LOGGER
 from utils.network.start_proxy import SSHProxyManager
@@ -161,18 +161,7 @@ class SymbolsConfig:
 
         LOGGER.info("Symbols config file changed. Reloading.")
         self._mtime = mtime
-
-        try:
-            with self._path.open("rb") as config_file:
-                self._config = tomllib.load(config_file) or {}
-            LOGGER.info("Symbol config loaded.")
-        except (OSError, tomllib.TOMLDecodeError):
-            retry_label = "[Retry] " if not retry else ""
-            LOGGER.exception(
-                "%sFailed to parse TOML config at %s",
-                retry_label,
-                self._path,
-            )
+        self._config = load_config_toml(self._path)
 
 
 class DhanAPIConfig:
@@ -188,15 +177,8 @@ class DhanAPIConfig:
         self._load(path)
 
     def _load(self, path: Path) -> None:
-        if not path.exists():
-            LOGGER.warning("Dhan API config not found at %s. Using defaults.", path)
-            return
-        try:
-            with path.open("rb") as config_file:
-                data = tomllib.load(config_file)
-        except (OSError, tomllib.TOMLDecodeError):
-            LOGGER.exception("Failed parsing Dhan API config at %s", path)
-            return
+
+        data = load_config_toml(path)
 
         self.settings = data.get("settings", {})
         self.urls = data.get("urls", {})

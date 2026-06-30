@@ -5,8 +5,7 @@ import subprocess
 import time
 from pathlib import Path
 
-import tomllib
-
+from utils.config.config_loader import load_config_toml
 from utils.logging.log_utils import LOGGER
 
 script_dir = Path(__file__).parent
@@ -34,19 +33,8 @@ class SSHProxyManager:
 
     def _load_config(self) -> dict:
         """Loads configuration from the TOML file."""
-        if not self.config_path.exists():
-            LOGGER.info(
-                "Warning: Config file '%s' not found. Using default values.",
-                self.config_path,
-            )
-            return {}
 
-        try:
-            with self.config_path.open("rb") as f:
-                return tomllib.load(f)
-        except (OSError, tomllib.TOMLDecodeError):
-            LOGGER.exception("Error reading %s", self.config_path)
-            return {}
+        return load_config_toml(self.config_path)
 
     def stop(self) -> None:
         """Kills any existing local AutoSSH/SSH proxy processes."""

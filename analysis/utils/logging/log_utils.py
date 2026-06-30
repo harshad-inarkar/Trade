@@ -12,26 +12,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
-import tomllib
-
+from utils.config.config_loader import load_config_toml
 from utils.data.paths import CONFIG_DIR, ROOT_SRC_DIR_PATH_OBJ
 from utils.time.time_utils import INDIA_TZ
 
-_pyproject: dict = {}
-with (ROOT_SRC_DIR_PATH_OBJ / "pyproject.toml").open("rb") as f:
-    _pyproject = tomllib.load(f)
+_pyproject = load_config_toml(ROOT_SRC_DIR_PATH_OBJ / "pyproject.toml")
+
 
 PROJECT_NAME: str = _pyproject.get("project", {}).get("name", __name__)
 LOGGER: logging.Logger = logging.getLogger(PROJECT_NAME)
+
 
 _app_config_path: Path = CONFIG_DIR / "app_config.toml"
 _def_out_log_level: str = "info"
 _def_project_log_lvl: str = "critical"
 
-_app_config: dict = {}
-if _app_config_path.exists():
-    with _app_config_path.open("rb") as f:
-        _app_config = tomllib.load(f)
+_app_config = load_config_toml(_app_config_path)
 
 
 def bool_env_or_cfg(key: str, cfg: dict, default_val: bool = False) -> bool:
@@ -105,12 +101,14 @@ class LogFileManager:
     ) -> None:
         self.log_dir: Path = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.max_bytes: int = max_kb * 1024
+
         self.monitor_interval: int = monitor_interval_min * 60
         self.handles: dict[str, TextIO] = {}
 
-        if self.max_bytes <= 0:
-            self.max_bytes = _app_config.get("logs", {}).get("log_max_size_kb", 100)
+        if max_kb <= 0:
+            max_kb = _app_config.get("logs", {}).get("log_max_size_kb", 100)
+
+        self.max_bytes: int = max_kb * 1024
 
         if self.monitor_interval <= 0:
             self.monitor_interval = (

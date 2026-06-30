@@ -9,14 +9,9 @@ import threading
 import time
 from pathlib import Path
 
-import tomllib
+import psutil
 
-try:
-    import psutil
-
-    PSUTIL_AVAILABLE = True
-except ImportError:
-    PSUTIL_AVAILABLE = False
+from utils.config.config_loader import load_config_toml
 
 # ─── Custom Imports ───────────────────────────────────────────────────────────
 from utils.data.paths import NSE_LOGS_DIR, ROOT_SRC_DIR
@@ -50,20 +45,14 @@ class ScriptManager:
         )
 
         # Background Stats Monitor
-        if PSUTIL_AVAILABLE:
-            self.stats_thread = threading.Thread(
-                target=self._monitor_stats,
-                daemon=True,
-            )
-            self.stats_thread.start()
+        self.stats_thread = threading.Thread(
+            target=self._monitor_stats,
+            daemon=True,
+        )
+        self.stats_thread.start()
 
     def load_config(self) -> None:
-        if not self.config_path.exists():
-            out(f"Error: Configuration file '{self.config_path}' not found.")
-            sys.exit(1)
-
-        with self.config_path.open("rb") as f:
-            self.config = tomllib.load(f)
+        self.config = load_config_toml(self.config_path)
 
     def _monitor_stats(self) -> None:
         psutil.cpu_percent(interval=None)
@@ -187,13 +176,6 @@ class ScriptManager:
         out("----------------------\n")
 
     def stats(self) -> None:
-        if not PSUTIL_AVAILABLE:
-            out(
-                "\n[!] The 'psutil' library is missing. "
-                "Please run 'pip install psutil' to view stats.\n"
-            )
-            return
-
         interval_mins = self.stats_monitor_interval / 60
         out(f"\n--- Performance Stats (Last {interval_mins:.1f} min Average) ---")
         out(f"    Last Snapshot Taken: {self.last_stats_update}")

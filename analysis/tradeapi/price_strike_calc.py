@@ -1,8 +1,7 @@
 import math
 from pathlib import Path
 
-import tomllib
-
+from utils.config.config_loader import load_config_toml
 from utils.logging.log_utils import out
 
 
@@ -11,13 +10,7 @@ from utils.logging.log_utils import out
 # ---------------------------------------------------------------------------
 def load_config(filename: str = "price_config.toml") -> dict:
     """Loads exchange interval settings from a TOML configuration file."""
-    config_path = Path(__file__).parent / filename
-    if not config_path.exists():
-        err_msg = f"Configuration file not found: {config_path}"
-        raise FileNotFoundError(err_msg)
-
-    with config_path.open("rb") as f:
-        return tomllib.load(f)
+    return load_config_toml(Path(__file__).parent / filename)
 
 
 # Load global config once when the module is imported

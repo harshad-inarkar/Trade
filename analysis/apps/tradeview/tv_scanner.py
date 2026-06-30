@@ -21,11 +21,11 @@ from typing import Any
 
 import numpy as np
 import pyautogui
-import tomllib
 from PIL import Image
 
 # ─── Custom Imports ───────────────────────────────────────────────────────────
 from tradeapi.dhan_trade import DhanTrader
+from utils.config.config_loader import load_config_toml
 from utils.data.paths import OUT_DIR
 from utils.logging.log_utils import out
 from utils.ocr.ocr_engine import ocr_pil as _engine_ocr_pil
@@ -102,16 +102,7 @@ class ScannerConfig:
     def __init__(self, config_file: Path, seen_file: Path) -> None:
         self.config_file = config_file
         self.seen_file = seen_file
-        self.data = self._load_toml()
-
-    def _load_toml(self) -> dict:
-        if self.config_file.exists():
-            try:
-                with self.config_file.open("rb") as f:
-                    return tomllib.load(f)
-            except (OSError, tomllib.TOMLDecodeError) as e:
-                out(f"Error reading {self.config_file}: {e}")
-        return {}
+        self.data = load_config_toml(self.config_file)
 
     def _write_toml(self) -> None:
         """Minimal manual TOML writer to preserve structure."""

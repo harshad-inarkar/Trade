@@ -8,12 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import tomllib
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from utils.config.config_loader import load_config_toml
 from utils.data.paths import templates_dir
 from utils.logging.log_utils import get_project_log_level, out
 
@@ -52,11 +52,7 @@ class BaseAppConfig:
         self.reload: bool = srv.get("reload", False)
 
     def _load(self) -> dict[str, Any]:
-        try:
-            with self.path.open("rb") as config_file:
-                return tomllib.load(config_file)
-        except (OSError, tomllib.TOMLDecodeError):
-            return {}
+        return load_config_toml(self.path)
 
 
 class BaseFastAPIApp:
@@ -78,18 +74,12 @@ class BaseFastAPIApp:
         static_dir = template_dir / "static"
         static_dir.mkdir(parents=True, exist_ok=True)
 
-        mount_path = (
-            "/static"  # f"{root_path}/static" if root_path != "/" else "/static"
-        )
+        mount_path = "/static"
 
         self.app.mount(
             mount_path,
             StaticFiles(directory=str(static_dir.resolve())),
             name="static",
-        )
-        out(
-            f"Static files mounted at {mount_path} -> {static_dir.resolve()}",
-            log_level="critical",
         )
 
     def _setup_routes(self) -> None:
@@ -108,4 +98,4 @@ class BaseFastAPIApp:
                 forwarded_allow_ips="*",
             )
         except (KeyboardInterrupt, SystemExit, KeyError):
-            out("FastApi Run Exception", log_level="error")
+            out("FastApi Run Exception", log_level="critical")

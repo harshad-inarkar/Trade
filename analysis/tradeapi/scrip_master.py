@@ -13,10 +13,10 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 import pandas as pd
-import tomllib
 from requests.exceptions import RequestException
 
 from tradeapi.scrip_search import SearchEngine
+from utils.config.config_loader import load_config_toml
 from utils.data.paths import OUT_DIR
 from utils.logging.log_utils import LOGGER
 from utils.time.time_utils import INDIA_TZ
@@ -129,16 +129,8 @@ class ScripConfig:
         self._load(path)
 
     def _load(self, path: Path) -> None:
-        if not path.exists():
-            LOGGER.warning("Scrip config not found at %s. Using defaults.", path)
-            return
 
-        try:
-            with path.open("rb") as config_file:
-                data = tomllib.load(config_file)
-        except (OSError, tomllib.TOMLDecodeError):
-            LOGGER.exception("Failed parsing config at %s", path)
-            return
+        data = load_config_toml(path)
 
         master_cfg = data.get("master", {})
         self.instrument_segments = master_cfg.get("instrument_segments", [])
