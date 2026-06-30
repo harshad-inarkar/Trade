@@ -73,7 +73,7 @@ def out(msg: str = "", end: str = "\n", log_level: str = "") -> None:
     if end == "\n":
         end = ""
 
-    current_log_level = log_level or _def_out_log_level
+    current_log_level: str = log_level or _def_out_log_level
 
     match current_log_level.lower():
         case "debug":
@@ -184,4 +184,3 @@ class LogFileManager:
 
 # Initialize module-level defaults
 set_logger_config()
-LOGGER.critical("Project Log Level : %s", get_project_log_level())

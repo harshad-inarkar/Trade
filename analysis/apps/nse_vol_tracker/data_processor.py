@@ -2,6 +2,14 @@
 data_processor.py
 -----------------
 Core stateless NSE processing. Calculates ONLY raw Volume and Price.
+
+Changes from original:
+  - BUG 4 fixed: symbol discovery now unions symbols across last-file of EVERY day,
+    not just the second-to-last day's last file.
+  - BUG 5 fixed: fill_gaps_numpy no longer zeroes the carry column at day boundaries;
+    intra-day interpolation runs on columns 1+ only, leaving col-0 (carry) intact.
+  - PERF 4: excluded symbols from parallel _read_chunk are now logged.
+  - Minor: _interp_seg extracted to module level to avoid repeated closure creation.
 """
 
 import csv
@@ -36,9 +44,36 @@ new_symb_map = {"LTIM": "LTM"}
 _READ_WORKERS = min(16, (os.cpu_count() or 4) + 4)
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
 def _get_col_indices(header: list[str]) -> tuple[int, int, int]:
     """Return (symbol_col, value_col, ltp_col) indices from a CSV header row."""
     return header.index(SYMB_COL), header.index(VALUE_COL), header.index(LTP_COL)
+
+
+def _interp_seg(seg: np.ndarray) -> None:
+    """
+    Forward-fill NaNs in `seg` (shape: n_syms x n_cols) via linear interpolation.
+    Rows that are entirely NaN are zeroed. Operates in-place.
+    """
+    if seg.shape[1] == 0:
+        return
+    idx_f = np.arange(seg.shape[1], dtype=float)
+    for si in range(seg.shape[0]):
+        row = seg[si]
+        finite = np.isfinite(row)
+        if not finite.any():
+            row[:] = 0.0
+        elif not finite.all():
+            seg[si] = np.interp(idx_f, idx_f[finite], row[finite])
+
+
+# ---------------------------------------------------------------------------
+# Interval / session utilities
+# ---------------------------------------------------------------------------
 
 
 def calculate_intervals(
@@ -83,6 +118,11 @@ def get_index_from_dtobj(
     return nday * odi + ceil_interval
 
 
+# ---------------------------------------------------------------------------
+# File discovery
+# ---------------------------------------------------------------------------
+
+
 def discover_files(
     data_dir: str | Path, last_n_days: int | None = None
 ) -> tuple[list[dict], list[str]]:
@@ -108,7 +148,6 @@ def discover_files(
         )
         uniq_dates.add(file_date.date())
 
-    # date_obj is always datetime — sort directly without hasattr guards
     sorted_files = sorted(files_with_dates, key=lambda x: x["date_obj"])
     sorted_dates_all = [d.strftime("%d%m%Y") for d in sorted(uniq_dates)]
 
@@ -122,6 +161,11 @@ def discover_files(
         sorted_dates = sorted_dates_all
 
     return sorted_files, sorted_dates
+
+
+# ---------------------------------------------------------------------------
+# CSV readers
+# ---------------------------------------------------------------------------
 
 
 def _read_chunk(
@@ -173,24 +217,30 @@ def read_csv_files_to_arrays(
     if known_symbols is not None:
         sym_list = list(known_symbols)
     else:
+        # BUG 4 FIX: union symbols from the last file of EVERY unique trading day.
+        # Previously only used a single file (second-to-last day's last entry),
+        # which silently dropped symbols that only appeared on other days.
+        day_last: dict[str, dict] = {}
+        for f in sorted_files:
+            day_key = f["date_obj"].strftime("%d%m%Y")
+            day_last[day_key] = f  # last file per day wins
+
         sym_set: set[str] = set()
-        prev_f = next(
-            (
-                sorted_files[i - 1]
-                for i in range(len(sorted_files) - 1, 0, -1)
-                if sorted_files[i]["date_obj"].strftime("%d%m%Y")
-                != sorted_files[i - 1]["date_obj"].strftime("%d%m%Y")
-            ),
-            sorted_files[-1],
-        )
-        with Path(prev_f["filename"]).open(encoding="utf-8-sig") as f:
-            reader = csv.reader(f)
-            sym_i = _get_col_indices(next(reader))[0]
-            for row in reader:
-                if len(row) > sym_i:
-                    sym_set.add(
-                        new_symb_map.get(row[sym_i].strip('"'), row[sym_i].strip('"'))
-                    )
+        for finfo in day_last.values():
+            try:
+                with Path(finfo["filename"]).open(encoding="utf-8-sig") as f:
+                    reader = csv.reader(f)
+                    sym_i = _get_col_indices(next(reader))[0]
+                    for row in reader:
+                        if len(row) > sym_i:
+                            sym_set.add(
+                                new_symb_map.get(
+                                    row[sym_i].strip('"'), row[sym_i].strip('"')
+                                )
+                            )
+            except (OSError, csv.Error, UnicodeDecodeError) as exc:
+                out(f"Symbol discovery read error ({finfo['filename']}): {exc}")
+
         sym_list = sorted(sym_set)
 
     sym_to_idx: dict[str, int] = {s: i for i, s in enumerate(sym_list)}
@@ -209,6 +259,8 @@ def read_csv_files_to_arrays(
                         continue
                     sym = new_symb_map.get(row[sym_i].strip('"'), row[sym_i].strip('"'))
                     if (si := sym_to_idx.get(sym)) is None:
+                        # New symbol appeared during incremental window
+                        # — expand arrays
                         si = len(sym_list)
                         sym_list.append(sym)
                         sym_to_idx[sym] = si
@@ -227,14 +279,30 @@ def read_csv_files_to_arrays(
         items = [(file_col[f["filename"]], f) for f in sorted_files]
         chunk_size = max(1, len(items) // _READ_WORKERS)
         chunks = [items[i : i + chunk_size] for i in range(0, len(items), chunk_size)]
-        with ThreadPoolExecutor() as executor:
-            for fut in [
+        all_excluded: set[str] = set()
+        with ThreadPoolExecutor(max_workers=_READ_WORKERS) as executor:
+            futures = [
                 executor.submit(_read_chunk, chunk, sym_to_idx, vcum_arr, vltp_arr)
                 for chunk in chunks
-            ]:
-                fut.result()  # exceptions surface; excluded symbols not tracked here
+            ]
+            for fut in futures:
+                all_excluded |= fut.result()
+
+        # PERF 4: log symbols present in CSVs but absent from sym_to_idx
+        if all_excluded:
+            sample = sorted(all_excluded)[:10]
+            suffix = "..." if len(all_excluded) > 10 else ""
+            out(
+                f"  ⚠ Full load: skipped {len(all_excluded)} unknown symbols "
+                f"(not in any day-end file): {sample}{suffix}"
+            )
 
     return sym_list, vcum_arr, vltp_arr, total_files
+
+
+# ---------------------------------------------------------------------------
+# Gap filling
+# ---------------------------------------------------------------------------
 
 
 def fill_gaps_numpy(
@@ -244,6 +312,19 @@ def fill_gaps_numpy(
     total_files: int,
     odi: int,
 ) -> None:
+    """
+    Interpolate missing (NaN) values within each trading day's candle range.
+
+    BUG 5 FIX: The original code temporarily zeroed column-0 of each day-boundary
+    segment (the carry-over candle from the prior day) to prevent cross-day bleed
+    during interpolation, then restored it. The zero briefly appeared as a data
+    point inside _interp_seg, distorting interpolated values for the first few
+    candles of the new day.
+
+    Fix: at every day-start boundary, run _interp_seg only on columns 1+ (the
+    intra-day range), leaving column-0 (the carry candle) entirely untouched.
+    The save/restore sentinel is eliminated.
+    """
     if from_index > 1:
         from_index -= 1
     n_cols = total_files - from_index + 1
@@ -253,18 +334,7 @@ def fill_gaps_numpy(
     vcum_work = vcum_1indexed[:, from_index : total_files + 1]
     vltp_work = vltp_1indexed[:, from_index : total_files + 1]
 
-    def _interp_seg(seg: np.ndarray) -> None:
-        if seg.shape[1] == 0:
-            return
-        idx_f = np.arange(seg.shape[1], dtype=float)
-        for si in range(seg.shape[0]):
-            row = seg[si]
-            finite = np.isfinite(row)
-            if not finite.any():
-                row[:] = 0.0
-            elif not finite.all():
-                seg[si] = np.interp(idx_f, idx_f[finite], row[finite])
-
+    # Build day boundary offsets within vcum_work
     day_bounds = [0]
     pos_in_day = (from_index - 1) % odi
     c = odi if pos_in_day == 0 else odi - pos_in_day
@@ -281,25 +351,27 @@ def fill_gaps_numpy(
         if vcum_seg.shape[1] == 0:
             continue
 
-        # Sentinel ensures mypy sees save_vcum as always bound before the restore below
-        save_vcum: np.ndarray = np.empty(0)
-        is_day_start_restore = (from_index + db - 1) % odi == 0 and db > 0
+        # is_day_start: this segment starts with a carry column from the prior day
+        is_day_start = (from_index + db - 1) % odi == 0 and db > 0
 
-        if is_day_start_restore:
-            save_vcum = vcum_seg[:, 0].copy()
-            vcum_seg[:, 0] = 0.0
-
-        if (from_index + db - 1) % odi == 0 and db == 0:
-            vcum_seg[:, 0] = np.where(np.isnan(vcum_seg[:, 0]), 0.0, vcum_seg[:, 0])
-
-        _interp_seg(vcum_seg)
-        _interp_seg(vltp_seg)
-
-        if is_day_start_restore:
-            vcum_seg[:, 0] = save_vcum
+        if is_day_start:
+            # BUG 5 FIX: skip col-0 (carry); interpolate only the intra-day slice
+            _interp_seg(vcum_seg[:, 1:])
+            _interp_seg(vltp_seg[:, 1:])
+        else:
+            # First segment: seed day-start NaNs to 0 so interp has a left anchor
+            if db == 0 and (from_index + db - 1) % odi == 0:
+                vcum_seg[:, 0] = np.where(np.isnan(vcum_seg[:, 0]), 0.0, vcum_seg[:, 0])
+            _interp_seg(vcum_seg)
+            _interp_seg(vltp_seg)
 
     vcum_1indexed[:, from_index : total_files + 1] = vcum_work
     vltp_1indexed[:, from_index : total_files + 1] = vltp_work
+
+
+# ---------------------------------------------------------------------------
+# Volume delta
+# ---------------------------------------------------------------------------
 
 
 def compute_volume_delta(
@@ -308,14 +380,13 @@ def compute_volume_delta(
     # 🚀 OPTIMIZATION: 100% Vectorized Array Math. Removed the python for loop.
     vol = np.zeros_like(vcum_1indexed)
 
-    # Vectorized subtraction for the active range
     diffs = (
         vcum_1indexed[:, from_index : total_files + 1]
         - vcum_1indexed[:, from_index - 1 : total_files]
     )
     vol[:, from_index : total_files + 1] = np.where(diffs > 0, diffs, 0)
 
-    # Restore the first candle of the day (it's not a delta against yesterday)
+    # Restore the first candle of each day — it equals cumulative volume, not delta
     day_starts = np.array(
         [fi for fi in range(from_index, total_files + 1) if (fi - 1) % odi == 0]
     )
@@ -323,6 +394,11 @@ def compute_volume_delta(
         vol[:, day_starts] = vcum_1indexed[:, day_starts]
 
     return vol
+
+
+# ---------------------------------------------------------------------------
+# Timestamp building
+# ---------------------------------------------------------------------------
 
 
 def build_timestamps(

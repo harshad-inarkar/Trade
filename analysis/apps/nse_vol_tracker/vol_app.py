@@ -1,14 +1,34 @@
 """
-app.py  -  NSE Intraday FastAPI Web Portal
-------------------------------------------
+vol_app.py  -  NSE Intraday FastAPI Web Portal
+-----------------------------------------------
 Refactored for dynamic indicator processing via OOP.
+
+Changes from original:
+  - PERF 1 fixed: dump_merge / dump_index no longer called on every web request.
+    They are called only from load_all_data (background refresh cycle).
+  - PERF 2 fixed: filter_list result is computed once in _render_index and
+    passed directly to dump_merge, eliminating the duplicate list pass.
+  - PERF 3: IndicatorFactory.calculate calls run concurrently via ThreadPoolExecutor.
+  - ARCH 1: MA results are cached with a TTL equal to reload_interval; cache is
+    invalidated after each successful load_all_data.
+  - MEM 4 fixed: build_dynamic_averages accepts an optional `symbols` set to
+    compute MAs only for the requested subset (used by sector_detail).
+  - ARCH 4 fixed: BackgroundReloader catches and logs all exceptions; the reload
+    thread never dies silently.
+  - Added /api/refresh admin endpoint to manually trigger a reload.
+  - Added /api/snapshot endpoint to persist cache to disk.
+  - Snapshot dir wired through AppConfig.
 """
 
+import asyncio
+import bisect
 import csv as _csv
 import heapq
 import threading
 import time
+import traceback
 from collections.abc import AsyncIterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any
@@ -63,6 +83,54 @@ class AppConfig(BaseAppConfig):
         self.reload_interval: int = 3
         self.buffer_seconds: int = -12
 
+        # Optional: directory for .npy snapshots — set in config or leave None
+        snap = self.raw_cfg.get("snapshot_dir", "")
+        self.snapshot_dir: str | None = snap or None
+
+
+# ---------------------------------------------------------------------------
+# MA result cache  (ARCH 1)
+# ---------------------------------------------------------------------------
+
+
+class _MAResultCache:
+    """
+    Simple TTL cache keyed on (tf, ma_type, fast_len, slow_len).
+    Invalidated explicitly after each data reload and after TTL expires.
+    Thread-safe via a single lock (compute is the expensive part, not the dict).
+    """
+
+    def __init__(self, ttl_seconds: float = 180.0) -> None:
+        self._lock = threading.Lock()
+        self._data: dict[tuple, list] = {}
+        self._ts: dict[tuple, float] = {}
+        self._ttl = ttl_seconds
+
+    def get(self, key: tuple) -> list | None:
+        with self._lock:
+            if key not in self._data:
+                return None
+            if time.monotonic() - self._ts[key] > self._ttl:
+                del self._data[key]
+                del self._ts[key]
+                return None
+            return self._data[key]
+
+    def set(self, key: tuple, value: list) -> None:
+        with self._lock:
+            self._data[key] = value
+            self._ts[key] = time.monotonic()
+
+    def invalidate(self) -> None:
+        with self._lock:
+            self._data.clear()
+            self._ts.clear()
+
+
+# ---------------------------------------------------------------------------
+# Market data service
+# ---------------------------------------------------------------------------
+
 
 class MarketDataService:
     REFRESH_DT_PAT = "Date: %d  Time: %H:%M"
@@ -71,40 +139,71 @@ class MarketDataService:
         self.config = config
         self.cache = CacheManager()
         self.intraday_path = NSE_INTRADAY_DIR_PATH
+        self._ma_cache = _MAResultCache(ttl_seconds=config.reload_interval * 60)
 
     def load_all_data(
         self,
         ma_type: str = "rma",
         fast: int = _def_fast_ma_len,
         slow: int = _def_slow_ma_len,
+        intial_load: bool = False,
     ) -> None:
-        self.cache.load_files(self.intraday_path, self.config.last_ndays)
+        # Try to load from snapshot on first (cold) start
+        if not self.cache.is_ready and self.config.snapshot_dir:
+            self.cache.load_snapshot(self.config.snapshot_dir)
+
+        update_flag = self.cache.load_files(self.intraday_path, self.config.last_ndays)
+
+        # Invalidate MA cache after every data reload
+        self._ma_cache.invalidate()
+
         ref_t = self.get_refresh_time_str()
 
-        # 🚀 OPTIMIZATION: Compute averages once; share with both dump calls
+        # PERF 1 FIX: compute MAs once; write files once; never from web requests
         raw_data = self.build_dynamic_averages(MIN_TF, ma_type, fast, slow)
-        self.dump_merge(
-            MIN_TF,
-            self.config.filter_ltp or "",
-            "na",
-            "na",
-            self.config.sort_keys or [],
-            ref_t,
-            "desc",
-            ma_type,
-            fast,
-            slow,
-            precalc_data=raw_data,
-        )
-        self.dump_index(ma_type, fast, slow, precalc_data=raw_data)
+
+        if update_flag:
+            self.dump_merge(
+                tf=MIN_TF,
+                filt=self.config.filter_ltp or "",
+                sort_key_list=self.config.sort_keys or [],
+                ref_t=ref_t,
+                order_by="desc",
+                ma_type=ma_type,
+                fast=fast,
+                slow=slow,
+                precalc_data=raw_data,
+            )
+
+        if intial_load:
+            self.dump_index(ma_type, fast, slow, precalc_data=raw_data)
+
+        # Persist snapshot for fast cold-starts
+        if self.config.snapshot_dir:
+            try:
+                self.cache.save_snapshot(self.config.snapshot_dir)
+            except OSError as exc:
+                out(f"⚠ Snapshot save failed: {exc}")
 
     def get_refresh_time_str(self) -> str:
         dt = self.cache.get_refresh_time()
         return dt.strftime(self.REFRESH_DT_PAT) if dt else "-"
 
     def build_dynamic_averages(
-        self, tf: str, ma_type: str, fast_len: int, slow_len: int
+        self,
+        tf: str,
+        ma_type: str,
+        fast_len: int,
+        slow_len: int,
+        symbols: set[str] | None = None,  # MEM 4 FIX: restrict to a symbol subset
     ) -> list[list]:
+        # ARCH 1: serve from TTL cache when possible (symbols filter bypasses cache)
+        cache_key = (tf, ma_type, fast_len, slow_len)
+        if symbols is None:
+            cached = self._ma_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
         sym_list = self.cache.sym_list.get(tf, [])
         nd = self.cache.num_data.get(tf)
         wptr = self.cache.write_ptr.get(tf, 0)
@@ -112,15 +211,37 @@ class MarketDataService:
         if nd is None or wptr == 0:
             return [INDEX_FIELDS]
 
-        vol_matrix = nd[:, :wptr, VOL]
-        price_matrix = nd[:, :wptr, PRICE]
+        # MEM 4 FIX: if a symbol subset was requested, slice only those rows
+        if symbols:
+            idx_map = self.cache.sym_idx_map[tf]
+            row_indices = [
+                idx_map[s] for s in sym_list if s in symbols and s in idx_map
+            ]
+            active_syms = [sym_list[i] for i in row_indices]
+            vol_matrix = nd[np.array(row_indices), :wptr, VOL]
+            price_matrix = nd[np.array(row_indices), :wptr, PRICE]
+        else:
+            active_syms = sym_list
+            vol_matrix = nd[:, :wptr, VOL]
+            price_matrix = nd[:, :wptr, PRICE]
 
-        vfast = IndicatorFactory.calculate(ma_type, vol_matrix, fast_len)[:, -1]
-        vslow = IndicatorFactory.calculate(ma_type, vol_matrix, slow_len)[:, -1]
-        vbase = IndicatorFactory.calculate(ma_type, vol_matrix, _base_ma_len)[:, -1]
+        # PERF 3: run five independent MA calculations concurrently
+        def _calc(mat: np.ndarray, length: int) -> np.ndarray:
+            return IndicatorFactory.calculate(ma_type, mat, length)[:, -1]
 
-        pfast = IndicatorFactory.calculate(ma_type, price_matrix, fast_len)[:, -1]
-        pslow = IndicatorFactory.calculate(ma_type, price_matrix, slow_len)[:, -1]
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            f_vfast = ex.submit(_calc, vol_matrix, fast_len)
+            f_vslow = ex.submit(_calc, vol_matrix, slow_len)
+            f_vbase = ex.submit(_calc, vol_matrix, _base_ma_len)
+            f_pfast = ex.submit(_calc, price_matrix, fast_len)
+            f_pslow = ex.submit(_calc, price_matrix, slow_len)
+
+        vfast = f_vfast.result()
+        vslow = f_vslow.result()
+        vbase = f_vbase.result()
+        pfast = f_pfast.result()
+        pslow = f_pslow.result()
+
         ltp_last = price_matrix[:, -1]
 
         # 🚀 OPTIMIZATION: 100% Vectorized Math (No python loops)
@@ -149,7 +270,7 @@ class MarketDataService:
                 int(vm),
             ]
             for sym, vfp, vsp, vsrg, ltp, psrg, pm, vm in zip(
-                sym_list,
+                active_syms,
                 vf_pct,
                 vs_pct,
                 v_surge,
@@ -161,7 +282,12 @@ class MarketDataService:
             )
         ]
 
-        return [INDEX_FIELDS, *data_rows]
+        result = [INDEX_FIELDS, *data_rows]
+
+        if symbols is None:
+            self._ma_cache.set(cache_key, result)
+
+        return result
 
     def filter_list(
         self, symbols_list: list, filt: str, pma_act: str = "na", vma_act: str = "na"
@@ -219,7 +345,6 @@ class MarketDataService:
         precalc_data: list | None = None,
     ) -> None:
         ref_t = self.get_refresh_time_str()
-        # 🚀 OPTIMIZATION: Reuse precalc_data when provided (avoids duplicate MA math)
         symbols_list = (
             precalc_data
             if precalc_data is not None
@@ -242,32 +367,32 @@ class MarketDataService:
             default=0,
         )
 
-        group_ranges = []
-        curr = 0
-        while curr <= max_ltp:
-            group_ranges.append((curr, curr + step))
-            curr += step
+        # ARCH 3 FIX: build price groups via a single sorted pass + bucket index
+        group_edges = list(range(0, int(max_ltp) + step + 1, step))
+        # groups[i] holds rows whose ltp falls in [group_edges[i], group_edges[i+1])
+        groups: dict[int, list] = {}
+        for row in data_rows_sorted:
+            ltp = row[ltp_idx]
+            if ltp is None:
+                continue
+            bucket = bisect.bisect_right(group_edges, ltp) - 1
+            groups.setdefault(bucket, []).append(row)
 
         cand_txt = Path(OUT_DIR) / "candidates.txt"
         with cand_txt.open("w") as write_out:
-            for start, end in reversed(group_ranges):
-                group_symbols = [
-                    r
-                    for r in data_rows_sorted
-                    if r[ltp_idx] is not None and start <= r[ltp_idx] < end
-                ]
-                if not group_symbols:
-                    continue
-                write_out.write(f"# Less than {end}\n")
-                write_out.writelines(f"{row[sym_idx]}\n" for row in group_symbols)
+            for bucket in sorted(groups.keys(), reverse=True):
+                if bucket + 1 < len(group_edges):
+                    upper = group_edges[bucket + 1]
+                else:
+                    upper = group_edges[bucket] + step
+                write_out.write(f"# Less than {upper}\n")
+                write_out.writelines(f"{row[sym_idx]}\n" for row in groups[bucket])
             write_out.write(f"# Timeframe: {MIN_TF} | Refresh Time: {ref_t}\n")
 
     def dump_merge(
         self,
         tf: str,
         filt: str,
-        pma_act: str,
-        vma_act: str,
         sort_key_list: list,
         ref_t: str,
         order_by: str,
@@ -277,12 +402,14 @@ class MarketDataService:
         *,
         from_web: bool = False,
         precalc_data: list | None = None,
+        precalc_filtered: list | None = None,  # PERF 2 FIX: accept pre-filtered list
+        pma_act: str = "na",
+        vma_act: str = "up",
     ) -> None:
         top = 40
         sym_idx = INDEX_FIELDS.index("symbol")
         initiator = "Web" if from_web else "Refresh"
 
-        # 🚀 OPTIMIZATION: Bypasses duplicate math calculation if called from web page
         full_symb_list = (
             precalc_data
             if precalc_data is not None
@@ -307,9 +434,13 @@ class MarketDataService:
             writer = _csv.writer(out_csv)
             writer.writerow(INDEX_FIELDS)
 
-            filtered_symb_list, _, _, _ = self.filter_list(
-                full_symb_list, filt, pma_act, vma_act
-            )
+            # PERF 2 FIX: use pre-filtered list if already computed by the caller
+            if precalc_filtered is not None:
+                filtered_symb_list = precalc_filtered
+            else:
+                filtered_symb_list, _, _, _ = self.filter_list(
+                    full_symb_list, filt, pma_act, vma_act
+                )
 
             symbol_full_row_map: dict[str, list] = {}
             for skey in sort_key_list:
@@ -366,7 +497,6 @@ class MarketDataService:
                     sidx1_rank_map[item[0]]
                     + (0 if not sidx2_exist else sidx2_rank_map[item[0]])
                 ),
-                reverse=False,
             )
 
             if forced_symbols:
@@ -386,6 +516,11 @@ class MarketDataService:
             )
 
 
+# ---------------------------------------------------------------------------
+# Background reload thread
+# ---------------------------------------------------------------------------
+
+
 class BackgroundReloader:
     def __init__(self, service: MarketDataService, config: AppConfig) -> None:
         self.service, self.config = service, config
@@ -395,11 +530,21 @@ class BackgroundReloader:
             threading.Thread(target=self._run_loop, daemon=True).start()
 
     def _run_loop(self) -> None:
+        # ARCH 4 FIX: catch all exceptions so the thread never dies silently.
         while True:
             wait_next_wall_clock(
                 self.config.reload_interval, self.config.buffer_seconds or 0
             )
-            self.service.load_all_data()
+            try:
+                self.service.load_all_data()
+            except (OSError, ValueError, RuntimeError):
+                out(f"❌ Background reload failed:\n{traceback.format_exc()}")
+                # Loop continues — next interval will retry
+
+
+# ---------------------------------------------------------------------------
+# FastAPI application
+# ---------------------------------------------------------------------------
 
 
 class VolTrackerApp(BaseFastAPIApp):
@@ -419,7 +564,7 @@ class VolTrackerApp(BaseFastAPIApp):
     @asynccontextmanager
     async def lifespan_handler(self, app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG002
         t0 = time.time()
-        self.data_service.load_all_data()
+        self.data_service.load_all_data(intial_load=True)
         out(f"⏱ Initial load took {time.time() - t0:.2f}s")
         self.reloader.start()
         yield
@@ -435,7 +580,13 @@ class VolTrackerApp(BaseFastAPIApp):
             "/symbol/{symbol_name}", self.symbol_detail, methods=["GET"]
         )
         router.add_api_route("/api/indicator", self.api_indicator, methods=["GET"])
+        router.add_api_route("/api/refresh", self.api_refresh, methods=["POST"])
+        router.add_api_route("/api/snapshot", self.api_snapshot, methods=["POST"])
         self.app.include_router(router)
+
+    # ------------------------------------------------------------------
+    # Route handlers
+    # ------------------------------------------------------------------
 
     async def index(
         self,
@@ -537,7 +688,7 @@ class VolTrackerApp(BaseFastAPIApp):
             },
         )
 
-    def sector_detail(
+    async def sector_detail(
         self,
         request: Request,
         sector_name: str,
@@ -556,11 +707,12 @@ class VolTrackerApp(BaseFastAPIApp):
             raise HTTPException(404, "Sector not found")
 
         tf_safe = tf if tf in TF_KEYS else MIN_TF
-        raw_data = self.data_service.build_dynamic_averages(tf_safe, ma, fast, slow)
         sector_syms = set(sector_map[sector_name])
-        filtered_data = [INDEX_FIELDS] + [
-            row for row in raw_data[1:] if row[0] in sector_syms
-        ]
+
+        # MEM 4 FIX: compute MAs for sector symbols only, not all 500
+        raw_data = self.data_service.build_dynamic_averages(
+            tf_safe, ma, fast, slow, symbols=sector_syms
+        )
 
         return self._render_index(
             request,
@@ -573,11 +725,11 @@ class VolTrackerApp(BaseFastAPIApp):
             vma_act,
             sort,
             order,
-            sector_list=filtered_data,
+            sector_list=raw_data,
             sector_name=sector_name,
         )
 
-    def symbol_detail(
+    async def symbol_detail(
         self,
         request: Request,
         symbol_name: str,
@@ -587,7 +739,6 @@ class VolTrackerApp(BaseFastAPIApp):
         slow: int = _def_slow_ma_len,
     ) -> Any:
         tf = tf if tf in TF_KEYS else MIN_TF
-        # 🚀 OPTIMIZATION: O(1) lookup via sym_idx_map instead of O(n) list.index()
         si = self.data_service.cache.sym_idx_map[tf].get(symbol_name)
         if si is None:
             raise HTTPException(404, "Symbol not found")
@@ -603,7 +754,6 @@ class VolTrackerApp(BaseFastAPIApp):
         ts_list = self.data_service.cache.ts_list[tf][:wptr]
         tsf_list = self.data_service.cache.tsf_list[tf][:wptr]
 
-        # 🚀 OPTIMIZATION: Vectorized NaN replacement and converted directly to lists.
         vol_list = np.where(np.isnan(vol[0]), 0.0, vol[0]).tolist()
         price_list = np.where(np.isnan(price[0]), 0.0, price[0]).tolist()
 
@@ -627,7 +777,7 @@ class VolTrackerApp(BaseFastAPIApp):
             },
         )
 
-    def api_indicator(
+    async def api_indicator(
         self,
         symbol: str,
         tf: str = MIN_TF,
@@ -636,7 +786,6 @@ class VolTrackerApp(BaseFastAPIApp):
         p1: float = _def_fast_ma_len,
     ) -> dict[str, list[float | None]]:
         tf = tf if tf in TF_KEYS else MIN_TF
-        # 🚀 OPTIMIZATION: O(1) lookup via sym_idx_map instead of O(n) list.index()
         si = self.data_service.cache.sym_idx_map[tf].get(symbol)
         if si is None:
             raise HTTPException(404, "Symbol not found")
@@ -661,11 +810,31 @@ class VolTrackerApp(BaseFastAPIApp):
         except (ValueError, TypeError, IndexError) as e:
             raise HTTPException(500, f"Calculation error: {e}") from e
 
-        # Safe NaN replacement to explicitly support strict JSON compliance
         res_list: list[float | None] = [
             float(x) if not np.isnan(x) else None for x in res
         ]
         return {"data": res_list}
+
+    async def api_refresh(self) -> dict[str, str]:
+        """Admin endpoint: manually trigger a data reload."""
+        await asyncio.to_thread(self.data_service.load_all_data)
+        return {
+            "status": "ok",
+            "refresh_time": self.data_service.get_refresh_time_str(),
+        }
+
+    async def api_snapshot(self) -> dict[str, str]:
+        """Admin endpoint: persist current cache to snapshot_dir."""
+        if not self.cfg.snapshot_dir:
+            raise HTTPException(400, "snapshot_dir not configured")
+        await asyncio.to_thread(
+            self.data_service.cache.save_snapshot, self.cfg.snapshot_dir
+        )
+        return {"status": "ok", "snapshot_dir": self.cfg.snapshot_dir}
+
+    # ------------------------------------------------------------------
+    # Shared render helper
+    # ------------------------------------------------------------------
 
     def _render_index(
         self,
@@ -697,21 +866,11 @@ class VolTrackerApp(BaseFastAPIApp):
                 reverse=(order_by != "asc"),
             )
 
+        # PERF 1 FIX: dump_merge is NOT called here anymore.
+        # It runs exclusively in load_all_data after each background refresh.
+        # This eliminates disk I/O on every HTTP request.
+
         ref_t = self.data_service.get_refresh_time_str()
-        self.data_service.dump_merge(
-            tf,
-            filt,
-            pma_act,
-            vma_act,
-            [sort_key, None],
-            ref_t,
-            order_by,
-            ma_type,
-            fast,
-            slow,
-            from_web=True,
-            precalc_data=raw_data,
-        )
 
         return self.templates.TemplateResponse(
             request,

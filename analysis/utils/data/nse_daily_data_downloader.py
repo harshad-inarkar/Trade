@@ -25,7 +25,7 @@ from utils.data.paths import (
     NSE_LOGS_DIR,
     REMOTE_INTRADAY_DIR_PATH,
 )
-from utils.data.sync_data import sync_data_args
+from utils.data.sync_data import sync_with_rclone
 from utils.logging.log_utils import (
     LogFileManager,
     out,
@@ -162,7 +162,7 @@ class NSEDailyDownloader:
             should_pause = not gcp_state or gcp_state == "resume"
             if should_pause:
                 out("Sync from remote to local")
-                sync_data_args(REMOTE_INTRADAY_DIR_PATH, NSE_INTRADAY_DIR_PATH)
+                sync_with_rclone(REMOTE_INTRADAY_DIR_PATH, NSE_INTRADAY_DIR_PATH)
                 self._reset_gcp_sched("pause")
             else:
                 out("Scheduler pause skipped: gcp_state is not resumed")
@@ -171,7 +171,7 @@ class NSEDailyDownloader:
             if should_resume:
                 self._reset_gcp_sched("resume")
                 out("Sync from local to remote")
-                sync_data_args(NSE_INTRADAY_DIR_PATH, REMOTE_INTRADAY_DIR_PATH)
+                sync_with_rclone(NSE_INTRADAY_DIR_PATH, REMOTE_INTRADAY_DIR_PATH)
             else:
                 out("Scheduler resume skipped: gcp_state is not 'pause'")
 

@@ -8,7 +8,7 @@ _nse_data_dir = "nse_data"
 _intraday_dir = "intraday"
 _indx_dir = "index"
 _apps_dir = "apps"
-out_dir_name = "out"
+_out_dir_name = "out"
 templates_dir = "templates"
 _logs_dir = "logs"
 _holidays_list = "holidays_list.csv"
@@ -97,7 +97,7 @@ REMOTE_DIR: str | None = (
 )
 
 # Derived Paths
-OUT_DIR: str = str(ROOT_DATA_DIR_PATH_OBJ / out_dir_name)
+OUT_DIR: str = str(ROOT_DATA_DIR_PATH_OBJ / _out_dir_name)
 
 NSE_LOGS_DIR: str = str(ROOT_DATA_DIR_PATH_OBJ / _nse_data_dir / _logs_dir)
 NSE_INDX_DATA: str = str(ROOT_DATA_DIR_PATH_OBJ / _nse_data_dir / _indx_dir)

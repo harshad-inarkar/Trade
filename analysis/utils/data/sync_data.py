@@ -1,97 +1,138 @@
 import argparse
+import shlex
 import subprocess
 import time
+from pathlib import Path, PurePosixPath
+from typing import Any
 
+from utils.config.config_loader import load_config_toml
 from utils.data.paths import (
     NSE_INDX_DATA,
     NSE_INTRADAY_DIR_PATH,
+    NSE_LOGS_DIR,
     REMOTE_INTRADAY_DIR_PATH,
     REMOTE_NSE_INDX_DATA,
+    ROOT_DATA_DIR,
 )
-from utils.logging.log_utils import out
+from utils.logging.log_utils import (
+    LogFileManager,
+    out,
+    set_logger_config,
+    set_out_log_level,
+)
 
 
-def sync_with_rsync(
-    remote_host: str,  # Hostname or IP of remote machine (e.g. 'server.example.com')
-    remote_path: str,  # Remote path to sync from (e.g. '/home/user/data/')
-    local_path: str,  # Local destination path (e.g. './data/')
-    remote_src_flag: bool = True,  # If True, remote is source.
-    user: str = "",  # SSH username, if needed (empty string for default)
-    port: int = 22,  # SSH port (default 22)
+def _sync_with_rsync(
+    remote_host: str,
+    remote_root_path: str,
+    remote_dir_paths: list[str],
+    local_path: str,
+    remote_src_flag: bool = True,
+    user: str = "",
+    port: int = 22,
+    exclude_files: list | None = None,
 ) -> None:
     """
     Uses the system's native rsync command to synchronize
     remote data to a local directory.
     Assumes SSH keys are configured for passwordless entry.
     """
-    # Build the rsync command
-    # -a : Archive mode (recursive, preserves permissions, times, symlinks, etc.)
-    # -z : Compress file data during the transfer
-    # -e : Specify the remote shell (allows us to set custom SSH ports)
-
     ssh_command = f"ssh -p {port}"
     hostname = f"{user}@{remote_host}" if user else remote_host
-
-    # Support multiple remote source directories for syncing.
-    # remote_path can be a string or a list/tuple of remote dirs.
-
-    # Normalize remote_path to a list
-    remote_paths = [remote_path] if isinstance(remote_path, str) else list(remote_path)
+    remote_root_path_obj = Path(remote_root_path)
 
     if remote_src_flag:
-        # rsync allows multiple sources: [src1, src2, ..., dst]
-        srcs = [f"{hostname}:{p}" for p in remote_paths]
+        remote_root_path_obj = PurePosixPath(remote_root_path)
+
+        # Escape any commas or braces in directory names (rare, but makes it robust)
+
+        if remote_dir_paths is None or len(remote_dir_paths) == 0:
+            remote_dir_paths = [""]
+
+        if len(remote_dir_paths) == 1:
+            # If joining yields same as remote_root_path_obj,
+            # add trailing slash to mean the dir and not its contents
+            remote_sub_path = remote_dir_paths[0]
+            joined_path = remote_root_path_obj / remote_sub_path
+            # Handle both Path and PurePosixPath
+            base_path_str = str(remote_root_path_obj)
+            joined_path_str = str(joined_path)
+            if joined_path_str == base_path_str:
+                src = f"{hostname}:{joined_path_str}/"
+            else:
+                src = f"{hostname}:{joined_path_str}"
+
+        else:
+            escaped_dirs = [
+                p.replace("\\", "\\\\")
+                .replace(",", "\\,")
+                .replace("{", "\\{")
+                .replace("}", "\\}")
+                for p in remote_dir_paths
+            ]
+
+            brace_list = ",".join(escaped_dirs)
+            src = f"{hostname}:{remote_root_path_obj.as_posix()}/{{{brace_list}}}"
+
+        srcs = [src]
         dst = local_path
     else:
-        # Only allow local_path as source; remote_path must be single string
         srcs = [local_path]
-        # Allow only one remote_path for remote-as-destination
-        if len(remote_paths) != 1:
-            err_msg = "sync local to remote, only a single remote_path is allowed."
+        if len(remote_dir_paths) != 1:
+            err_msg = (
+                "When syncing local to remote, only a single remote_path is allowed."
+            )
             raise ValueError(err_msg)
 
-        dst = f"{hostname}:{remote_paths[0]}"
+        dst = f"{hostname}:{(remote_root_path_obj / remote_dir_paths[0]).as_posix()}"
+
+    # Construct --exclude arguments from exclude_files list
+    exclude_args = []
+    if exclude_files:
+        for pattern in exclude_files:
+            exclude_args.extend(["--exclude", pattern])
 
     command = [
         "rsync",
         "-az",
-        "--out-format=%n",  # only output copied file paths
+        "--out-format=%n",
+        *exclude_args,
         "-e",
         ssh_command,
         *srcs,
         dst,
     ]
 
-    out(f"Executing: {' '.join(command)}\n", log_level="debug")
+    # Use shlex.join to show exactly how the command is being escaped/quoted
+    out(f"Executing: {shlex.join(command)}\n", log_level="debug")
 
     try:
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.STDOUT,  # Redirects stderr to stdout
             universal_newlines=True,
+            bufsize=1,  # Line buffered
         )
 
-        if process and process.stdout:
-            out("File Transfers->")
-            for line in process.stdout:
-                if line.strip():
-                    out(line, end="")
-
-        process.wait()
+        # Collect all output at once, do not stream
+        stdout, _ = process.communicate()
+        if stdout:
+            out("Transfer Files->")
+            out(stdout)
 
         if process.returncode == 0:
-            out("\n✅ Rsync transfer completed successfully!")
+            out("✅ Rsync transfer completed successfully!")
         else:
-            out(f"\n❌ Rsync failed with return code {process.returncode}")
+            out(f"❌ Rsync failed with return code {process.returncode}")
 
     except FileNotFoundError:
-        out("Error: 'rsync' command not found.", log_level="critical")
+        out("Error: 'rsync' command not found.")
     except (OSError, subprocess.SubprocessError) as e:
-        out(f"Esception occurred during rsync: {e}", log_level="critical")
+        out(f"Exception occurred during rsync: {e}")
 
 
-def sync_data_args(src: str, dst: str) -> None:
+def sync_with_rclone(src: str, dst: str) -> None:
     cmd = [
         "rclone",
         "copy",
@@ -130,7 +171,48 @@ def sync_data_args(src: str, dst: str) -> None:
         out(e.stdout)
 
 
+def rsync_data(remote_dir_paths: list[str] | None = None) -> None:
+    config: dict[str, Any] = load_config_toml(
+        Path(__file__).parent / f"{Path(__file__).stem}.toml"
+    )
+
+    sync_config: dict[str, Any] = config.get("rsync", {})
+
+    remote_host: str = str(sync_config.get("remote_host", ""))
+    remote_user: str = str(sync_config.get("remote_user", ""))
+    remote_root_path: str = str(sync_config.get("remote_root_path", ""))
+    exclude_files: list = sync_config.get("exclude_files", [])
+
+    # Ensure default fallback is an empty list, not an empty string, for mypy checking
+    cnfg_remote_dir_paths: list[str] = sync_config.get("remote_dir_paths", [])
+
+    # Retrieve local path or fallback to default
+    raw_local_root = sync_config.get("local_root_path", "")
+    local_root_path: str = str(raw_local_root) if raw_local_root else str(ROOT_DATA_DIR)
+
+    final_remote_dirs = (
+        remote_dir_paths if remote_dir_paths is not None else cnfg_remote_dir_paths
+    )
+
+    _sync_with_rsync(
+        remote_host=remote_host,
+        user=remote_user,
+        remote_root_path=remote_root_path,
+        remote_dir_paths=final_remote_dirs,
+        local_path=local_root_path,
+        exclude_files=exclude_files,
+    )
+
+
 if __name__ == "__main__":
+    # init log manager
+    log_manager = LogFileManager(log_dir=NSE_LOGS_DIR)
+    log_manager.start_monitor()
+    script_log_name = Path(__file__).stem
+    managed_file_handle = log_manager.open_log(script_log_name)
+    set_logger_config(log_handle=managed_file_handle)
+    set_out_log_level("critical")
+
     parser = argparse.ArgumentParser(description="NSE sync data")
     parser.add_argument(
         "-tr", "--to-remote", action="store_true", help="Sync to remote drive"
@@ -138,12 +220,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "-ix", "--index", action="store_true", help="Sync Index data to remote drive"
     )
-
-    parser.add_argument("-rs", "--rsync-flag", action="store_true", help="Use Rsync")
+    parser.add_argument(
+        "-rc", "--rclone-flag", action="store_true", help="Use rclone instead of rsync"
+    )
 
     args, unknown = parser.parse_known_args()
-    to_remote = False
-    index_flag = False
+    to_remote: bool = False
+    index_flag: bool = False
 
     if args.to_remote:
         out("Sync to remote drive")
@@ -153,10 +236,22 @@ if __name__ == "__main__":
         out("Sync Index Dir")
         index_flag = True
 
-    if to_remote:
-        if not index_flag:
-            sync_data_args(NSE_INTRADAY_DIR_PATH, REMOTE_INTRADAY_DIR_PATH)
+    try:
+        if args.rclone_flag:
+            if to_remote:
+                if not index_flag:
+                    sync_with_rclone(
+                        str(NSE_INTRADAY_DIR_PATH), str(REMOTE_INTRADAY_DIR_PATH)
+                    )
+                else:
+                    sync_with_rclone(str(NSE_INDX_DATA), str(REMOTE_NSE_INDX_DATA))
+            else:
+                sync_with_rclone(
+                    str(REMOTE_INTRADAY_DIR_PATH), str(NSE_INTRADAY_DIR_PATH)
+                )
         else:
-            sync_data_args(NSE_INDX_DATA, REMOTE_NSE_INDX_DATA)
-    else:
-        sync_data_args(REMOTE_INTRADAY_DIR_PATH, NSE_INTRADAY_DIR_PATH)
+            rsync_data()
+    finally:
+        # Guarantee clean exit of file handlers
+        log_manager.close_log(script_log_name)
+        log_manager.stop_monitor()

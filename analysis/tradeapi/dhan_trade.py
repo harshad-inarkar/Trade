@@ -110,10 +110,13 @@ def _format_expiry_time(expiry_time: str) -> str:
         dt = datetime.strptime(expiry_time[:16], "%Y-%m-%dT%H:%M").replace(
             tzinfo=INDIA_TZ
         )
-        expiry_time = dt.strftime("%Y-%m-%d  %H:%M")
 
-    except (ValueError, TypeError) as e:
-        LOGGER.info("Date conversion failed %s\n%s", expiry_time, e)
+        expiry_time = (
+            "Expired" if dt < datetime.now(INDIA_TZ) else dt.strftime("%Y-%m-%d  %H:%M")
+        )
+
+    except (ValueError, TypeError):
+        LOGGER.critical(f"Date conversion failed {expiry_time}")
 
     return expiry_time
 

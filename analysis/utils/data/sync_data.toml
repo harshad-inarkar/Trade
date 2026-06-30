@@ -1,0 +1,7 @@
+[rsync]
+remote_host = "oracle-server"
+remote_user = ""
+remote_root_path = "~/trade_client"
+remote_dir_paths = ["out", "nse_data"]
+local_root_path = ""
+exclude_files = ["*.log", "logs", "__pycache__", "*.pyc", "venv",".DS_Store","*.egg-info"]

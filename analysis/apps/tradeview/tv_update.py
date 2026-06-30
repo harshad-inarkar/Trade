@@ -9,8 +9,8 @@ from pathlib import Path
 import pyautogui
 
 from utils.config.config_loader import load_config_toml
-from utils.data.paths import OUT_DIR, out_dir_name
-from utils.data.sync_data import sync_with_rsync
+from utils.data.paths import OUT_DIR
+from utils.data.sync_data import rsync_data
 from utils.logging.log_utils import out
 from utils.time.time_utils import INDIA_TZ, wait_next_wall_clock
 
@@ -199,8 +199,8 @@ class TVUpdaterApp:
                 capture_output=True,
             )
             time.sleep(1.0)  # Give macOS time to swap window layers
-        except subprocess.SubprocessError as e:
-            out(f"Focus Error: {e}")
+        except subprocess.SubprocessError:
+            out("Focus Error: run bkp cmd for focus")
             subprocess.run(
                 ["osascript", "-e", 'tell application "TradingView" to activate'],
                 check=False,
@@ -210,13 +210,8 @@ class TVUpdaterApp:
     def _download_remote(self) -> None:
         if not self.remote_flag:
             return
-        remote_path = Path(self.remote_root_data) / out_dir_name
 
-        sync_with_rsync(
-            remote_host=self.remote_host,
-            remote_path=f"{remote_path}/",
-            local_path=OUT_DIR,
-        )
+        rsync_data(remote_dir_paths=["out"])
 
     def _perform_update(self) -> None:
         """Core automation sequence."""
