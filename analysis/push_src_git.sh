@@ -16,6 +16,7 @@ SOURCE_TARGET=(
     "deploy_remote.sh"
     "stop_remote_process.sh"
     "search_replace.sh"
+    "pyrightconfig.json"
 )
 
 # 2. Ensure the destination exists
