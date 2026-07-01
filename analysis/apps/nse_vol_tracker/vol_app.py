@@ -396,15 +396,15 @@ class MarketDataService:
         sort_key_list: list,
         ref_t: str,
         order_by: str,
-        ma_type: str = "rma",
-        fast: int = _def_fast_ma_len,
-        slow: int = _def_slow_ma_len,
         *,
         from_web: bool = False,
         precalc_data: list | None = None,
         precalc_filtered: list | None = None,  # PERF 2 FIX: accept pre-filtered list
         pma_act: str = "na",
-        vma_act: str = "up",
+        vma_act: str = "na",
+        ma_type: str = "rma",
+        fast: int = _def_fast_ma_len,
+        slow: int = _def_slow_ma_len,
     ) -> None:
         top = 40
         sym_idx = INDEX_FIELDS.index("symbol")

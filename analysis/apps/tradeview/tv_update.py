@@ -210,7 +210,7 @@ class TVUpdaterApp:
     def _download_remote(self) -> None:
         if not self.remote_flag:
             return
-
+        out("Using remote sync data", log_level="critical")
         rsync_data(remote_dir_paths=["out"])
 
     def _perform_update(self) -> None:
@@ -220,7 +220,7 @@ class TVUpdaterApp:
             ["pgrep", "-x", "TradingView"], capture_output=True, text=True, check=False
         )
         if not pgrep.stdout.strip():
-            out("TradingView app closed. Exiting script.")
+            out("TradingView app closed. Exiting script.", log_level="critical")
             sys.exit()
 
         # 1. User Active Check (Initial Warning)
@@ -230,6 +230,7 @@ class TVUpdaterApp:
         if self.remote_flag:
             self._download_remote()
         else:
+            out("Using local data", log_level="critical")
             time.sleep(2)
 
         if self._is_user_active(1):

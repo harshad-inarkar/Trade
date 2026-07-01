@@ -1,7 +1,7 @@
 # Global Config
 place_order_mode= "SUPER"  # 'SUPER' 'FOREVER' 'ALERT' 
 #def_expiry_date  = "2026-05-26"
-def_trade_amount = 10000
+def_trade_amount = 50000
 def_quantity     = 1
 def_order_mode   = 'NA'
 
@@ -10,7 +10,7 @@ def_order_mode   = 'NA'
 # ─────────────────────────────────────────────
 entry_price_perc = 0.13
 limit_price_perc = 0.5
-target_perc      = 5
+target_perc      = 4
 stop_loss_perc   = 0.7
 stop_trail_perc  = 0.35
 
@@ -24,7 +24,7 @@ stop_trail_perc  = 0.35
     #expiry_date = "2026-05-26"
 
 [nse.indices.config]
-    order_mode = "NA"  # FUT NA
+    order_mode = "NA"  # FUT/ OPT / NA
 
 [nse.indices.symbols.NIFTY]
     #expiry_date = "2026-05-12"
