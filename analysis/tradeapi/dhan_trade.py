@@ -1400,14 +1400,30 @@ class DhanTrader:
         product_type: str = "INTRADAY",
         limit_price: float = 0.0,
     ) -> None:
-        if net_qty == 0:
+
+        active_positions = self.get_active_positions()
+        cur_net_qty = 0
+        ltp = 0.0
+
+        for entry in active_positions:
+            if entry.get("security_id", "") == sec_id:
+                cur_net_qty = entry.get("qty", 0)
+                ltp = entry.get("ltp", 0.0)
+                break
+
+        if cur_net_qty == 0:
             return
+
         signal = "SELL" if net_qty > 0 else "BUY"
         payload = self._base_payload(signal, exchange_seg, sec_id, product_type) | {
             "quantity": abs(net_qty),
         }
         if limit_price > 0:
             payload["price"] = limit_price
+            payload["orderType"] = "LIMIT"
+        elif ltp > 0:
+            lvls = self._compute_price_levels(ltp, signal)
+            payload["price"] = lvls.limit
             payload["orderType"] = "LIMIT"
 
         self._post_order(
