@@ -7,6 +7,7 @@
 host      = "localhost"
 port      = 8000
 reload    = false          # Set to false to prevent double-loading
+
 #disable webhook
 #webhook_secret = "" 
 webhook_secret = "mytradingwebhooksecret"
@@ -18,6 +19,8 @@ template_subdir  = "template_trade_client"  # relative to TEMPLATES_ROOT_DIR
 refresh_master_script = false
 reset_proxy_at_start = false
 apply_proxy_flag = false
+reload_interval = 1
+buffer_seconds = 0
 
 # ── Position close defaults ────────────────────────────────────────────────────
 [close]

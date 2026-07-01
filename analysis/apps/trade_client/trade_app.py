@@ -1,6 +1,8 @@
 """FastAPI dashboard for the Dhan trading portal."""
 
 import hmac
+import threading
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,6 +14,7 @@ from pydantic import BaseModel
 from tradeapi.dhan_trade import DhanTrader, UIOverride
 from utils.fastapi.fastapi_base import AppPaths, BaseAppConfig, BaseFastAPIApp
 from utils.logging.log_utils import LOGGER, bool_env_or_cfg
+from utils.time.time_utils import wait_next_wall_clock
 
 paths = AppPaths.resolve(__file__)
 
@@ -116,6 +119,8 @@ class AppConfig(BaseAppConfig):
         self.apply_proxy_flag: bool = bool_env_or_cfg(
             "apply_proxy_flag", app_cfg, default_val=False
         )
+        self.reload_interval: int = app_cfg.get("reload_interval", 3)
+        self.buffer_seconds: int = app_cfg.get("buffer_seconds", 0)
 
         cls_cfg = self.raw_cfg.get("close", {})
         self.reentry_order_mode: str = cls_cfg.get("reentry_order_mode", "FOREVER")
@@ -218,9 +223,6 @@ class DashboardService:
 
     def _get_active_orders(self) -> list[dict]:
 
-        if self.config.clean_orphaned_super_orders:
-            self.trader.clean_orphaned_orders()
-
         active_orders: list[dict] = []
         active_orders.extend(self._get_pending_orders())
         active_orders.extend(self._get_super_orders())
@@ -306,6 +308,34 @@ class DashboardService:
         ]
 
 
+class BackgroundCleaner:
+    """Periodically cleans orphaned super orders in the background."""
+
+    def __init__(self, trader: DhanTrader, config: AppConfig) -> None:
+        self.trader = trader
+        self.config = config
+
+    def start(self) -> None:
+        if self.config.clean_orphaned_super_orders and self.config.reload_interval:
+            threading.Thread(target=self._run_loop, daemon=True).start()
+
+    def _run_loop(self) -> None:
+        while True:
+            wait_next_wall_clock(
+                self.config.reload_interval, self.config.buffer_seconds or 0
+            )
+            try:
+                self.trader.clean_orphaned_orders()
+                LOGGER.info(
+                    "Background job: clean_orphaned_orders executed successfully."
+                )
+            except RuntimeError:
+                LOGGER.error(
+                    "Background cleaner failed with a RuntimeError:\n%s",
+                    traceback.format_exc(),
+                )
+
+
 class TradePortalApp(BaseFastAPIApp):
     """FastAPI application wrapper for the trading portal."""
 
@@ -327,6 +357,9 @@ class TradePortalApp(BaseFastAPIApp):
         )
         self.trader.begin_session()
         self.dashboard = DashboardService(self.trader, self.cfg)
+
+        self.cleaner = BackgroundCleaner(self.trader, self.cfg)
+        self.cleaner.start()
 
         self._setup_routes()
 
