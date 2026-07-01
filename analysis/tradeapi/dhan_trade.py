@@ -1396,7 +1396,6 @@ class DhanTrader:
         self,
         sec_id: str,
         exchange_seg: str,
-        net_qty: int,
         product_type: str = "INTRADAY",
         limit_price: float = 0.0,
     ) -> None:
@@ -1404,25 +1403,28 @@ class DhanTrader:
         active_positions = self.get_active_positions()
         cur_net_qty = 0
         ltp = 0.0
+        inst_type = ""
 
         for entry in active_positions:
             if entry.get("security_id", "") == sec_id:
                 cur_net_qty = entry.get("qty", 0)
                 ltp = entry.get("ltp", 0.0)
+                inst_type = entry.get("ui_inst_type", "")
                 break
 
         if cur_net_qty == 0:
             return
 
-        signal = "SELL" if net_qty > 0 else "BUY"
+        signal = "SELL" if cur_net_qty > 0 else "BUY"
         payload = self._base_payload(signal, exchange_seg, sec_id, product_type) | {
-            "quantity": abs(net_qty),
+            "quantity": abs(cur_net_qty),
         }
         if limit_price > 0:
             payload["price"] = limit_price
             payload["orderType"] = "LIMIT"
         elif ltp > 0:
-            lvls = self._compute_price_levels(ltp, signal)
+            is_opt = inst_type in self._api_cfg.opt_segments
+            lvls = self._compute_price_levels(ltp, signal, opt_bump=is_opt)
             payload["price"] = lvls.limit
             payload["orderType"] = "LIMIT"
 

@@ -21,12 +21,13 @@ reset_proxy_at_start = false
 apply_proxy_flag = false
 reload_interval = 1
 buffer_seconds = 0
+# Automatically clean up orphaned super orders when a position is closed
+clean_orphaned_super_orders = true
 
 # ── Position close defaults ────────────────────────────────────────────────────
 [close]
 reentry_order_mode   = "ALERT" # ALERT | FOREVER | SUPER | MARKET
 reentry_product_type = "INTRADAY"     # CNC | INTRADAY | MARGIN
 
-# Automatically clean up orphaned super orders when a position is closed
-clean_orphaned_super_orders = true
+
 

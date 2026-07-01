@@ -1,5 +1,6 @@
 """FastAPI dashboard for the Dhan trading portal."""
 
+import asyncio
 import hmac
 import threading
 import traceback
@@ -122,12 +123,13 @@ class AppConfig(BaseAppConfig):
         self.reload_interval: int = app_cfg.get("reload_interval", 3)
         self.buffer_seconds: int = app_cfg.get("buffer_seconds", 0)
 
+        self.clean_orphaned_super_orders: bool = app_cfg.get(
+            "clean_orphaned_super_orders", False
+        )
+
         cls_cfg = self.raw_cfg.get("close", {})
         self.reentry_order_mode: str = cls_cfg.get("reentry_order_mode", "FOREVER")
         self.reentry_product_type: str = cls_cfg.get("reentry_product_type", "CNC")
-        self.clean_orphaned_super_orders: bool = cls_cfg.get(
-            "clean_orphaned_super_orders", False
-        )
 
 
 @dataclass(frozen=True)
@@ -681,13 +683,16 @@ class TradePortalApp(BaseFastAPIApp):
         self,
         sec_id: str = Form(...),
         exchange_seg: str = Form(...),
-        net_qty: int = Form(...),
         product_type: str = Form("INTRADAY"),
         limit_price: float = Form(0.0),
     ) -> RedirectResponse:
         self.trader.close_position_by_secid(
-            sec_id, exchange_seg, net_qty, product_type, limit_price=limit_price
+            sec_id, exchange_seg, product_type, limit_price=limit_price
         )
+
+        await asyncio.sleep(1)
+
+        self.trader.clean_orphaned_orders()
 
         return RedirectResponse(url=_app_cur_redirect_url, status_code=303)
 
