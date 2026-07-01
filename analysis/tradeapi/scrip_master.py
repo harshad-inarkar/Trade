@@ -354,6 +354,7 @@ class ScripMaster:
             return None
 
     def _download_segments(self) -> pd.DataFrame | None:
+        LOGGER.info("Downloading Master Script")
         if not self.cfg.instrument_url or not self.cfg.instrument_segments:
             LOGGER.error("Instrument URL or segments missing in config.")
             return None

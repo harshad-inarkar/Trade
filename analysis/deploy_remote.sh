@@ -13,8 +13,32 @@ SOURCE_TARGET=(
     "pyproject.toml"
 )
 
+# --- Argument Parsing ---
+LOG_LEVEL="critical"
+REFRESH_MASTER_SCRIPT="false"
+
+while [[ $# -gt 0 ]]; do
+    key="$1"
+    case $key in
+        --log_level)
+        LOG_LEVEL="$2"
+        shift; shift
+        ;;
+        --refresh_master_script)
+        REFRESH_MASTER_SCRIPT="true"
+        shift
+        ;;
+        *)
+        echo "Unknown argument: $key"
+        exit 1
+        ;;
+    esac
+done
+
 echo "##############"
 echo "🚀 Starting deployment to $REMOTE_HOST..."
+echo "Using log_level=$LOG_LEVEL"
+echo "With refresh_master_script=$REFRESH_MASTER_SCRIPT"
 
 # Step 1: Create target directory remotely
 ssh "$REMOTE_HOST" "mkdir -p $TARGET_DIR"
@@ -34,20 +58,17 @@ echo "✅ Rsync Complete!"
 
 # Step 3: Automate Remote Orchestration via Tmux
 
-
 echo "🤖 Automating Orchestration on server..."
-ssh "$REMOTE_HOST" << EOF
+ssh "$REMOTE_HOST" bash << EOF
     cd $TARGET_DIR
-    
+
     # Activate virtual environment if present
-    
     source ~/venv/bin/activate
-    
 
     # Kill old session to avoid 'address already in use' port 8000 blockages
     echo "🛑 Killing existing 'bot' tmux session if active..."
     tmux kill-session -t bot 2>/dev/null
-    
+
     # Grace period for bound sockets to clear natively
     sleep 1
 
@@ -74,19 +95,13 @@ ssh "$REMOTE_HOST" << EOF
 
     sleep 1
 
-
-
     # Spin up fresh orchestrator inside a detached background tmux window
 
     echo "🚀 Initializing orchestrator inside fresh 'bot' tmux session..."
-        
-    # tmux new-session -d -s bot "export log_level="info" && export refresh_master_script="true" && python orchest/start_orchest.py -ml trade_app"
-    tmux new-session -d -s bot "export log_level="info" && python orchest/start_orchest.py -ml trade_app vol_app"
 
-    # tmux new-session -d -s bot "python orchest/start_orchest.py -ml trade_app vol_app"
-    
+    tmux new-session -d -s bot "export log_level='$LOG_LEVEL' && export refresh_master_script='$REFRESH_MASTER_SCRIPT' && python orchest/start_orchest.py -ml trade_app"
+
     echo "🎉 Server execution handed off safely!"
 EOF
-
 
 echo "✨ Deployment and automation workflow complete!"
